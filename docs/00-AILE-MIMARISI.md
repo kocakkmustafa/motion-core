@@ -12,6 +12,12 @@ Bu doküman 4 plan dokümanının ÜSTÜNDE bağlayıcıdır: çelişkide bu dos
 | **JabLab** | Solo boks / shadow boxing koçu | jablab-plan.md | hazırlık |
 | **Ostinato** | Genel enstrüman pratik koçu — **marka genel, V1 çelloda derinleşir** (plan şartıyla uyumlu) | ostinato-plan.md | hazırlık |
 
+### 1.1 Kapsam direktifi (kurucu, 2026-07-25 — bağlayıcı)
+**Vizyon kapsamı TAMDIR; V1 sınırları ürün tavanı DEĞİL, mühendislik sırasıdır.** Hiçbir V1 kısıtı vizyonu daraltma gerekçesi yapılamaz:
+- Dört üründe de çekirdek vaat: **"karşında antrenörün/öğretmenin varmış gibi"** — kullanıcıya durması gereken pozisyonu söyleyen, antrenmanı/yogayı/esnemeyi/pratiği doğru formda yaptıran **sesli gerçek-zamanlı yönlendirme**. (Tek kişi + tek kamera senaryosu ürünlerin doğal avantajı: çoklu-kişi karmaşası yok.)
+- **Ostinato çelloyla SINIRLI DEĞİLDİR:** fiziksel/teknik sınırları aşmayan TÜM çalgılara genişler; çello yalnız ilk motordur, mimari enstrüman-bağımsız kurulur (ortak çekirdek: pose+hand+audio+öğretmen akışı).
+- Dört ürün **ayrı ayrı ürünlerdir ve ayrı yayınlanır** (kendi store kaydı, markası, sayfası) — kod paylaşımı bu bağımsızlığı etkilemez.
+
 ⚠️ **Ad rezervasyonu bekliyor:** İsimler mağazalarda taranıp temiz bulundu (2026-07-25) ama HENÜZ rezerve edilmedi. Kamuya açılmadan önce ASC/Play'de app kaydı açılmalı (kurucu-onaylı işlem). Site coming-soon dalı bu yüzden yayınlanmadan bekliyor.
 
 ## 2. Monorepo yapısı (kurucu kararı: tek monorepo `yula-motion`)
