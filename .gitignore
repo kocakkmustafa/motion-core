@@ -1,0 +1,5 @@
+.DS_Store
+build/
+.dart_tool/
+node_modules/
+*.log
