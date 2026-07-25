@@ -1,0 +1,15 @@
+name: motion_core
+description: >-
+  Domain-independent motion analysis core for the Yula Motion family
+  (Gravita, Lissom, JabLab, Ostinato, Choreia). Pure Dart: pose normalization,
+  joint-angle similarity, banded DTW, beat grids, phase state machines and the
+  fixture/replay contract. Holds no app-specific rules or content.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
