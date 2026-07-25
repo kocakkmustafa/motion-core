@@ -1,19 +1,11 @@
-# Yula Motion
+# motion-core
 
-Kamera-tabanlı hareket analizi ürün ailesi — dört uygulama, tek çekirdek:
+**Yula Motion ailesinin ortak çekirdeği** — dört ayrı ürün ([Gravita](https://github.com/kocakkmustafa/gravita) · [Lissom](https://github.com/kocakkmustafa/lissom) · [JabLab](https://github.com/kocakkmustafa/jablab) · [Ostinato](https://github.com/kocakkmustafa/ostinato)) bu çekirdeğin üstünde yaşar.
 
-| App | Ürün |
-|---|---|
-| **Gravita** | Handstand & vücut becerileri koçu |
-| **Lissom** | Esneklik, yoga & mobilite — ölç, çalış, yeniden ölç |
-| **JabLab** | Solo boks / shadow boxing koçu |
-| **Ostinato** | Enstrüman pratik koçu (ilk enstrüman: çello) |
+Kapsam: kamera kalibrasyon sihirbazı · pose bridge (Kotlin/Swift ↔ MediaPipe) · landmark güven kapısı · temporal smoothing · vücut-oranı normalizasyonu · state-machine çatısı · versiyonlu rule-set motoru · feedback önceliklendirici · replay/fixture test harness · yerel depolama & gizlilik katmanı · sesli yönlendirme altyapısı.
 
-Ortak ilke: **on-device pose analizi + deterministik kural motoru** — gerçek-zamanlı LLM yok,
-ham video cihazdan çıkmaz, düşük güvende hüküm yok, her karar açıklanabilir ve replay-test edilebilir.
+📐 **Aile sözleşmesi (4 ürün için bağlayıcı):** [`docs/00-AILE-MIMARISI.md`](docs/00-AILE-MIMARISI.md)
 
-📐 Mimari sözleşme ve bağlayıcı plan ekleri: [`docs/00-AILE-MIMARISI.md`](docs/00-AILE-MIMARISI.md)
-
-> ⚠️ Bu repo şu an **hazırlık aşamasında** — üretim kodu, kurucu ilgili uygulamayı başlatınca yazılır.
+> ⚠️ Hazırlık aşaması — çekirdek kodu, İLK app'in V0 kapısı geçilip kurucu kod tetiği verdiğinde yazılmaya başlar. Semver + her app pinli sürüm tüketir.
 
 _Bu repo YULA AI Holding portföyünün parçasıdır._
