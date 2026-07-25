@@ -10,7 +10,7 @@
 ## 0. Yetki modeli (her oturumun ilk kuralı)
 
 - **Oturum, kurucu adına karar ALIR** — projenin vizyonu (00-AILE-MIMARISI §1.1: tavansız) ve kapsamı dahilindeki tüm ürün/teknik/sıralama kararları oturumda verilir, gerekçesiyle DEFTER'e yazılır. Kurucuya soru biriktirmek değil, karar + gerekçe üretmek esastır.
-- **Kurucu-kapılı istisnalar (değişmez):** git commit/push · para harcama (domain, SDK lisansı, TTS API, cihaz alımı, reklam bütçesi) · store submission/promote · fiyatın NİHAİ ilanı (öneri oturumda hazırlanır) · hukuki taahhüt (ToS/Privacy yayını) · D1/D2/D3/C-V0 kapı SONUÇLARININ onayı (kapı ölçümü oturumda yapılır, geçti/kaldı kararı kurucuya sunulur).
+- **Kurucu-kapılı istisnalar (değişmez):** remote push / main'e merge (feat/* dalına YEREL commit serbest — §2.6 gece politikası) · para harcama (domain, SDK lisansı, TTS API, cihaz alımı, reklam bütçesi) · store submission/promote · fiyatın NİHAİ ilanı (öneri oturumda hazırlanır) · hukuki taahhüt (ToS/Privacy yayını) · D1/D2/D3/C-V0 kapı SONUÇLARININ onayı (kapı ölçümü oturumda yapılır; eşiği NET geçen sonuçta "şartlı geçti" ile ilerlenebilir — §2.6, kurucu onayı sabah retrospektif).
 - **Dil:** ürün (UI, içerik, sesli koç, store metni) TAMAMEN İNGİLİZCE. Çeviri katmanı (i18n anahtarları) baştan kurulur ama V1 yalnız `en`. İç dokümanlar Türkçe.
 
 ## 1. Faz-kapı haritası (G0→G10)
@@ -38,6 +38,12 @@
 3. **Defter disiplini:** bulgular DEFTER.md'ye (P0 açıkken yeni kapsam yok); kararlar gerekçesiyle DEFTER'e; oturum kapanışında Obsidian devir notu (`/oturum-kapanisi` skill).
 4. **Alt-ajan ekonomisi (bağlayıcı memory kuralı):** düşünme/sentez ana oturumda; fan-out alt-ajanlarına açıkça `model:'sonnet'` (+kritik doğrulamalara opus); keşif yasak, bağlam prompt'a gömülü; alt-ajanlara git-YAZMA yasağı; adversarial doğrulama ÖNCESİ iş dala commit'li olmalı (kurucudan commit onayı istenerek).
 5. **Manuel işler sona:** oturum, kurucu eli gerektiren işleri (uzman doğrulaması, cihazla fixture çekimi, satın alma, submission) biriktirip oturum sonunda TEK listede sunar; akışı bunlar için durdurmaz.
+6. **OTONOM GECE MODU (kurucu direktifi 2026-07-26):** kurucu ekran başında değilken oturum SORMADAN, kendi kararlarını alarak, projeyi uçtan uca üretmeye devam eder. Kurallar:
+   - **Şartlı kapı geçişi:** kapı eşikleri ölçümden ÖNCE yazılır; sonuç eşiği NET geçiyorsa "ŞARTLI GEÇTİ" ilan edilir (kanıt DEFTER'e), ilerlenir — kurucu onayı sabah retrospektif. Sınırda/altında sonuçta o hatta üretim koduna girilmez; kapıya bağımlı olmayan işler öne çekilir. Boşta kalmak yasak, kapı-atlamak da yasak.
+   - **Git gece politikası:** iş feat/* dalında YEREL commit'lenir (adversarial doğrulama öncesi zaten zorunlu; feat dalı deploy tetiklemez); remote push / main'e merge SABAH kurucu onayıyla. Harcama, submission, nihai fiyat, D3 derin-yatırım kararı gece de kurucu-kapılıdır — bekleyen-onay listesine yazılır, geçilir.
+   - **Token ekonomisi + PMI:** iş, proje-yönetim disipliniyle kırılır (WBS/iş kırılımı, bağımlılık sırası, kilometre taşı=G-kapıları, risk kaydı=DEFTER). Oturum, gerektiğinde projeye özel OPTIMUM alt-ajan tanımları (.claude/agents/; açıkça model:'sonnet', dar bağlam, keşif yasak, git-yazma yasağı) ve Workflow script'leri OLUŞTURABİLİR; yeni ajan/skill kurulunca AGENTS.md + registry sessizce güncellenir. Düşünme/sentez ana oturumda kalır.
+   - **İleriye dönük mimari:** her karar, ürünün ileride kapsamlı/büyük olacağı varsayımıyla alınır — darboğaz üretecek kısayol yasak: versiyonlu şema/config, içerik=paket (kod değil), alan-bağımsız motorlar (beceri/branş/enstrüman/stil-bağımsız), i18n-hazır katman, genel parçalar motion-core'a.
+   - **DEFTER yöntemi zorunlu:** /loop iterasyonları doğrulanmış-test edilmiş-gerçek bilgiyle ilerler; bulgular DEFTER formatında (ID+şiddet+kanıt; P0 açıkken yeni kapsam yok; kapanış kanıtı zorunlu); sabah kapanışında /oturum-kapanisi + gece kararlarının özeti + bekleyen-kurucu listesi.
 
 ## 3. Rol → ajan eşlemesi (RACI'nin solo-stüdyo hali)
 
