@@ -3,3 +3,14 @@ build/
 .dart_tool/
 node_modules/
 *.log
+
+# Python offline hattı — ortam ve büyük ikili varlıklar repoya girmez
+tools/fixture_pipeline/.venv/
+tools/fixture_pipeline/models/*.task
+__pycache__/
+*.py[cod]
+
+# Ham video ASLA repoya girmez (gizlilik + boyut). Fixture JSON'ları girer.
+*.mov
+*.mp4
+*.m4v
