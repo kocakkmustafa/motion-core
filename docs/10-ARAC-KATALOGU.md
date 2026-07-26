@@ -14,7 +14,8 @@
 | ⚠️ **LGPL yalnız dinamik bağlama ile** | SoundTouch (LGPL-2.1) tempo/time-stretch için kabul edilebilir; statik gömme yasak. |
 | ✅ **Güvenli liste** | Apache-2.0: MediaPipe (pose/hand/object), MoveNet, RTMPose/MMPose, RT-DETR/D-FINE, sherpa-onnx, Kokoro-82M. MIT: AudioKit, CREPE. BSD: camera/Pigeon. Apple/Google sistem API'leri. |
 | ⚠️ **Veri seti lisansı ≠ kod lisansı** | Fine-tune edilen model "türev eser" riski taşır. Non-commercial veri setiyle SHIP EDİLEN model eğitilmez (bkz. §6). |
-| 📋 **Her yeni bağımlılıkta** | LICENSE dosyası okunur, DEFTER'e kaydedilir. "Popüler = güvenli" DEĞİLDİR (aubio/YOLO dersi). |
+| ❌ **Non-commercial model/veri tuzakları (2026-07-26 araştırması)** | **NVIDIA LocateAnything-3B**: gerçek (HF `nvidia/LocateAnything-3B`, 3B VLM grounding) ama "NVIDIA License" **non-commercial** — offline oto-etiketleme dahi KULLANILMAZ (etiketler ticari ürüne akar; M-F-14). Offline teacher alternatifi: **D-FINE (Apache-2.0)** / PaddleDetection RT-DETR (Apache) — ⚠️ Ultralytics'in RT-DETR wrapper'ı AGPL! · **SMPL/SMPL-X vücut modeli**: research-only — 4D-Humans/WHAM/VIBE gibi mesh-recovery repoları kod-Apache görünse de bu modele bağımlı; Meshcapade ticari lisansı olmadan hatta girmez · **FLUX.1/2-dev self-host**: non-commercial (ticari çıktı yalnız BFL API'den) · **MPG veri setleri** (Human3.6M/3DPW/AMASS/MPI-INF-3DHP/BEDLAM): yazılı izinsiz iç-QA'da bile varsayılmaz (§6.3) |
+| 📋 **Her yeni bağımlılıkta** | LICENSE dosyası okunur, DEFTER'e kaydedilir. "Popüler = güvenli" DEĞİLDİR (aubio/YOLO/LocateAnything/SMPL dersi). |
 
 ## 1. Pose (iskelet) katmanı — aile standardı
 
@@ -114,6 +115,38 @@ Açık setler ikincildir: eşik kalibrasyonu, vücut-tipi çeşitliliği ve "ç�
 | BEDLAM | Gravita | ⚠️ karmaşık (asset lisansları NN-eğitim yasağı içerebilir) | Yalnız metodoloji referansı |
 
 **Fixture JSON şeması (motion-core sözleşmesi):** `{schemaVersion, app, technique, recordingMeta{device, fps, lighting, bodyProfile, cameraSetup}, modelVersion, frames[{t, landmarks[33]{x,y,z,vis}}], labels[{tStart,tEnd,phase|errorCode,confidence,annotator}]}` — her app aynı şemayı kullanır; replay harness core'da tektir.
+
+### 6.2 Kurucusuz Veri Fabrikası (kurucu direktifi 2026-07-26 — M-F-13, bağlayıcı)
+
+**İLKE: Kurucu çekimi HİÇBİR kapının önkoşulu DEĞİLDİR.** Birincil veri = kamu-video hasadı (§6.0 çerçevesi) + kendi sentetik üretimimiz + gerekirse ücretli klip (§6.3). Kurucudan yalnız cihaz-benchmark'ı (beceri gerektirmez) ve onay/kapı kararları beklenir.
+**GENİŞ KÜTÜPHANE DİREKTİFİ:** referans/içerik hasadı DAR başlamaz — her app kendi alanının geniş hareket/stil/çalgı envanterini çıkarır ve hasadı paralel yürütür; MOTOR rollout'u fazlı kalır ama kütüphane baştan geniş kurulur.
+
+**Hasat boru hattı (offline rig — hepsi lisans-denetimli; kurulum koordinatör kuyruğunda):**
+`yt-dlp` (Unlicense; `--write-info-json` provenance ZORUNLU: source_url/kanal/lisans/tarih/araç-sürümü) → YouTube Data API `videoLicense=creativeCommon` önceliği + resmî kanallar (CC-video gerçeği: anlamlı hacim YOK — ana hacim standart-YouTube, C-017 kurucu-kabul çerçevesinde) → `PySceneDetect` (BSD-3) klip kesimi → **MediaPipe Pose batch** (üretimle format-eş; birincil) + gerektiğinde RTMPose/mmpose (Apache; checkpoint lisansı TEK TEK denetlenir) → `imagededup` (Apache) + videohash tekilleştirme → in-house Laplacian blur filtresi + landmark-visibility eleme → `faster-whisper` (MIT, yerel) ile eğitmen konuşmasından koçluk-dili madenciliği.
+⚠️ Tuzaklar: SMPL-bağımlı 3D mesh-recovery (4D-Humans/WHAM) YASAK-varsayılan (§0) · `internetarchive` pip paketi AGPL — yalnız offline rig'de bilinçli, hiçbir ship-artefakta değmez · hazır "exercise dataset builder" reposu YOK — rig kendi yapıştırma kodumuzdur.
+
+**Kaynak havuzları (araştırma-kanıtlı; ≥3 bağımsız eğitmen/hareket kuralı):**
+- **Gravita:** GMB, FitnessFAQs, Tom Merrick, THENX, Tapp Brothers, Antranik (handstand/pistol/crow/L-sit ≥3 ✓); planche/lever İNCE (Simonster + ek tarama görevi).
+- **Lissom:** klinik/PT kümesi ÖNCELİKLİ — Physiotutors, E3 Rehab, Clinical Physio, Movement by David, NASM/Brookbush + Emmet Louis/Merrick; test-başına video-düzeyi teyit turu gerekli (hamstring reach/denge/ASLR kanal-düzeyinde kaldı).
+- **JabLab:** Precision Striking, Tony Jeffries, ExpertBoxing (temel yumruklar ≥3 ✓); ⚠️ TEK-KİŞİ 240fps slow-mo footage İNCE — spor-bilim kanalları dahil özel tarama; gelecek-motor kickboks/Muay Thai ön-hasadı (teknik-başına tam tur sonra).
+- **Choreia:** Hip-Hop foundations + Salsa shines ≥3 ✓ (yarım-tempo öğretim = doğal slow-mo); House/Afrobeats güçlü; Bachata solo yalnız 2 kanal (ek tarama); K-Pop ajans içeriği YÜKSEK-dikkat (hak-yönetimli); 8-count konvansiyonu motor hizasına girdi.
+- **Ostinato:** CelloBello + tonebase-free birincil havuz; İLK ADIM kamera-açı triyajı (30-50 aday video elle etiketle: kullanılabilir sağ-ön-çapraz kadraj oranı ölçülür — tahminen azınlık); keman/gitar/piyano ön-hasat çapaları atıldı, tam tur motor kapsamıyla.
+
+### 6.3 Kurucusuz Doğrulama Merdiveni (M-F-16 — kapı türüne göre)
+
+| Kapı türü | Birincil | Destek | ❌ Yasak-varsayılan |
+|---|---|---|---|
+| **Doğruluk** (açı ölçümü) | **AIST++** (CC-BY anotasyon ✓ — kaynak videolar AYRI lisans!) + **MM-Fit** (CC-BY, Zenodo kaydında teyit et) | **Kendi sentetik setimiz**: Unity Perception (çıktı %100 bizim; SMPL-X Blender yolu SMPL lisansı yüzünden varsayılan DEĞİL). Sentetik = gerekli-ama-yetersiz; daima ≥1 gerçek-veri setiyle eşlenir | Human3.6M · MPI-INF-3DHP · 3DPW · AMASS · BEDLAM — "iç QA" bile yazılı izinsiz KULLANILMAZ (ps-licensing@tue.mpg.de); Fit3D `/legal` okunmadan kullanılmaz |
+| **Güvenilirlik/çeşitlilik** (vücut tipleri, test-retest) | Ücretli klip: Fiverr/Upwork ~$15-75/klip (brief'e YAZILI hak-devri/work-for-hire maddesi ZORUNLU — platform varsayılanı yetmez) | TestFlight beta kohortu (kendi in-app rıza akışımızla) · üniversite biyomekanik lab teması (orta-vade lead) | Goniometri eğitim videoları: yalnız elle göz-kontrol; ölçekli kazıma = telif ihlali |
+| **Cihaz** (fps/termal) | Kurucu kendi telefonlarında app/benchmark koşar — beceri gerektirmez, DEĞİŞMEDİ | — | — |
+
+### 6.4 AI Eğitmen / Öğretim Görseli Prodüksiyon Hattı (kurucu direktifi — M-F-15)
+
+**Katmanlı strateji (ucuzdan pahalıya; form-doğruluğu garantisi ancak T1'de yapısaldır):**
+- **T1 — VARSAYILAN ($0, form-garantili): iskelet-sürümlü uygulama-içi koç avatarı.** Çıkarılmış referans dizisi (skorlama referansının KENDİSİ) uygulama içinde stilize avatar/iskelet olarak deterministik canlandırılır (Flutter/Rive/3D rig). Doğruluk yapısal olarak garanti — kaynak zaten konsensüs-referans; üretken model yok → anatomik artefakt yok, telif yok, marjinal maliyet sıfır. 5 app'in V1 öğretim görseli budur.
+- **T2 — PİLOT-ŞARTLI cila: pose-driven üretken video.** Aday modeller: **Champ (Apache-2.0 ✓, SMPL-rehberli)** · EchoMimicV3 (Apache ✓ ama yüz/üst-gövde odaklı) · ❌ MimicMotion (SVD taban-ağırlık lisansı non-commercial — çözülmeden kullanılmaz) · AnimateAnyone (Apache ama resmî ağırlık yok). Karakter kimliği: **SDXL+LoRA (RAIL++-M ✓ ticari)**; ❌ FLUX-dev self-host. **ZORUNLU PİLOT:** 1 jab + 1 handstand referans iskeletiyle üret → form-denetiminden geçir; atletik-hareket doğruluk benchmark'ı LİTERATÜRDE YOK — kanıtsız taahhüt verilmez. Pilot geçerse T1 avatarın "giydirilmiş" versiyonu olur.
+- **T3 — düşük-riskli görseller (intro/karşılama/ambiyans; form-kritik DEĞİL):** ücretli API (Kling ~$0.07-0.11/sn, Runway Gen-4 ~$0.12-0.25/sn, HeyGen ~$0.05/sn — atletik form için kanıtsız) yalnız kurucu-onaylı bütçeyle.
+- **Art.50 uyumu (2 Ağustos 2026'dan itibaren yürürlükte — ŞİMDİ):** AI-üretimi görsel = makine-okur işaretleme (C2PA-tarzı metadata) + kullanıcıya açık ifşa; rehberlik kurgusal karakterde bile ifşa gerektiğini söylüyor. İfşa şablonu + işaretleme yardımcıları motion-core işi. **AI videodan landmark ASLA çıkarılmaz (§6.0 md.2 aynen).**
 
 ## 7. Hazır SDK'lar (build-vs-buy hükmü)
 
