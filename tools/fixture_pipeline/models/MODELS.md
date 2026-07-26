@@ -28,4 +28,4 @@ Aynı gün indirilen `/float16/latest/` ve `/float16/1/` bundle'ları karşıla�
 
 **Kural:** her build, buradaki SHA-256'yı doğrular; hash tutmuyorsa build durur. `full.latest` karşılaştırma amacıyla saklanır (G1-b kapı ölçümünde v1-vs-latest farkı ölçülebilir), üretimde kullanılmaz.
 
-Aile DEFTER kaydı: **M-017**.
+Aile DEFTER kaydı: **M-L-01**.

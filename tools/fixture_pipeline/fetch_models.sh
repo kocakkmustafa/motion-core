@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # MediaPipe Pose Landmarker bundle'larını PİNLİ sürümden indirir ve hash doğrular.
 # Model dosyaları repoda tutulmaz (45 MB); bu betik onları yeniden üretir.
-# Hash kaynağı: models/MODELS.md — uyuşmazlık = build durur (M-017).
+# Hash kaynağı: models/MODELS.md — uyuşmazlık = build durur (M-L-01).
 # Not: bash 3.2 (macOS varsayılanı) ile uyumlu — associative array kullanılmaz.
 set -euo pipefail
 cd "$(dirname "$0")/models"
@@ -22,7 +22,7 @@ for v in lite full heavy; do
     echo "  ✓ $v  (mevcut, hash doğru)"
     continue
   fi
-  # /1/ PİNLİ — /latest/ KULLANILMAZ: full varyantında farklı içerik veriyor (M-017)
+  # /1/ PİNLİ — /latest/ KULLANILMAZ: full varyantında farklı içerik veriyor (M-L-01)
   url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${v}/float16/1/pose_landmarker_${v}.task"
   echo "  ↓ $v indiriliyor..."
   curl -fsS -o "$out" "$url"
