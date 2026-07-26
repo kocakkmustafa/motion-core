@@ -57,6 +57,7 @@ class Pose:
     hip_flex      : 0 = uyluk dikey aşağı (ayakta), artarsa öne kalkar
     knee_flex     : 0 = bacak düz
     trunk_lean    : 0 = gövde dik, artarsa öne eğilir
+    heel_lift     : 0 = topuk yerde, artarsa topuk kalkar (metre)
 
     Not: tibia eğimi ayrı parametre DEĞİLDİR — kinematik zincirde
     (hip_flex - knee_flex) ilişkisinden türer. Ayrı bir `ankle_dorsi` alanı
@@ -69,6 +70,10 @@ class Pose:
     knee_flex: float = 0.0
     trunk_lean: float = 0.0
     lateral_bend: float = 0.0
+    #: Topuğun yerden kalkma miktarı (metre). Squat/ankle testlerinde
+    #: geçersizleştirme sinyali; modellenmezse `heel_rise` metriği hiçbir zaman
+    #: sınanmaz ve kapıda "ölü" görünür.
+    heel_lift: float = 0.0
 
 
 def _dir_sagittal(deg: float) -> np.ndarray:
@@ -150,7 +155,7 @@ def build_frame(
         shank_dir = _rotate_sagittal_from(thigh_dir, -pose.knee_flex)
         ankle = knee + b.shank * shank_dir
         put(f"{side}_ANKLE", ankle)
-        heel = ankle + np.array([0.0, 0.04, -0.05])
+        heel = ankle + np.array([0.0, 0.04 - pose.heel_lift, -0.05])
         put(f"{side}_HEEL", heel)
         put(f"{side}_FOOT_INDEX", ankle + np.array([0.0, 0.04, b.foot - 0.05]))
 

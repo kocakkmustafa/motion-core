@@ -142,20 +142,26 @@ def angle_3pt_projected(
 
 
 def torso_length(xyz: np.ndarray) -> float:
-    """Gövde uzunluğu: omuz-ortası <-> her iki kalça mesafesinin ortalaması.
+    """Gövde uzunluğu: omuz-ORTASI <-> kalça-ORTASI mesafesi.
 
-    Kişiler-arası ve mesafe-bağımsız karşılaştırma referansı.
-    Kaynak: research/05 (ICCV 2017 global/local normalization; PCK geleneği).
-    Video boyunca en kararlı segment olduğu için seçildi.
+    Kişiler-arası ve mesafe-bağımsız karşılaştırma referansı; tüm normalize
+    mesafe metriklerinin paydası.
+
+    Neden orta-hattan orta-hatta: ilk sürüm, literatürdeki (ICCV 2017 / PCK)
+    "omuz-ortası ile her iki kalça arası mesafenin ortalaması" tanımını
+    kullanıyordu. Ölçüldü: o tanım gövde YANA eğilince kayıyor — bir kalça
+    yaklaşıp diğeri uzaklaşırken iki mesafenin ortalaması küçülüyor (40° yan
+    eğimde %1,6). Payda kayınca anatomik olarak SABİT olması gereken metrikler
+    de kayıyordu (topuk-parmak mesafesi %1,7 oynadı).
+
+    Orta-hattan orta-hatta ölçüm bu etkiyi tamamen kaldırır ve kanonik Dart
+    çekirdeğinin tanımıyla aynıdır (`(shoulderMid - hipMid)`).
     """
     from . import landmarks as lm
 
-    ls, rs = xyz[lm.idx("LEFT_SHOULDER")], xyz[lm.idx("RIGHT_SHOULDER")]
-    lh, rh = xyz[lm.idx("LEFT_HIP")], xyz[lm.idx("RIGHT_HIP")]
-    shoulder_mid = (ls + rs) / 2.0
-    d_left = float(np.linalg.norm(shoulder_mid - lh))
-    d_right = float(np.linalg.norm(shoulder_mid - rh))
-    return (d_left + d_right) / 2.0
+    shoulder_mid = xyz[list(lm.resolve("MID_SHOULDER"))].mean(axis=0)
+    hip_mid = xyz[list(lm.resolve("MID_HIP"))].mean(axis=0)
+    return float(np.linalg.norm(shoulder_mid - hip_mid))
 
 
 def normalized_distance_pts(xyz: np.ndarray, p: np.ndarray, q: np.ndarray) -> float:
