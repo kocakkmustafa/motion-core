@@ -118,7 +118,7 @@ Açık setler ikincildir: eşik kalibrasyonu, vücut-tipi çeşitliliği ve "ç�
 
 ### 6.2 Kurucusuz Veri Fabrikası (kurucu direktifi 2026-07-26 — M-F-13, bağlayıcı)
 
-**İLKE: Kurucu çekimi HİÇBİR kapının önkoşulu DEĞİLDİR.** Birincil veri = kamu-video hasadı (§6.0 çerçevesi) + kendi sentetik üretimimiz + gerekirse ücretli klip (§6.3). Kurucudan yalnız cihaz-benchmark'ı (beceri gerektirmez) ve onay/kapı kararları beklenir.
+**İLKE: Kurucu çekimi HİÇBİR kapının önkoşulu DEĞİLDİR.** Birincil veri = kamu-video hasadı (§6.0 çerçevesi) + kendi sentetik üretimimiz (§6.3; ücretli klip İPTAL — M-F-17). Kurucudan yalnız cihaz-benchmark'ı (beceri gerektirmez) ve onay/kapı kararları beklenir.
 **GENİŞ KÜTÜPHANE DİREKTİFİ:** referans/içerik hasadı DAR başlamaz — her app kendi alanının geniş hareket/stil/çalgı envanterini çıkarır ve hasadı paralel yürütür; MOTOR rollout'u fazlı kalır ama kütüphane baştan geniş kurulur.
 
 **Hasat boru hattı (offline rig — hepsi lisans-denetimli; kurulum koordinatör kuyruğunda):**
@@ -137,8 +137,8 @@ Açık setler ikincildir: eşik kalibrasyonu, vücut-tipi çeşitliliği ve "ç�
 | Kapı türü | Birincil | Destek | ❌ Yasak-varsayılan |
 |---|---|---|---|
 | **Doğruluk** (açı ölçümü) | **AIST++** (CC-BY anotasyon ✓ — kaynak videolar AYRI lisans!) + **MM-Fit** (CC-BY, Zenodo kaydında teyit et) | **Kendi sentetik setimiz**: Unity Perception (çıktı %100 bizim; SMPL-X Blender yolu SMPL lisansı yüzünden varsayılan DEĞİL). Sentetik = gerekli-ama-yetersiz; daima ≥1 gerçek-veri setiyle eşlenir | Human3.6M · MPI-INF-3DHP · 3DPW · AMASS · BEDLAM — "iç QA" bile yazılı izinsiz KULLANILMAZ (ps-licensing@tue.mpg.de); Fit3D `/legal` okunmadan kullanılmaz |
-| **Güvenilirlik/çeşitlilik** (vücut tipleri, test-retest) | Ücretli klip: Fiverr/Upwork ~$15-75/klip (brief'e YAZILI hak-devri/work-for-hire maddesi ZORUNLU — platform varsayılanı yetmez) | TestFlight beta kohortu (kendi in-app rıza akışımızla) · üniversite biyomekanik lab teması (orta-vade lead) | Goniometri eğitim videoları: yalnız elle göz-kontrol; ölçekli kazıma = telif ihlali |
-| **Cihaz** (fps/termal) | Kurucu kendi telefonlarında app/benchmark koşar — beceri gerektirmez, DEĞİŞMEDİ | — | — |
+| **Güvenilirlik/çeşitlilik** (vücut tipleri, test-retest) | Kamu-video çeşitliliği (farklı vücut tipli eğitmenler) + sentetik vücut-tipi varyasyonu (Unity Perception) | TestFlight beta kohortu (kendi in-app rıza akışımızla) · üniversite biyomekanik lab teması (orta-vade lead) | ❌ **Ücretli klip (Fiverr/Upwork) İPTAL — kurucu kararı 2026-07-26 (M-F-17); önerilmez, bütçelenmez.** Goniometri eğitim videoları: yalnız elle göz-kontrol; ölçekli kazıma = telif ihlali |
+| **Cihaz** (fps/termal) | Kurucu kendi telefonlarında app/benchmark koşar — beceri gerektirmez; **zamanlama: EN SONDA, deneme amaçlı (G8 sertleştirme fazında; erken fazlar bunu BEKLEMEZ — o güne dek muhafazakâr fps varsayımıyla ilerlenir, eşikler 'cihazda doğrulanacak' etiketli taşınır)** | — | — |
 
 ### 6.4 AI Eğitmen / Öğretim Görseli Prodüksiyon Hattı (kurucu direktifi — M-F-15)
 
