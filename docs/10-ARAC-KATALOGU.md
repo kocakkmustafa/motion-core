@@ -69,7 +69,35 @@
 
 ## 6. Veri setleri & fixture stratejisi
 
-**KARAR: İki-hatlı strateji.** (1) **BİRİNCİL = kendi kayıtlarımız**: video çek → MediaPipe ile landmark çıkar → elle etiketle → JSON fixture (üretim hattıyla birebir aynı boru; lisans %100 temiz). (2) Açık setler YALNIZ lisans-doğrulanmış olarak eşik-kalibrasyonu/uç-vaka için.
+> ⚠️ **2026-07-26 KURUCU KARARI — bu bölüm REVİZE EDİLDİ.** Önceki hüküm "BİRİNCİL = kendi kayıtlarımız" idi; kurucu bunu değiştirdi. Aşağıdaki §6.0 bağlayıcıdır ve **5 app için geçerlidir** — motion oturumları bu tartışmayı yeniden açmaz.
+
+### 6.0 Referans kaynağı (kurucu kararı, aile-geneli bağlayıcı)
+
+**KARAR: Doğru referans, kamuya açık gerçek eğitmen videolarından çıkarılır.** Kendi çekimimiz ve yapay-zekâ ile üretilmiş hareket, birincil referans kaynağı DEĞİLDİR.
+
+Gerekçe ve sınırları — dördü de bağlayıcı:
+
+1. **"Referans" iki ayrı şeydir, karıştırılmaz.**
+   - **Skorlama referansı** = kullanıcının karşılaştırıldığı açı dizisi. **Doğru** olmak zorunda. Kaynağı: gerçek eğitmen videoları.
+   - **Öğretim görseli** = kullanıcıya gösterilen kısa video. **İnandırıcı** olması yeter. AI üretimi serbesttir (Art.50 ifşasıyla).
+2. **AI ile üretilmiş VİDEODAN landmark çıkarılmaz.** Üretken modelin anatomi motoru yoktur; makul kare üretir, doğru vücut değil. Uzuv boyu kayar, eklem geri bükülür — bunlar `StructuralValidator`'ın (M-019) reddetmek için var olduğu artefaktlardır. Referans **doğru** olmalı, makul değil.
+3. **Skorlayıcı ÖĞRENİLMİŞ MODEL DEĞİLDİR — deterministik kalır** (katalog §7 BUILD hükmü ve açıklanabilir kural motoru korunur). Sebep hukuki değil, veriseldir: **eğitmen tutorial'ları yalnız DOĞRU icra içerir.** Etiketli yanlış örnek ve kalite derecelendirmesi yoktur; yalnız doğru cevaplardan "neyin yanlış olduğu" öğrenilemez. Tek-sınıf/anomali yaklaşımı zaten DTW+açı benzerliğinin yaptığı şeydir, üstelik açıklanabilirliği kaybederek. Öğrenilmiş katman, gerçek kullanıcı verisi + puanları biriktikten sonra V2 konusudur.
+4. **Hatalı örnekler çıkarılan referansın kontrollü bozulmasından üretilir** (`SyntheticNoise` + açı perturbasyonu). Hatanın büyüklüğünü biz belirlediğimiz için **etiket bedavadır**. Fixture kuralı (≥1 doğru + ≥2 hatalı) böyle karşılanır: doğruyu gerçek eğitmenler, hatalıyı biz veririz.
+
+**Çoklu-kaynak zorunluluğu — tek videodan referans üretilmez.** En az 3 (tercihen 6+) bağımsız eğitmen birleştirilir, çünkü:
+
+- **Aynalama tek videoda çözülemez.** Eğitmenler izleyiciye göre aynalayarak öğretir ve landmark'ta bunu söyleyen hiçbir şey yoktur. N takede **konsensüsle** çözülür: her take iki yönde denenir, grup uyumunu en çoklayan atama seçilir (`ReferenceBuilder.resolveMirroring`). Çözülmezse ürün her kullanıcıya sistematik olarak ters taraf öğretir.
+- **Eğitmenler arası varyans, TOLERANSIN KENDİSİDİR.** Çok sayıda eğitmen aynı şeyi yapıyorsa *o* adımdır; ayrıştıkları yer kişisel stildir. Tolerans bu dağılımdan türetilir (`CanonicalReference.toleranceAt`); eğitmenlerin kendi aralarında anlaşamadığı bir eklemde kullanıcıyı cezalandırmak dürüstlük ihlalidir. Tek eğitmenden bu bilgi ASLA elde edilemez — çoklu kaynağın asıl gerekçesi budur, hacim değil.
+
+**Çıkarım hattı kalite kapıları (hepsi zorunlu):** aynalama konsensüsü · kamera açısı uygunluğu (normalizasyon fronto-paralel varsayar; eğik görüntüde `z` zayıf, açılar bozulur) · plan/kesme sınırı tespiti · `StructuralValidator` (M-019) · **beat anotasyonu** — video bunu VERMEZ ve içindeki müzik telifli olduğu için ondan türetilen ızgara ürüne konulamaz; elle anotasyon veya ayrı çözüm şarttır (Choreia için kritik).
+
+**Hukuki pozisyon:** YouTube ToS ve türev-eser riski **kurucuya sunuldu ve kurucu kararıyla kabul edildi** (2026-07-26). Kayıt: Choreia DEFTER C-017. Oturumlar bunu yeniden tartışmaz; lansman öncesi IP görüşü manuel listede durur.
+
+**Uzman doğrulaması:** eğitmenle sözleşme/anlaşma GEREKMEZ. Ship öncesi **tek seferlik kural-seti kontrolü** yeterlidir — ve yazılmış/çıkarılmış referans parametrik olduğu için uzman "şu 40ms erken olmalı" dediğinde bir sayı değişir, yeniden çekim gerekmez.
+
+### 6.1 Açık veri setleri (kalibrasyon ve uç-vaka için)
+
+Açık setler ikincildir: eşik kalibrasyonu, vücut-tipi çeşitliliği ve "çıkardığımız referans fazla temiz/robotik mi" kontrolü için kullanılır.
 
 | Set | App | Lisans durumu | Kullanım |
 |---|---|---|---|

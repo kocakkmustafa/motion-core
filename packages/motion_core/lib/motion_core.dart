@@ -30,5 +30,6 @@ export 'src/rhythm/audio_timeline.dart';
 export 'src/rhythm/beat_grid.dart';
 export 'src/rhythm/timing.dart';
 export 'src/scoring/dtw.dart';
+export 'src/scoring/reference_builder.dart';
 export 'src/scoring/sequence_comparator.dart';
 export 'src/scoring/similarity.dart';
