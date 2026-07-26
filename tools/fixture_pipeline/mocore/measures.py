@@ -26,7 +26,7 @@ SCHEMA_VERSION = 1
 #: azaltmak için 0.6 seçildi. Ampirik kalibrasyon G1-b'de.
 DEFAULT_MIN_CONFIDENCE = 0.6
 
-MetricKind = Literal["angle3", "angle_vertical", "distance_norm"]
+MetricKind = Literal["angle3", "angle_vertical", "distance_norm", "height_diff_norm"]
 
 #: Ölçüm neden üretilemedi — kullanıcıya gösterilecek gerekçenin makine hali.
 #: "Ölçemedim" demek, yanlış ölçmekten daima üstündür (00-AILE-MIMARISI §7).
@@ -57,7 +57,12 @@ class MetricDef:
                 "anlamsızdır (her zaman 90°). Transverse düzlemde dönme ölçmek "
                 "için foreshortening (distance_norm + plane) kullanın. Bkz. L-011."
             )
-        expected = {"angle3": 3, "angle_vertical": 2, "distance_norm": 2}[self.kind]
+        expected = {
+            "angle3": 3,
+            "angle_vertical": 2,
+            "distance_norm": 2,
+            "height_diff_norm": 2,
+        }[self.kind]
         if len(self.points) != expected:
             raise ValueError(
                 f"{self.id}: {self.kind} {expected} nokta ister, {len(self.points)} verildi"
@@ -142,6 +147,16 @@ def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
         value = geo.angle_3pt_projected(pts[0], pts[1], pts[2], metric.plane)
     elif metric.kind == "angle_vertical":
         value = geo.angle_to_vertical(pts[0], pts[1], metric.plane)
+    elif metric.kind == "height_diff_norm":
+        # İki nokta arasındaki DİKEY fark / gövde uzunluğu. İşaretli: pozitif =
+        # ilk nokta ikincisinden yukarıda. Lunge'da arka dizin yere yaklaşması,
+        # squat'ta kalçanın diz hizasına inmesi gibi "ne kadar alçaldı"
+        # sorularının boy-bağımsız cevabı. Yer düzlemi bilinmediği için mutlak
+        # yükseklik değil, vücut-içi referansa göre ölçülür.
+        t = geo.torso_length(frame.xyz)
+        value = (pts[0][1] - pts[1][1]) / t if t > 1e-9 else float("nan")
+        # +y aşağı bakar; işareti "yukarısı pozitif" olacak şekilde çevir.
+        value = -value
     elif metric.kind == "distance_norm":
         a, b = pts[0], pts[1]
         if metric.plane != "none":
