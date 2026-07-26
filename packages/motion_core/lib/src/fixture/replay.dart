@@ -3,6 +3,7 @@ import '../geometry/normalization.dart';
 import '../pose/confidence_gate.dart';
 import '../pose/pose_frame.dart';
 import '../pose/smoothing.dart';
+import '../pose/structural_validator.dart';
 import 'fixture.dart';
 
 /// One frame, fully processed.
@@ -13,6 +14,7 @@ final class ProcessedFrame {
     required this.normalized,
     required this.angles,
     required this.quality,
+    required this.structure,
   });
 
   final PoseFrame raw;
@@ -21,7 +23,17 @@ final class ProcessedFrame {
   final JointAngleVector angles;
   final FrameQuality quality;
 
+  /// Anatomical plausibility of the reported skeleton.
+  final StructuralCheck structure;
+
   int get tUs => raw.tUs;
+
+  /// A frame may only produce a technical verdict when the model saw it
+  /// clearly **and** what it reported is a possible body.
+  ///
+  /// Two independent gates because they fail independently: confidence catches
+  /// "I could not see", structure catches "I saw it wrong and was sure".
+  bool get judgeable => quality.judgeable && structure.plausible;
 }
 
 /// The perception pipeline, in one object.
@@ -35,14 +47,17 @@ final class PosePipeline {
   PosePipeline({
     PoseSmoother? smoother,
     PoseNormalizer? normalizer,
+    StructuralValidator? validator,
     this.extractor = const JointAngleExtractor(),
     this.gate = const ConfidenceGate(),
     this.requiredLandmarks = const <int>[],
   })  : _smoother = smoother ?? PoseSmoother(),
-        _normalizer = normalizer ?? PoseNormalizer();
+        _normalizer = normalizer ?? PoseNormalizer(),
+        _validator = validator ?? StructuralValidator();
 
   final PoseSmoother _smoother;
   final PoseNormalizer _normalizer;
+  final StructuralValidator _validator;
   final JointAngleExtractor extractor;
   final ConfidenceGate gate;
   final List<int> requiredLandmarks;
@@ -50,6 +65,7 @@ final class PosePipeline {
   void reset() {
     _smoother.reset();
     _normalizer.reset();
+    _validator.reset();
   }
 
   ProcessedFrame process(PoseFrame frame) {
@@ -64,12 +80,16 @@ final class PosePipeline {
     final FrameQuality quality = requiredLandmarks.isEmpty
         ? gate.evaluate(frame)
         : gate.evaluate(frame, required: requiredLandmarks);
+    // Structure is checked on the raw frame: smoothing would blend an
+    // implausible skeleton toward its plausible neighbours and hide exactly
+    // the artefact we are looking for.
     return ProcessedFrame(
       raw: frame,
       smoothed: smoothed,
       normalized: normalized,
       angles: angles,
       quality: quality,
+      structure: _validator.check(frame),
     );
   }
 
@@ -120,7 +140,7 @@ final class ReplayHarness {
   ReplayReport replay(Fixture fixture) {
     final List<ProcessedFrame> processed = pipeline.processAll(fixture.frames);
     final int judgeable =
-        processed.where((ProcessedFrame f) => f.quality.judgeable).length;
+        processed.where((ProcessedFrame f) => f.judgeable).length;
     return ReplayReport(
       fixture: fixture,
       frames: processed,

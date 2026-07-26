@@ -25,6 +25,7 @@ export 'src/pose/confidence_gate.dart';
 export 'src/pose/landmark_index.dart';
 export 'src/pose/pose_frame.dart';
 export 'src/pose/smoothing.dart';
+export 'src/pose/structural_validator.dart';
 export 'src/rhythm/audio_timeline.dart';
 export 'src/rhythm/beat_grid.dart';
 export 'src/rhythm/timing.dart';
