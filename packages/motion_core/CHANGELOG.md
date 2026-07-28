@@ -3,6 +3,16 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.3.0 — 2026-07-29 (gece vardiyası, tur 5)
+
+- **`FrameSize` + `PoseFrame.toIsotropic` (M-F-30/J-028 kanonik API):** ham
+  normalize uzay anizotropiktir; geometriye girmeden önce izotropik uzaya
+  (kare-yüksekliği birimi) dönüşüm artık çekirdekte. Üç app'in gece bağımsız
+  yazdığı düzeltme (JabLab FrameSize · Gravita toIsotropic · Choreia
+  aspect-corrected lm) bu API'de birleşir; app-side kopyalar devredilir.
+  Değişmezlik-deseni testli (eğik-açı sondası; eksene-hizalı açı ölçeklemede
+  bükülmez — o tuzak testin kendisinde kapatıldı). Toplam: 135/135.
+
 ## 0.2.1 — 2026-07-29 (gece vardiyası, tur 4)
 
 - **G-018 kalibrasyonu:** `StructuralValidator.bilateralTolerance` varsayılanı

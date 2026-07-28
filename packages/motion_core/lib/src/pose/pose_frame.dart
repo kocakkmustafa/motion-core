@@ -1,6 +1,30 @@
 import '../geometry/vec3.dart';
 import 'landmark_index.dart';
 
+/// Pixel dimensions of the camera frame a pose was inferred on.
+///
+/// Required wherever normalized image landmarks enter geometry, because the
+/// raw normalized space is **anisotropic**: MediaPipe divides `x` by the
+/// frame width and `y` by the height, so on a 1920×1080 frame a vertical
+/// distance is ~1.78× smaller than the same physical distance horizontally,
+/// and every angle bends with it (family rule M-F-30 / J-028 — measured on
+/// real harvest frames: 42% of joint angles shifted >5°, worst single joint
+/// 62°, against rule tolerances of 8–45°). Synthetic tests are structurally
+/// blind to this — builder and metric share one space — which is why the
+/// contract is enforced at the type level rather than by convention.
+final class FrameSize {
+  const FrameSize(this.width, this.height)
+      : assert(width > 0 && height > 0, 'frame dimensions must be positive');
+
+  final int width;
+  final int height;
+
+  double get aspect => width / height;
+
+  @override
+  String toString() => 'FrameSize(${width}x$height)';
+}
+
 /// A single tracked body point.
 final class PoseLandmark {
   const PoseLandmark(this.x, this.y, this.z, this.visibility);
@@ -99,6 +123,30 @@ final class PoseFrame {
         landmarks: landmarks ?? this.landmarks,
         modelVersion: modelVersion ?? this.modelVersion,
       );
+
+  /// Copy mapped into an isotropic space where one unit means the same
+  /// physical distance in every direction (units of frame height).
+  ///
+  /// **Every distance and angle must be computed in a space like this** —
+  /// either here, in pixels, or in world coordinates. Raw normalized
+  /// landmarks are anisotropic (see [FrameSize]) and feeding them to
+  /// geometry silently bends every measurement by the aspect ratio. Three
+  /// apps independently reimplemented this correction the night it was
+  /// found; this method is the canonical version they converge on.
+  ///
+  /// `x` and `z` are multiplied by the aspect ratio (MediaPipe scales `z`
+  /// like `x`, by frame width); `y` is untouched. World landmarks are
+  /// already metric and never need this — they remain the recommended space
+  /// for offline reference building, while corrected image landmarks are the
+  /// recommended runtime space (world x/y carries its own regression error).
+  PoseFrame toIsotropic(FrameSize size) {
+    final double a = size.aspect;
+    final List<PoseLandmark> out = landmarks
+        .map((PoseLandmark l) =>
+            PoseLandmark(l.x * a, l.y, l.z * a, l.visibility))
+        .toList(growable: false);
+    return PoseFrame(tUs: tUs, landmarks: out, modelVersion: modelVersion);
+  }
 
   /// Left/right swapped copy.
   ///
