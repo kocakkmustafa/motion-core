@@ -19,6 +19,7 @@ export 'src/fixture/synthetic.dart';
 export 'src/geometry/joint_angles.dart';
 export 'src/geometry/normalization.dart';
 export 'src/geometry/vec3.dart';
+export 'src/engine/ai_disclosure.dart';
 export 'src/engine/feedback_prioritizer.dart';
 export 'src/engine/motion_clock.dart';
 export 'src/engine/phase_state_machine.dart';
