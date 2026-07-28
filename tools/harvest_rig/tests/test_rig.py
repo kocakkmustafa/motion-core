@@ -90,6 +90,29 @@ def main() -> int:
         r = triage(blurry, thresholds=fast)
         check(any("netlik" in x for x in r.rejects), "dokusuz/bulanık kaynak RET")
 
+        print("[1b] tam-gövde eşiği entegrasyonu (L-046; sonda stub'lı)")
+        # Poz sondasını stub'la: entegrasyon YOLU gerçek koşulsun (8ef2d09'un
+        # iki NameError/AttributeError'ı tam bu yolda saklanıyordu).
+        import triage as triage_mod
+        real_probe = triage_mod._body_presence
+        triage_mod._body_presence = lambda p, d, n, m: (0.92, 0.50)
+        try:
+            full_th = TriageThresholds(min_duration_s=4.0,
+                                       min_full_body_ratio=0.6)
+            r = triage(long_ok, thresholds=full_th,
+                       pose_model=__import__("pathlib").Path("stub.task"))
+            check(not r.accepted and any("tam-gövde" in x for x in r.rejects),
+                  "üst-gövde 0.92 geçse de tam-gövde 0.50 < 0.6 → RET")
+            check(r.upper_body_ratio == 0.92 and r.full_body_ratio == 0.50,
+                  "iki oran da rapora yazılıyor (tek sonda geçişi)")
+            off_th = TriageThresholds(min_duration_s=4.0)  # varsayılan: kapalı
+            r = triage(long_ok, thresholds=off_th,
+                       pose_model=__import__("pathlib").Path("stub.task"))
+            check(r.accepted and r.full_body_ratio is None,
+                  "eşik kapalıyken tam-gövde reddi yok (geriye uyum)")
+        finally:
+            triage_mod._body_presence = real_probe
+
         print("[2] algısal imza / dedup")
         sig_a = perceptual_signature(long_ok)
         sig_a2 = perceptual_signature(long_ok)

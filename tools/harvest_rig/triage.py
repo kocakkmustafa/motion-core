@@ -129,15 +129,15 @@ def _sharpness(grays: list[np.ndarray]) -> float:
     return float(np.median([cv2.Laplacian(g, cv2.CV_64F).var() for g in grays]))
 
 
-def _upper_body_ratio(
-    path: Path, duration_s: float, n_frames: int, model_path: Path,
-    *, require_full_body: bool = False,
-) -> float:
-    """Örneklenmiş karelerde hedef landmark kümesinin birlikte görünür oranı.
+def _body_presence(
+    path: Path, duration_s: float, n_frames: int, model_path: Path
+) -> tuple[float, float]:
+    """Örneklenmiş karelerde (üst-gövde oranı, tam-gövde oranı) — TEK geçişte.
 
-    `require_full_body=False` → burun + iki omuz ("kişi kadrajda mı").
-    `require_full_body=True`  → + kalçalar + ayak bilekleri ("alt vücut da
-    ölçülebilir mi"). İkincisi alt-vücut testi olan app'ler için gerekli.
+    Üst-gövde = burun + iki omuz ("kişi kadrajda mı").
+    Tam-gövde = + kalçalar + ayak bilekleri ("alt vücut da ölçülebilir mi") —
+    alt-vücut testi olan app'ler (Lissom L-046, Gravita) için. İki oran aynı
+    çıkarım geçişinden türetilir; sonda maliyeti eşik sayısından bağımsızdır.
     """
     import mediapipe as mp  # noqa: PLC0415 - ağır import yalnız gerektiğinde
     from mediapipe.tasks import python as mp_python  # noqa: PLC0415
@@ -149,9 +149,14 @@ def _upper_body_ratio(
         num_poses=1,
         min_pose_detection_confidence=0.3,
     )
+    # BlazePose indeksleri: 0=nose · 11/12=omuzlar · 23/24=kalçalar ·
+    # 27/28=ayak bilekleri.
+    upper_ids = (0, 11, 12)
+    lower_ids = (23, 24, 27, 28)
     cap = cv2.VideoCapture(str(path))
     times = np.linspace(0.5, max(duration_s - 0.5, 1.0), n_frames)
-    seen = 0
+    seen_upper = 0
+    seen_full = 0
     total = 0
     with vision.PoseLandmarker.create_from_options(options) as lm:
         for t in times:
@@ -165,13 +170,14 @@ def _upper_body_ratio(
             if not res.pose_landmarks:
                 continue
             pts = res.pose_landmarks[0]
-            # BlazePose indeksleri: 0=nose · 11/12=omuzlar · 23/24=kalçalar ·
-            # 27/28=ayak bilekleri.
-            needed = (0, 11, 12) if not require_full_body else (0, 11, 12, 23, 24, 27, 28)
-            if all(pts[i].visibility >= 0.5 for i in needed):
-                seen += 1
+            if all(pts[i].visibility >= 0.5 for i in upper_ids):
+                seen_upper += 1
+                if all(pts[i].visibility >= 0.5 for i in lower_ids):
+                    seen_full += 1
     cap.release()
-    return seen / total if total else 0.0
+    if total == 0:
+        return 0.0, 0.0
+    return seen_upper / total, seen_full / total
 
 
 def triage(
@@ -228,23 +234,21 @@ def triage(
         return report
 
     if pose_model is not None:
-        report.upper_body_ratio = _upper_body_ratio(
+        upper, full = _body_presence(
             p, duration_s, th.pose_probe_frames, pose_model
         )
-        if th.min_full_body_ratio > 0.0:
-            report.full_body_ratio = _upper_body_ratio(
-                path, report.duration_s, th.pose_probe_frames, model_path,
-                require_full_body=True,
-            )
-            if report.full_body_ratio < th.min_full_body_ratio:
-                report.rejections.append(
-                    f"tam-gövde oranı {report.full_body_ratio:.2f} < "
-                    f"{th.min_full_body_ratio} (alt vücut kadraj dışı — "
-                    f"squat/ayak bileği/lunge ölçülemez)"
-                )
+        report.upper_body_ratio = upper
         if report.upper_body_ratio < th.min_upper_body_ratio:
             report.rejects.append(
                 f"üst-gövde oranı {report.upper_body_ratio:.2f} < "
                 f"{th.min_upper_body_ratio} (baş-kırpık/el-yakın kadraj?)"
             )
+        if th.min_full_body_ratio > 0.0:
+            report.full_body_ratio = full
+            if report.full_body_ratio < th.min_full_body_ratio:
+                report.rejects.append(
+                    f"tam-gövde oranı {report.full_body_ratio:.2f} < "
+                    f"{th.min_full_body_ratio} (alt vücut kadraj dışı — "
+                    f"squat/ayak bileği/lunge ölçülemez)"
+                )
     return report
