@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../geometry/vec3.dart';
 import 'landmark_index.dart';
+import 'orientation.dart';
 import 'pose_frame.dart';
 
 /// A way the reported skeleton is not anatomically possible.
@@ -23,6 +24,16 @@ enum StructuralFault {
 
   /// The skeleton jumped further between frames than a body can move.
   temporalDiscontinuity,
+
+  /// The skeleton's torso axis contradicts the orientation the current skill
+  /// phase expects (Gravita G-010; pairs with ADR-001).
+  ///
+  /// This is the most direct axis-swap detector: a swapped chain reads as an
+  /// upright skeleton, so during a phase the app *knows* is inverted, an
+  /// upright-reading torso axis is proof of relabeling. It covers the cases
+  /// the limb-proportion invariant is weak on — limbs out of frame, or a
+  /// build whose arm/leg ratio sits near the threshold.
+  axisMismatch,
 }
 
 /// Verdict on whether a frame is anatomically coherent.
@@ -111,7 +122,15 @@ final class StructuralValidator {
     return m < 1e-9 ? 0 : (a - b).abs() / m;
   }
 
-  StructuralCheck check(PoseFrame frame) {
+  /// Check one frame's anatomical coherence.
+  ///
+  /// Pass [expected] when the active skill phase pins the body orientation
+  /// (a handstand hold is inverted; a guard stance is upright): the torso
+  /// axis is then compared against the expectation and a contradiction is an
+  /// [StructuralFault.axisMismatch]. Leave it null during transition phases —
+  /// an ambiguous phase has no expectation to violate, and a horizontal body
+  /// yields no axis verdict either way.
+  StructuralCheck check(PoseFrame frame, {BodyOrientation? expected}) {
     final List<StructuralFault> faults = <StructuralFault>[];
     final List<String> detail = <String>[];
 
@@ -121,6 +140,16 @@ final class StructuralValidator {
     final Vec3 shoulderMid =
         midpoint(frame.point(Lm.leftShoulder), frame.point(Lm.rightShoulder));
     final double torso = (shoulderMid - hipMid).length2D;
+
+    // --- phase-axis conformity ----------------------------------------------
+    if (expected != null) {
+      final BodyOrientation? observed = observedOrientation(frame);
+      if (observed != null && observed != expected) {
+        faults.add(StructuralFault.axisMismatch);
+        detail.add('axis reads ${observed.name}, phase expects '
+            '${expected.name}');
+      }
+    }
 
     // --- bilateral symmetry -------------------------------------------------
     for (final String base in <String>['upperArm', 'forearm', 'thigh', 'shin']) {

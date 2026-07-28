@@ -23,6 +23,8 @@ export 'src/engine/feedback_prioritizer.dart';
 export 'src/engine/phase_state_machine.dart';
 export 'src/pose/confidence_gate.dart';
 export 'src/pose/landmark_index.dart';
+export 'src/pose/orientation.dart';
+export 'src/pose/orientation_aware_source.dart';
 export 'src/pose/pose_frame.dart';
 export 'src/pose/smoothing.dart';
 export 'src/pose/structural_validator.dart';
