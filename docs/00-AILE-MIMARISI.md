@@ -43,7 +43,7 @@ App'e özgü kalanlar: beceri/teknik state-machine tanımları, rule-set içerik
 
 **D2 — JabLab / hızlı yumruk örnekleme problemi:** Jab peak-extension 20-30fps'te 1-2 kare + motion blur. Hız metrikleri kare-arası pikselden DEĞİL faz-süresinden (state-machine timestamp'leri) türetilir; fixture setine "hızlı yumruk + düşük fps + blur" senaryoları zorunlu; cihaz-adaptif fps politikası V0'da ölçülür.
 
-**D3 — Ostinato farklı ağırlık sınıfı:** Özel nesne algılama (çello+yay) + veri seti toplama/etiketleme + ses-hareket senkronu + çocuk verisi rejimi = diğer app'lerin 3-5 katı efor. **Sıralamada SON; V0'ı "veri toplama protokolü + öğretmen kanalı doğrulaması"dır**, kod değil. B2B (öğretmen/müzik okulu) sinyali alınmadan derin yatırım yapılmaz.
+**D3 — Ostinato farklı ağırlık sınıfı (REVİZE, kurucu 2026-07-28):** Çello-özel yük (nesne algılama + veri seti + senkron + çocuk rejimi) geçerli kalır AMA tam-kapsam kararıyla Wave 3'e kaydı; Wave 1 = Şan/Piyano/Gitar (dedektörsüz). **Öğretmen-görüşmesi/B2B bacağı KALDIRILDI:** pedagoji + hata-taksonomisi + toleranslar kamu eğitmen videolarından (M-C-01/04 + "common mistakes" tür hasadı, hata başına ≥2 bağımsız kaynak); uzman canlı turu opsiyonel kalite yükseltmesi (kapı değil). **Ostinato B2C-first**; öğretmen-paylaşım = özellik. Çello-dedektör derin yatırım kapısı VERİ-GÜDÜMLÜ: Wave 1-2 çekişi + yaylı-sayfa ilgi sinyaliyle açılır.
 
 **D4 — Lissom kapsam güncellemesi (kurucu):** Ürün yalnız mobilite ölçümü değil; **yoga + esneklik içerik katmanı** kapsama dahil. Planın "Mobility Age" indeks-adlandırma uyarısı geçerli: yaş dili YOK; "Lissom Score / hareket kapasitesi" dili kullanılır. Ölç-programla-yeniden-ölç döngüsü çekirdek kalır; yoga akışları program motorunun içerik paketleridir (ayrı ürün değil).
 
