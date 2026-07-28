@@ -36,6 +36,16 @@ class TriageThresholds:
     min_sharpness: float = 40.0
     #: üst-gövde (burun+iki omuz) görünür kare oranı alt sınırı.
     min_upper_body_ratio: float = 0.6
+    #: TAM gövde (üst-gövde + kalçalar + ayak bilekleri) görünür kare oranı alt
+    #: sınırı. Varsayılan 0.0 = KAPALI (geriye uyumlu).
+    #:
+    #: Neden ayrı bir eşik: üst-gövde sondası "kişi kadrajda mı" sorusunu
+    #: yanıtlar, "ölçmek istediğim eklem kadrajda mı" sorusunu yanıtlamaz.
+    #: Lissom pilotunda ÖLÇÜLDÜ (L-046): üst-gövde eşiğini geçen kliplerde alt
+    #: vücut metriklerinin geçerli-ölçüm oranı %72-77'ye, bazı kliplerde
+    #: %2-7'ye düşüyor — squat/ayak bileği/lunge testleri o kliplerden
+    #: ölçülemez. Alt-vücut testi olan app'ler (Lissom, Gravita) bunu açar.
+    min_full_body_ratio: float = 0.0
     #: sonda yoğunlukları
     cut_probe_fps: float = 2.0
     pose_probe_frames: int = 12
@@ -51,6 +61,7 @@ class TriageReport:
     cuts_per_min: float | None = None
     sharpness: float | None = None
     upper_body_ratio: float | None = None
+    full_body_ratio: float | None = None
     rejects: list[str] = field(default_factory=list)
 
     @property
@@ -64,6 +75,7 @@ class TriageReport:
             "cutsPerMin": None if self.cuts_per_min is None else round(self.cuts_per_min, 1),
             "sharpness": None if self.sharpness is None else round(self.sharpness, 1),
             "upperBodyRatio": None if self.upper_body_ratio is None else round(self.upper_body_ratio, 2),
+            "fullBodyRatio": None if self.full_body_ratio is None else round(self.full_body_ratio, 2),
             "rejects": self.rejects,
         }
 
@@ -118,9 +130,15 @@ def _sharpness(grays: list[np.ndarray]) -> float:
 
 
 def _upper_body_ratio(
-    path: Path, duration_s: float, n_frames: int, model_path: Path
+    path: Path, duration_s: float, n_frames: int, model_path: Path,
+    *, require_full_body: bool = False,
 ) -> float:
-    """Örneklenmiş karelerde burun+iki omuzun birlikte görünür olduğu oran."""
+    """Örneklenmiş karelerde hedef landmark kümesinin birlikte görünür oranı.
+
+    `require_full_body=False` → burun + iki omuz ("kişi kadrajda mı").
+    `require_full_body=True`  → + kalçalar + ayak bilekleri ("alt vücut da
+    ölçülebilir mi"). İkincisi alt-vücut testi olan app'ler için gerekli.
+    """
     import mediapipe as mp  # noqa: PLC0415 - ağır import yalnız gerektiğinde
     from mediapipe.tasks import python as mp_python  # noqa: PLC0415
     from mediapipe.tasks.python import vision  # noqa: PLC0415
@@ -147,8 +165,10 @@ def _upper_body_ratio(
             if not res.pose_landmarks:
                 continue
             pts = res.pose_landmarks[0]
-            # BlazePose: 0=nose, 11=left_shoulder, 12=right_shoulder
-            if all(pts[i].visibility >= 0.5 for i in (0, 11, 12)):
+            # BlazePose indeksleri: 0=nose · 11/12=omuzlar · 23/24=kalçalar ·
+            # 27/28=ayak bilekleri.
+            needed = (0, 11, 12) if not require_full_body else (0, 11, 12, 23, 24, 27, 28)
+            if all(pts[i].visibility >= 0.5 for i in needed):
                 seen += 1
     cap.release()
     return seen / total if total else 0.0
@@ -211,6 +231,17 @@ def triage(
         report.upper_body_ratio = _upper_body_ratio(
             p, duration_s, th.pose_probe_frames, pose_model
         )
+        if th.min_full_body_ratio > 0.0:
+            report.full_body_ratio = _upper_body_ratio(
+                path, report.duration_s, th.pose_probe_frames, model_path,
+                require_full_body=True,
+            )
+            if report.full_body_ratio < th.min_full_body_ratio:
+                report.rejections.append(
+                    f"tam-gövde oranı {report.full_body_ratio:.2f} < "
+                    f"{th.min_full_body_ratio} (alt vücut kadraj dışı — "
+                    f"squat/ayak bileği/lunge ölçülemez)"
+                )
         if report.upper_body_ratio < th.min_upper_body_ratio:
             report.rejects.append(
                 f"üst-gövde oranı {report.upper_body_ratio:.2f} < "
