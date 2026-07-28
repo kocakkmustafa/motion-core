@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.2.1 — 2026-07-29 (gece vardiyası, tur 4)
+
+- **G-018 kalibrasyonu:** `StructuralValidator.bilateralTolerance` varsayılanı
+  0.35 → 0.55 — eski değer Gravita D1 gerçek-kare setinde DOĞRU karelerin
+  %32'sini reddediyordu (2D perspektif kısalması; model hatası değil). 0.55'te
+  yanlış-red ~%8-11, #21 kendinden-emin takas hâlâ yakalanıyor (Gravita
+  regresyon fixture'ı kanıt). Davranış değişikliği: yapısal denetimi ham
+  varsayılanla kullanan app'ler daha az yanlış-red görür.
+- Hasat rig'i: `--triage-profile` CLI (Lissom) + `movement_isolator`
+  (Choreia terfisi — "bu kısım hareketin kendisi mi?" periyodiklik+enerji
+  penceresi; anlatım-eleme). Rig testleri 17/17.
+
 ## 0.2.0 — 2026-07-29 (gece vardiyası)
 
 - **`CycleAligner` (M-C-18, Choreia blokajı):** periyodik içerik için

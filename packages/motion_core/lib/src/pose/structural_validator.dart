@@ -71,15 +71,20 @@ final class StructuralCheck {
 /// the frame is unusable no matter how confident the model was.
 final class StructuralValidator {
   StructuralValidator({
-    this.bilateralTolerance = 0.35,
+    this.bilateralTolerance = 0.55,
     this.boneStabilityTolerance = 0.30,
     this.maxJumpPerSecond = 6.0,
   });
 
   /// Allowed relative difference between a left bone and its right twin.
   ///
-  /// Generous: real asymmetry exists, and foreshortening from a turned body is
-  /// larger still. The goal is to catch a swapped chain, not to audit posture.
+  /// Generous by measurement, not by guess. The original 0.35 default was
+  /// rejecting 32% of *correct* frames on Gravita's D1 footage (G-018, n=66):
+  /// the asymmetry came from 2D perspective foreshortening, not from the
+  /// model being wrong. 0.55–0.60 brings the false-reject rate to ~6–11%
+  /// while still catching the confidently-swapped chain (#21) — verified by
+  /// regression test against the real D1 frames. The goal is to catch a
+  /// swapped chain, not to audit posture; posture belongs to the rules.
   final double bilateralTolerance;
 
   /// Allowed relative change in a bone's length between consecutive frames.
