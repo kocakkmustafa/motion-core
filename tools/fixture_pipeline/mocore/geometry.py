@@ -181,6 +181,28 @@ def normalized_distance(xyz: np.ndarray, i: int, j: int) -> float:
     return normalized_distance_pts(xyz, xyz[i], xyz[j])
 
 
+def line_deviation(p: np.ndarray, a: np.ndarray, b: np.ndarray,
+                   plane: str = "none") -> float:
+    """P noktasının A→B doğrusuna dik uzaklığı (İŞARETLİ değil, mutlak).
+
+    "Hizada mı?" sorusunun ölçüsü: plank'ta kalçanın omuz–ayak bileği hattından
+    ne kadar saptığı, handstand'de gövdenin dikey hattan ayrılması, gard
+    hattının bozulması. Tek bir açıyla ifade edilemez çünkü sapma iki uçtaki
+    segment açılarının BİLEŞİK sonucudur.
+
+    `plane` verilirse hesap o düzleme izdüşürülür (sagittal çökme ile frontal
+    kayma birbirine karışmasın).
+    """
+    if plane != "none":
+        p, a, b = project(p, plane), project(a, plane), project(b, plane)
+    ab = b - a
+    n = float(np.linalg.norm(ab))
+    if n < 1e-9:
+        return math.nan
+    # |AP × AB| / |AB| — üçgen alanının iki katı, taban uzunluğuna bölünmüş.
+    return float(np.linalg.norm(np.cross(p - a, ab))) / n
+
+
 # --------------------------------------------------------------------------
 # Temporal smoothing — One Euro Filter
 # --------------------------------------------------------------------------
