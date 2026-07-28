@@ -3,6 +3,15 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.2.0 — 2026-07-29 (gece vardiyası)
+
+- **`CycleAligner` (M-C-18, Choreia blokajı):** periyodik içerik için
+  döngü-farkında hizalama — sabit-uçlu DTW'nin faz uyuşmazlığında dayattığı
+  kötü hizalama yerine faz araması + döngü-başına bantlı `Dtw`. Belirsiz fazda
+  (statik/faz-simetrik malzeme) `resolved:false` = hüküm yok; iki-döngü
+  kararlılık sondası; periyotlar ÇAĞIRANDAN gelir (tahmin edilmez). 6 test.
+  Kırılma yok — `Dtw` API'si aynen duruyor. Toplam: 132/132.
+
 ## 0.1.0 — 2026-07-29 (ilk etiketli sürüm)
 
 Kanonik Dart çekirdeğinin ilk kararlı kesiti (M-017/M-F-03 hükmü: bu paket
