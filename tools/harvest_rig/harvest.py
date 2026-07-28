@@ -199,6 +199,28 @@ def transcribe(m: HarvestManifest, out_dir: Path) -> Path | None:
 # CLI
 # --------------------------------------------------------------------------
 
+def load_triage_profile(path: str | None) -> TriageThresholds:
+    """App-özel triyaj eşiklerini yükle. Bilinmeyen anahtar SESSİZCE YUTULMAZ.
+
+    Sessiz yutma, "eşiği verdim ama etkisi yok" hatasının en sinsi biçimidir:
+    komut başarıyla koşar, ölçüm yanlış eşikle yapılır, hiçbir şey söylemez.
+    """
+    if not path:
+        return TriageThresholds()
+    from dataclasses import fields as _dc_fields  # noqa: PLC0415
+
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw = doc.get("thresholds", doc)
+    known = {f.name for f in _dc_fields(TriageThresholds)}
+    unknown = set(raw) - known
+    if unknown:
+        raise SystemExit(
+            f"{path}: bilinmeyen triyaj eşiği: {', '.join(sorted(unknown))}\n"
+            f"Geçerli anahtarlar: {', '.join(sorted(known))}"
+        )
+    return TriageThresholds(**raw)
+
+
 def cmd_probe(args: argparse.Namespace) -> int:
     model = DEFAULT_POSE_MODEL if DEFAULT_POSE_MODEL.exists() else None
     r = triage(args.video, pose_model=None if args.no_pose else model)
@@ -222,7 +244,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             return 1
 
         model = DEFAULT_POSE_MODEL if DEFAULT_POSE_MODEL.exists() else None
-        r = triage(m.local_path, thresholds=TriageThresholds(),
+        r = triage(m.local_path,
+                   thresholds=load_triage_profile(getattr(args, "triage_profile", None)),
                    pose_model=model)
         m.record("triage", "ok" if r.accepted else "rejected",
                  **r.to_detail())
@@ -271,6 +294,12 @@ def main() -> int:
     r.add_argument("--variant", default="full",
                    choices=["lite", "full", "heavy"])
     r.add_argument("--no-transcribe", action="store_true")
+    r.add_argument(
+        "--triage-profile",
+        help="App-özel triyaj eşikleri (JSON). Örn. lissom app/config/harvest/"
+             "triage-profile.v1.json — alt-vücut testli app'ler min_full_body_ratio "
+             "verir. Verilmezse rig varsayılanları kullanılır.",
+    )
     r.set_defaults(fn=cmd_run)
 
     args = ap.parse_args()

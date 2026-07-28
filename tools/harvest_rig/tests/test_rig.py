@@ -58,6 +58,40 @@ def write_video(path: str, *, seconds: float, size: tuple[int, int],
     vw.release()
 
 
+def check_triage_profile() -> None:
+    """M-F-27: CLI profil yolu — eşikler gerçekten uygulanıyor mu.
+
+    Lissom katkısında (L-046) eşik eklenmiş ama CLI'ya bağlanmamıştı: özellik
+    vardı, erişilemiyordu ve hiçbir test bunu söylemiyordu.
+    """
+    import json as _json
+    import tempfile
+    from pathlib import Path
+    from harvest import load_triage_profile
+
+    check(load_triage_profile(None).min_full_body_ratio == 0.0,
+          "profilsiz çağrı rig varsayılanlarını verir")
+
+    with tempfile.TemporaryDirectory() as d:
+        good = Path(d) / "profile.json"
+        good.write_text(_json.dumps(
+            {"thresholds": {"min_full_body_ratio": 0.6, "min_duration_s": 120.0}}),
+            encoding="utf-8")
+        th = load_triage_profile(str(good))
+        check(th.min_full_body_ratio == 0.6, "profil eşiği okunuyor")
+        check(th.min_duration_s == 120.0, "profil birden çok eşiği ezebiliyor")
+        check(th.min_sharpness == 40.0, "verilmeyen eşik varsayılanda kalıyor")
+
+        bad = Path(d) / "bad.json"
+        bad.write_text(_json.dumps({"thresholds": {"min_ful_body_ratio": 0.6}}),
+                       encoding="utf-8")
+        try:
+            load_triage_profile(str(bad))
+            check(False, "yazım hatası olan eşik REDDEDİLMELİ")
+        except SystemExit:
+            check(True, "bilinmeyen eşik anahtarı sessizce yutulmuyor")
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -143,6 +177,9 @@ def main() -> int:
     if FAILURES:
         print(f"\n{len(FAILURES)} HATA")
         return 1
+    print("[4] triyaj profili (CLI yolu)")
+    check_triage_profile()
+
     print("\nHepsi geçti.")
     return 0
 
