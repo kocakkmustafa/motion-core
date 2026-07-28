@@ -2,13 +2,19 @@
 
 5 app aynı şemayı kullanır; replay harness core'da tektir. Ham video ASLA
 buraya girmez: yalnız landmark dizisi + çekim üstverisi saklanır.
+
+Sürüm geçmişi:
+  v1 — Lissom G1 çekim-listesi şeması (dosya-adı sözleşmeli meta).
+  v2 — serbest-meta kaynakları (CLI/hasat) + opsiyonel `provenance` bloku
+       (M-F-07/M-F-13: kaynak URL, lisans, kanal, araç sürümleri). v1
+       dosyaları okunmaya devam eder; yazıcı her zaman güncel sürümü yazar.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields as dc_fields
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +22,8 @@ import numpy as np
 
 from . import geometry as geo
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+READABLE_SCHEMA_VERSIONS = frozenset({1, 2})
 
 #: Çekim listesindeki dosya adı sözleşmesi:
 #: <testId>__<subject>__<side>__<plane>__<light>__<clothing>__<distance>__<take>
@@ -34,7 +41,13 @@ FILENAME_RE = re.compile(
 
 @dataclass
 class RecordingMeta:
-    """Çekimin koşulları — kapı ölçümü bunlara göre gruplanır."""
+    """Çekimin koşulları — kapı ölçümü bunlara göre gruplanır.
+
+    İki kaynak modu vardır:
+      * `from_filename` — Lissom çekim-listesi sözleşmesi (katı; ad uymuyorsa hata).
+      * `freeform` — CLI/hasat girdisi (JabLab D2 hattından taşındı, M-F-03);
+        çekim-listesi alanları "unknown" kalır, serbest alanlar doldurulur.
+    """
 
     test: str
     subject: str
@@ -51,6 +64,37 @@ class RecordingMeta:
     #: reddetmelidir. Kapı kriteri B7 bunu kullanır.
     intentionally_invalid: bool = False
     invalid_reason: str | None = None
+    # --- v2 serbest-meta alanları (hepsi opsiyonel) -----------------------
+    technique: str | None = None
+    lighting: str | None = None
+    camera_setup: str | None = None
+    body_profile: str | None = None
+    resolution: str | None = None  # "1920x1080"
+    source_video: str | None = None  # yalnız dosya adı — yol/PII yazılmaz
+    frames_without_pose: int | None = None
+    #: Mac/CPU çıkarım maliyeti göstergesi — cihaz-üstü fps DEĞİLDİR.
+    host_inference_ms_per_frame: float | None = None
+
+    @classmethod
+    def freeform(
+        cls,
+        *,
+        technique: str = "unknown",
+        device: str = "unknown",
+        lighting: str = "unknown",
+        camera_setup: str = "unknown",
+        body_profile: str = "unknown",
+        source_video: str | None = None,
+    ) -> "RecordingMeta":
+        """Çekim-listesi dışı kaynak (CLI tekil video, hasat klibi)."""
+        return cls(
+            test="unknown", subject="unknown", side="bilateral",
+            plane="frontal", light="bright", clothing="tight",
+            distance_cm=0, take="freeform",
+            technique=technique, device=device, lighting=lighting,
+            camera_setup=camera_setup, body_profile=body_profile,
+            source_video=source_video,
+        )
 
     @classmethod
     def from_filename(cls, path: str | Path) -> "RecordingMeta":
@@ -103,21 +147,24 @@ class Fixture:
     model_sha256: str
     frames: list[dict[str, Any]] = field(default_factory=list)
     labels: list[Label] = field(default_factory=list)
+    #: v2 — hasat/kaynak izi (M-F-07/M-F-13): sourceUrl, license, channel,
+    #: retrievedAt, toolVersions{ytDlp, pySceneDetect, mediapipe} vb.
+    #: Kamera-çekimi fixture'larında None kalır.
+    provenance: dict[str, Any] | None = None
 
     def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schemaVersion": self.schema_version,
-                "app": self.app,
-                "recordingMeta": asdict(self.meta),
-                "modelVersion": self.model_version,
-                "modelSha256": self.model_sha256,
-                "frames": self.frames,
-                "labels": [asdict(l) for l in self.labels],
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        doc: dict[str, Any] = {
+            "schemaVersion": self.schema_version,
+            "app": self.app,
+            "recordingMeta": asdict(self.meta),
+            "modelVersion": self.model_version,
+            "modelSha256": self.model_sha256,
+            "frames": self.frames,
+            "labels": [asdict(l) for l in self.labels],
+        }
+        if self.provenance is not None:
+            doc["provenance"] = self.provenance
+        return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
 
     @staticmethod
     def frame_record(
@@ -154,10 +201,16 @@ def load(path: str | Path) -> tuple[RecordingMeta, list[geo.Frame], dict[str, An
     """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     sv = int(data.get("schemaVersion", 0))
-    if sv != SCHEMA_VERSION:
-        raise ValueError(f"{path}: schemaVersion {sv}, bu okuyucu {SCHEMA_VERSION} bekliyor")
+    if sv not in READABLE_SCHEMA_VERSIONS:
+        raise ValueError(
+            f"{path}: schemaVersion {sv}, bu okuyucu {sorted(READABLE_SCHEMA_VERSIONS)} bekliyor"
+        )
 
-    meta = RecordingMeta(**data["recordingMeta"])
+    # İleri-uyumluluk: bilinmeyen meta anahtarları (gelecek minor eklemeler)
+    # okumayı düşürmez — sessizce atlanır; bilinenler dataclass'a akar.
+    known = {f.name for f in dc_fields(RecordingMeta)}
+    meta_kwargs = {k: v for k, v in data["recordingMeta"].items() if k in known}
+    meta = RecordingMeta(**meta_kwargs)
     frames: list[geo.Frame] = []
     missed = 0
     for rec in data["frames"]:

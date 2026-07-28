@@ -103,3 +103,27 @@ def resolve(name: str) -> tuple[int, ...]:
     if name in VIRTUAL:
         return tuple(idx(n) for n in VIRTUAL[name])
     return (idx(name),)
+
+
+# --------------------------------------------------------------------------
+# Vücut bölgeleri (JabLab D2 hattından aileye taşındı — M-F-03)
+# --------------------------------------------------------------------------
+#
+# Görünürlük ayrıştırması bölge bazında yapılır: "hızlı uzuv" ayrı, gövde/taban
+# ayrı ölçülür ki kadraj sorunu blur bulgusuyla karışmasın (JabLab J-007).
+REGIONS: dict[str, tuple[str, ...]] = {
+    "TRUNK": ("LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_HIP", "RIGHT_HIP"),
+    "BASE": (
+        "LEFT_ANKLE", "RIGHT_ANKLE", "LEFT_HEEL", "RIGHT_HEEL",
+        "LEFT_FOOT_INDEX", "RIGHT_FOOT_INDEX",
+    ),
+    "HEAD": ("NOSE", "LEFT_EAR", "RIGHT_EAR"),
+}
+
+
+def arm_region(side: str) -> tuple[str, ...]:
+    """Bir tarafın kol landmark'ları (omuz hariç — omuz TRUNK'a aittir)."""
+    side = side.upper()
+    if side not in ("LEFT", "RIGHT"):
+        raise ValueError(f"side 'left' veya 'right' olmalı: {side!r}")
+    return (f"{side}_ELBOW", f"{side}_WRIST", f"{side}_INDEX")

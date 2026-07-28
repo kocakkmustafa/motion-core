@@ -18,6 +18,13 @@ düzeltme (gerekçeler jablab DEFTER J-006/J-007/J-008):
 
 Kullanım:
     python analyze_d2.py fixtures/bag_full.json --decimate 1,2,3,4 -o out/bag
+
+2026-07-29 (M-F-03): `tools/` kökünden `tools/fixture_pipeline/` altına taşındı;
+landmark/bölge tanımları artık mocore'dan gelir, fixture okuyucu HEM eski JabLab
+D2 şemasını (frames[].landmarks, piksel uzayı) HEM mocore şemasını
+(frames[].lm+world, WORLD uzayı) kabul eder. Analiz matematiği DEĞİŞMEDİ —
+mevcut D2 kapı raporu aynı girdiyle aynı sayıları verir (uzanma oranı ve hız
+kol-uzunluğu-normalize olduğundan uzay seçimi sonucu etkilemez).
 """
 from __future__ import annotations
 
@@ -26,12 +33,19 @@ import json
 import math
 import os
 import statistics as stats
-import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fixture_schema import IDX, REGIONS, arm_region  # noqa: E402
+from mocore import landmarks as _lmk
+
+# Eski D2 hattının küçük-harf isim sözleşmesi korunur (rapor anahtarları ve
+# çıktı JSON'ları değişmesin); tek doğruluk kaynağı mocore.landmarks'tır.
+IDX = {name.lower(): i for i, name in enumerate(_lmk.NAMES)}
+REGIONS = {k.lower(): [n.lower() for n in v] for k, v in _lmk.REGIONS.items()}
+
+
+def arm_region(side: str) -> list[str]:
+    return [n.lower() for n in _lmk.arm_region(side)]
 
 # --- Protokol sabitleri ----------------------------------------------------
 EXT_PEAK_MIN = 0.82    # yumruk sayılması için minimum tepe uzanma oranı
@@ -48,26 +62,70 @@ VIS_INFRAME_MIN = 0.50 # bölge "kadrajda" sayılması için gard tabanı eşiğ
 MATCH_TOL_MS = 120     # desimasyonlar arası yumruk eşleme toleransı
 
 
+#: mocore snake_case meta alanlarının eski camelCase rapor anahtarlarına köprüsü.
+_META_ALIASES = {
+    "framesProcessed": "frame_count",
+    "framesWithoutPose": "frames_without_pose",
+    "cameraSetup": "camera_setup",
+    "hostInferenceMsPerFrame": "host_inference_ms_per_frame",
+}
+_META_REPORT_KEYS = (
+    "resolution", "fps", "framesProcessed", "framesWithoutPose",
+    "sourceUrl", "license", "cameraSetup", "lighting",
+    "hostInferenceMsPerFrame",
+)
+
+
 def load(path: str):
+    """Fixture yükle — iki şema da kabul (bkz. modül docstring'i).
+
+    Eski şema: normalize görüntü koordinatı -> piksel uzayına ölçeklenir
+    (z, MediaPipe'ta x ile AYNI ölçektedir: görüntü genişliğine normalize).
+    mocore şeması: WORLD koordinatları (metre) doğrudan kullanılır.
+    Her iki uzayda da e(t) ve hız kol-uzunluğuna bölündüğü için eşikler ortak.
+    """
     with open(path) as f:
         fx = json.load(f)
     meta = fx["recordingMeta"]
-    w, h = (int(v) for v in meta["resolution"].split("x"))
     frames = fx["frames"]
     T = len(frames)
-    # z, MediaPipe'ta x ile AYNI ölçektedir (görüntü genişliğine normalize).
     xyz = np.full((T, 33, 3), np.nan)
     vis = np.full((T, 33), np.nan)
     t_ms = np.array([f["t"] for f in frames], dtype=float)
-    for i, fr in enumerate(frames):
-        lms = fr["landmarks"]
-        if not lms:
-            continue
-        for j, lm in enumerate(lms):
-            xyz[i, j, 0] = lm["x"] * w
-            xyz[i, j, 1] = lm["y"] * h
-            xyz[i, j, 2] = lm["z"] * w
-            vis[i, j] = lm["vis"]
+
+    legacy = any("landmarks" in fr for fr in frames[:1])
+    if legacy:
+        w, h = (int(v) for v in str(meta["resolution"]).split("x"))
+        for i, fr in enumerate(frames):
+            lms = fr["landmarks"]
+            if not lms:
+                continue
+            for j, lm in enumerate(lms):
+                xyz[i, j, 0] = lm["x"] * w
+                xyz[i, j, 1] = lm["y"] * h
+                xyz[i, j, 2] = lm["z"] * w
+                vis[i, j] = lm["vis"]
+    else:
+        for i, fr in enumerate(frames):
+            if not fr.get("detected"):
+                continue
+            world = np.asarray(fr["world"], dtype=float)
+            if world.shape != (33, 3):
+                continue
+            lm_arr = np.asarray(fr["lm"], dtype=float)
+            xyz[i] = world
+            vis[i] = lm_arr[:, 3]
+
+    # Provenance (v2) rapora akar; sourceUrl/license eski hatta meta'daydı.
+    prov = fx.get("provenance") or {}
+    for key in ("sourceUrl", "license"):
+        if key not in meta and key in prov:
+            meta[key] = prov[key]
+    for camel, snake in _META_ALIASES.items():
+        if camel not in meta and snake in meta:
+            meta[camel] = meta[snake]
+    for key in _META_REPORT_KEYS:
+        meta.setdefault(key, None)
     return fx, meta, t_ms, xyz, vis
 
 
