@@ -26,7 +26,10 @@ SCHEMA_VERSION = 1
 #: azaltmak için 0.6 seçildi. Ampirik kalibrasyon G1-b'de.
 DEFAULT_MIN_CONFIDENCE = 0.6
 
-MetricKind = Literal["angle3", "angle_vertical", "distance_norm", "height_diff_norm"]
+MetricKind = Literal[
+    "angle3", "angle_vertical", "distance_norm", "height_diff_norm",
+    "line_deviation_norm",
+]
 
 #: Ölçüm neden üretilemedi — kullanıcıya gösterilecek gerekçenin makine hali.
 #: "Ölçemedim" demek, yanlış ölçmekten daima üstündür (00-AILE-MIMARISI §7).
@@ -62,6 +65,7 @@ class MetricDef:
             "angle_vertical": 2,
             "distance_norm": 2,
             "height_diff_norm": 2,
+            "line_deviation_norm": 3,   # [ölçülen nokta, doğru başı, doğru sonu]
         }[self.kind]
         if len(self.points) != expected:
             raise ValueError(
@@ -96,7 +100,7 @@ class MetricDef:
         # L-009: ham 3D açı, omuz/kalça genişlik farkı yüzünden ROM uçlarında
         # ±5.7° sistematik hata veriyor. Düzlem izdüşümü opsiyonel bırakılırsa
         # bu hata er geç geri gelir — config seviyesinde zorunlu tutuluyor.
-        if kind in ("angle3", "angle_vertical") and "plane" not in d:
+        if kind in ("angle3", "angle_vertical", "line_deviation_norm") and "plane" not in d:
             raise ValueError(
                 f"{d['id']}: açı metriklerinde 'plane' ZORUNLUDUR "
                 "(sagittal/frontal/transverse/none). Bilinçli olarak 3D ham açı "
@@ -157,6 +161,12 @@ def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
         value = (pts[0][1] - pts[1][1]) / t if t > 1e-9 else float("nan")
         # +y aşağı bakar; işareti "yukarısı pozitif" olacak şekilde çevir.
         value = -value
+    elif metric.kind == "line_deviation_norm":
+        # Nokta–doğru uzaklığı / gövde uzunluğu. Plank'ta kalçanın omuz–ayak
+        # bileği hattından sapması gibi "hizada mı?" ölçüleri.
+        t = geo.torso_length(frame.xyz)
+        d = geo.line_deviation(pts[0], pts[1], pts[2], metric.plane)
+        value = d / t if t > 1e-9 else float("nan")
     elif metric.kind == "distance_norm":
         a, b = pts[0], pts[1]
         if metric.plane != "none":
