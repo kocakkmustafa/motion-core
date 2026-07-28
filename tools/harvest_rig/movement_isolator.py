@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Finds the stretch of a tutorial where the step is actually being danced.
 
+APPLICABILITY (M-F-31 — measure before adopting): the signal here is
+periodicity, so this tool is for REPETITIVE content — dance steps, reps,
+strike combinations. It is the wrong question for single-direction ROM
+sweeps, one-off holds (plank, balance) and 3-rep assessment clips: Lissom
+measured that on such material the high "periodicity" scores are low-lag
+autocorrelation artifacts (adjacent frames always correlate), with the
+reported period pinned to the search floor. For phase-defined tests the
+movement window is the phase state machine's own output, not a pre-filter.
+
 The harvest gates answer "is this footage usable" — framing, sharpness, camera
 angle. None of them answer "is this part the movement", and that gap broke the
 first real reference build (M-C-16): three takes that all passed the camera gate
