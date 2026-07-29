@@ -150,9 +150,13 @@ final class ReferenceAgreementError implements Exception {
 
   @override
   String toString() {
+    // An infinite deviation is not a huge angle — it means the take had no
+    // measurable overlap with its peers (all cells NaN, or no peers at all).
+    // Printing "Infinity°" would dress a structural gap as a number (L-143).
     final String detail = deviationsDegById.entries
-        .map((MapEntry<String, double> e) =>
-            '${e.key}: ${e.value.toStringAsFixed(1)}°')
+        .map((MapEntry<String, double> e) => e.value.isFinite
+            ? '${e.key}: ${e.value.toStringAsFixed(1)}°'
+            : '${e.key}: no measurable overlap with peers')
         .join(', ');
     return 'ReferenceAgreementError(cluster within $toleranceDeg° too small '
         '— $detail)';
@@ -608,6 +612,21 @@ final class ReferenceBuilder {
     Map<String, bool>? leadSidePrior,
     double clusterToleranceDeg = 14,
   }) {
+    // A take with zero frames cannot participate in alignment at all — DTW
+    // against it yields an empty warp path and the crash surfaces frames
+    // deep inside consensus math, where it reads as a gate refusal (L-143).
+    // Refuse here, by name, before any count is computed over it.
+    final List<String> frameless = <String>[
+      for (final ReferenceTake t in rawTakes)
+        if (t.frames.isEmpty) t.id,
+    ];
+    if (frameless.isNotEmpty) {
+      throw ArgumentError(
+        'takes with zero measurable frames cannot be aligned: '
+        '${frameless.join(', ')} — every frame was dropped upstream '
+        '(undetected or gated); exclude them by name before building',
+      );
+    }
     if (rawTakes.length < minTakes) {
       throw ArgumentError(
         'need at least $minTakes takes to estimate dispersion, '

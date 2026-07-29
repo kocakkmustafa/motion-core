@@ -156,5 +156,82 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    // L-143: a harvest clip whose every frame was undetected decodes into a
+    // frameless take. That used to crash deep in consensus math — and the
+    // crash printed as a count/source gate refusal, a code defect wearing a
+    // gate's clothes.
+    test('a frameless fixture is excluded BY NAME and the build continues '
+        '(L-143)', () {
+      final Map<String, Fixture> fixtures = <String, Fixture>{
+        for (int i = 0; i < 6; i++)
+          'take$i': fixtureOf('take$i', tempoRatio: 0.94 + i * 0.03, seed: i),
+        'undetected': Fixture(
+          app: 'lissom',
+          technique: 'overhead_reach',
+          frames: const <PoseFrame>[],
+          provenance: ProvenanceInfo(channel: 'channel-undetected'),
+        ),
+      };
+      final Map<String, dynamic> artifact = const ReferenceCli()
+          .buildArtifact(technique: 'overhead_reach', fixturesById: fixtures);
+      final Map<String, dynamic> r = artifact['result'] as Map<String, dynamic>;
+      expect(r['excludedNoMeasurableFrameIds'], <String>['undetected']);
+      expect(r['contributingTakes'], 6);
+      // The exclusion is visible in the take reports with its reason — an
+      // exclusion the artifact does not show is one nobody can ask about.
+      final Map<String, dynamic> report = (artifact['takes'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((Map<String, dynamic> t) => t['id'] == 'undetected');
+      expect(report['excluded'], 'noMeasurableFrames');
+      expect(report['frames'], 0);
+    });
+
+    test('the single-fixture L-143 repro is a named refusal, not a crash',
+        () {
+      final Map<String, Fixture> one = <String, Fixture>{
+        'solo': Fixture(
+          app: 'lissom',
+          technique: 'overhead_reach',
+          frames: const <PoseFrame>[],
+          provenance: ProvenanceInfo(channel: 'ch-solo'),
+        ),
+      };
+      const ReferenceCli cli = ReferenceCli(
+          builder: ReferenceBuilder(minTakes: 1, minSources: 1));
+      expect(
+        () =>
+            cli.buildArtifact(technique: 'overhead_reach', fixturesById: one),
+        throwsA(isA<ArgumentError>()
+            .having((ArgumentError e) => '${e.message}', 'message',
+                allOf(contains('solo'), contains('no measurable frames')))
+            // The old failure shape: RangeError('Invalid value') IS an
+            // ArgumentError — the refusal must not be that.
+            .having((ArgumentError e) => e, 'type', isNot(isA<RangeError>()))),
+      );
+    });
+
+    test('a pool thinned below the gates is refused with names and reasons',
+        () {
+      final Map<String, Fixture> mixed = <String, Fixture>{
+        'good0': fixtureOf('good0', seed: 60),
+        'good1': fixtureOf('good1', seed: 61),
+        'empty': Fixture(
+          app: 'lissom',
+          technique: 'deep_squat',
+          frames: const <PoseFrame>[],
+          provenance: ProvenanceInfo(channel: 'ch-empty'),
+        ),
+      };
+      expect(
+        () => const ReferenceCli()
+            .buildArtifact(technique: 'deep_squat', fixturesById: mixed),
+        throwsA(isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}',
+            'message',
+            allOf(contains('empty'), contains('no measurable frames'),
+                contains('2 usable take(s)')))),
+      );
+    });
   });
 }

@@ -3,6 +3,27 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.7.3 — 2026-07-29 (yeni vardiya, tur 1)
+
+- **L-143 P0 düzeltmesi (Lissom buldu):** her karesi tespitsiz/kapı-düşen
+  bir fixture BOŞ take olarak builder'a giriyor, çöküş konsensüs
+  matematiğinin derinliğinde patlıyordu — tek fixture'ta `StateError: No
+  element` (`base.first`), çoklu koşumda `RangeError: Invalid value`
+  (boş warp yolu). Ve `RangeError extends ArgumentError` olduğu için araç
+  bunu "REDDEDİLDİ (sayı/kaynak kapısı)" diye basıyordu: **kod kusuru,
+  politika reddi kılığında** — saat kaybettiren sınıf. Üç katman:
+  (1) `ReferenceBuilder.build` boş-kareli take'i SAYIM ÖNCESİ isimle
+  reddeder; (2) `ReferenceCli.buildArtifact` boş take'i isimle dışlar
+  (`excludedNoMeasurableFrameIds` + take raporunda
+  `excluded: noMeasurableFrames`) ve havuz kapıların altına incelirse
+  DIŞLAMA SEBEPLERİYLE birlikte reddeder ("ret isimli+sebepli" kuralı);
+  (3) araçta `RangeError`/`StateError` artık "İÇ HATA — kod kusuru, kapı
+  reddi DEĞİL" (exit 70), kapı retlerinden ayrı. Ek:
+  `ReferenceAgreementError` sonsuz sapmayı "Infinity°" diye değil "no
+  measurable overlap with peers" diye yazar (yapısal boşluğa sayı
+  elbisesi giydirilmez). Test: 177/177 (+4: builder guard'ı · isimli
+  dışlama + devam · tek-fixture repro · incelen-havuz sebepli ret).
+
 ## 0.7.2 — 2026-07-29 (tur 26-ek2)
 
 - **M-O-29 / beşinci canlılık sorusu ("bu kapıya soran var mı?"):** rig

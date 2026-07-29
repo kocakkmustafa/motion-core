@@ -439,4 +439,26 @@ void main() {
       expect(contested, isNot(contains('left_thigh')));
     });
   });
+
+  group('frameless takes (L-143)', () {
+    test('a take with zero frames is refused by name before any counting',
+        () {
+      final SyntheticSequence seq = fourCountPhrase();
+      expect(
+        () => const ReferenceBuilder().build(<ReferenceTake>[
+          takeOf('a', seq, jitterSeed: 1),
+          const ReferenceTake(
+              id: 'harvest-empty',
+              source: 's-empty',
+              frames: <JointAngleVector>[]),
+          takeOf('c', seq, jitterSeed: 3),
+        ]),
+        throwsA(isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}',
+            'message',
+            allOf(contains('harvest-empty'),
+                contains('zero measurable frames')))),
+      );
+    });
+  });
 }

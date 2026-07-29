@@ -77,6 +77,17 @@ void main(List<String> args) {
     stdout.writeln('✓ $out  takes=${r['contributingTakes']} '
         'sources=${r['distinctSources']} mirrored=${r['mirroredTakeIds']} '
         'excluded=${r['excludedOutlierIds']}');
+  } on RangeError catch (e, st) {
+    // RangeError extends ArgumentError — without this arm a code defect
+    // prints as "sayı/kaynak kapısı" and reads like a policy refusal
+    // (L-143: hours lost to a crash wearing a gate's clothes).
+    stderr.writeln('İÇ HATA — kod kusuru, kapı reddi DEĞİL: $e');
+    stderr.writeln(st);
+    exitCode = 70;
+  } on StateError catch (e, st) {
+    stderr.writeln('İÇ HATA — kod kusuru, kapı reddi DEĞİL: $e');
+    stderr.writeln(st);
+    exitCode = 70;
   } on ArgumentError catch (e) {
     stderr.writeln('REDDEDİLDİ (sayı/kaynak kapısı): ${e.message}');
     exitCode = 65;

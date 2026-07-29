@@ -150,6 +150,7 @@ final class ReferenceCli {
     final List<Map<String, dynamic>> takeReports = <Map<String, dynamic>>[];
     final List<String> excludedIneligible = <String>[];
     final List<String> excludedUnattested = <String>[];
+    final List<String> excludedNoFrames = <String>[];
     bool provisional = false;
     for (final MapEntry<String, Fixture> e in fixturesById.entries) {
       final TakeEligibility elig = eligibilityOf(e.value);
@@ -161,12 +162,45 @@ final class ReferenceCli {
         excludedUnattested.add(e.key);
         continue;
       }
-      if (elig == TakeEligibility.unattested) provisional = true;
       final ({ReferenceTake take, Map<String, dynamic> report}) p =
           prepareTake(e.key, e.value);
       p.report['eligibility'] = elig.name;
+      // A take whose every frame was undetected or gate-dropped has nothing
+      // to align — passing it on used to crash deep in consensus math and
+      // read as a gate refusal (L-143). It is excluded HERE, by name, with
+      // its reason carried in the take report (frames/undetected/gateDropped
+      // counts), and still listed among the takes so the artifact shows it
+      // existed and why it contributed nothing.
+      if (p.take.frames.isEmpty) {
+        excludedNoFrames.add(e.key);
+        p.report['excluded'] = 'noMeasurableFrames';
+        takeReports.add(p.report);
+        continue;
+      }
+      if (elig == TakeEligibility.unattested) provisional = true;
       takes.add(p.take);
       takeReports.add(p.report);
+    }
+
+    // Refuse BEFORE the builder when exclusions thinned the pool below the
+    // gates: the builder's generic count message cannot say WHY the pool
+    // shrank — this layer knows, so this layer names it (L-143 discipline:
+    // a refusal carries names and reasons, a crash is never a refusal).
+    final int distinctSources =
+        takes.map((ReferenceTake t) => t.source).toSet().length;
+    if (takes.length < builder.minTakes || distinctSources < builder.minSources) {
+      throw ArgumentError(
+        'pool thinned below gates: ${fixturesById.length} fixture(s) → '
+        '${takes.length} usable take(s) from $distinctSources source(s) '
+        '(need ${builder.minTakes} takes / ${builder.minSources} sources). '
+        'Excluded — ineligible: '
+        '${excludedIneligible.isEmpty ? 'none' : excludedIneligible.join(', ')}'
+        '; unattested: '
+        '${excludedUnattested.isEmpty ? 'none' : excludedUnattested.join(', ')}'
+        '${excludedUnattested.isNotEmpty && !allowUnattested ? ' (--allow-unattested admits them, artifact becomes PROVISIONAL)' : ''}'
+        '; no measurable frames: '
+        '${excludedNoFrames.isEmpty ? 'none' : excludedNoFrames.join(', ')}',
+      );
     }
 
     final CanonicalReference ref = builder.build(
@@ -218,6 +252,7 @@ final class ReferenceCli {
         'excludedOutlierIds': ref.excludedOutlierIds,
         'excludedIneligibleIds': excludedIneligible,
         'excludedUnattestedIds': excludedUnattested,
+        'excludedNoMeasurableFrameIds': excludedNoFrames,
         'priorDisagreements': ref.priorDisagreements,
         'length': ref.length,
         'meanAgreement': meanAgreement,
