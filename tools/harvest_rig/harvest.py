@@ -318,10 +318,10 @@ def load_triage_profile(
                         )
                     status = spec.get("status")
                     if "metric" not in spec or status not in (
-                            "measured", "provisional", "pending"):
+                            "measured", "provisional", "pending", "advisory"):
                         raise SystemExit(
-                            f"{path}: identity['{sig}'] 'metric' ve "
-                            "'status' (measured|provisional|pending) ister"
+                            f"{path}: identity['{sig}'] 'metric' ve 'status' "
+                            "(measured|provisional|pending|advisory) ister"
                         )
                     has_bound = "min" in spec or "max" in spec
                     if status == "pending" and has_bound:
@@ -329,7 +329,23 @@ def load_triage_profile(
                             f"{path}: identity['{sig}'] pending iken sınır "
                             "taşıyamaz — ölçülmemiş eşik yazılmaz"
                         )
-                    if status != "pending" and (
+                    # advisory (G-061/M-F-80): ölçüldü ve SONUÇ "kapı-sınıfı
+                    # eşik türetilemiyor" — pending'in aksine ölçüm BEKLENMEZ,
+                    # sinyal bilgilendirici kalır. basis ZORUNLU (neden
+                    # türetilemedi, ölçümüyle), sınır YASAK (eşik yok demek
+                    # tam da bu). Tüketici bunu asla kapıya çeviremez.
+                    if status == "advisory":
+                        if has_bound:
+                            raise SystemExit(
+                                f"{path}: identity['{sig}'] advisory iken "
+                                "sınır taşıyamaz — advisory 'eşik yok' demektir"
+                            )
+                        if "basis" not in spec:
+                            raise SystemExit(
+                                f"{path}: identity['{sig}'] advisory iken "
+                                "'basis' ister — neden türetilemediği ölçümüyle"
+                            )
+                    elif status != "pending" and (
                             not has_bound or "basis" not in spec):
                         raise SystemExit(
                             f"{path}: identity['{sig}'] {status} iken "
