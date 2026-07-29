@@ -6,7 +6,9 @@ Koşum:
 """
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -58,6 +60,58 @@ def write_video(path: str, *, seconds: float, size: tuple[int, int],
             frame = cv2.GaussianBlur(frame, (31, 31), 12)
         vw.write(frame)
     vw.release()
+
+
+
+def check_rig_version_gate() -> None:
+    """`rig_version()` KOPYA senaryolarını gerçekten yakalıyor mu?
+
+    Hiç ateşlenmemiş bir kapıya güvenmek bu ailenin defalarca avladığı
+    desendir (G-037/G-052) — bu yüzden iki kopya senaryosu KASITLI kurulup
+    damganın gürültü yaptığı kanıtlanıyor:
+      (a) git deposu DIŞINA kopya,
+      (b) BAŞKA bir git deposuna kopyalanıp orada commit — bu senaryo `sha`
+          döndürüp `vendored: false` diyebilirdi, yani İNANDIRICI AMA YANLIŞ
+          damga (ölçüldü, kimlik kontrolü eklenmeden önce gerçekten oluyordu).
+    """
+    import shutil
+    src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def stamp_from(path: str) -> dict:
+        code = (
+            "import sys, types, json;"
+            "sys.modules.setdefault('cv2', types.ModuleType('cv2'));"
+            f"sys.path.insert(0, {path!r});"
+            "from manifest import rig_version;"
+            "print(json.dumps(rig_version()))"
+        )
+        out = subprocess.run([sys.executable, "-c", code],
+                             capture_output=True, text=True, timeout=60)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    with tempfile.TemporaryDirectory() as td:
+        # (a) git DIŞI kopya
+        plain = os.path.join(td, "plain", "harvest_rig")
+        shutil.copytree(src, plain, ignore=shutil.ignore_patterns(
+            "tests", "__pycache__"))
+        v = stamp_from(plain)
+        check(v.get("vendored") is True and v.get("sha") is None,
+              "git dışı rig kopyası `vendored` olarak damgalanıyor")
+
+        # (b) BAŞKA git deposunda TAKİPLİ kopya
+        other = os.path.join(td, "other")
+        inner = os.path.join(other, "sub", "harvest_rig")
+        shutil.copytree(src, inner, ignore=shutil.ignore_patterns(
+            "tests", "__pycache__"))
+        for args in (["init", "-q", "."], ["add", "-A"],
+                     ["-c", "user.email=t@t", "-c", "user.name=t",
+                      "commit", "-q", "-m", "copy"]):
+            subprocess.run(["git", "-C", other, *args],
+                           capture_output=True, timeout=60)
+        v = stamp_from(inner)
+        check(v.get("vendored") is True and v.get("sha") is None,
+              "BAŞKA depoya kopyalanmış rig, o deponun SHA'sını KENDİ "
+              "sürümü gibi damgalamıyor (inandırıcı-ama-yanlış damga kapalı)")
 
 
 def check_triage_profile() -> None:
@@ -495,6 +549,17 @@ def main() -> int:
         check(all(k in blk for k in ("sourceUrl", "license", "retrievedAt",
                                      "toolVersions")),
               "provenance bloku fixture v2 alanlarını taşıyor")
+        # M-F-135 bayat-kopya sınıfı: rig'in KENDİ sürümü de damgalanmalı.
+        # Gravita'nın squat hasadı, sınıf-düzeyi muafiyeti taşımayan bayat bir
+        # rig kopyasıyla koşmuştu; çıktı geçerli görünüyordu çünkü hangi ARAÇ
+        # ürettiğini hiçbir alan söylemiyordu.
+        rig = blk.get("toolVersions", {}).get("harvestRig")
+        check(isinstance(rig, dict) and "vendored" in rig,
+              "provenance harvestRig damgası taşıyor (sha/dirty/vendored)")
+        check(("sha" in rig) and (rig["vendored"] or rig.get("sha")),
+              "damga ya gerçek SHA verir ya vendored der — arada sessiz "
+              "üçüncü hâl YOK")
+        check_rig_version_gate()
 
     print("[4] triyaj profili (CLI yolu)")
     check_triage_profile()
