@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.7 — 2026-07-30 — capFillShare: uzunluk-vekili ayrıştırması
+
+- İki bağımsız aile ölçümü (Ostinato hold-sınıfı §2d + Gravita
+  movement-sınıfı G-081) aynı sonucu verdi: ham `alignedDistinctShare`
+  medoide-göre UZUNLUK ORANININ vekili (kısa take tavanına çarpar, her
+  örneği gerçek). `TakeEvidence.capFillShare` = share / min(1,
+  frames/medoidFrames) — take'in CEVAPLAYABİLECEĞİNİN ne kadarını
+  cevapladığı. ~1,0 = dürüst-kısa; belirgin <1,0 = park/kopyalama sınıfı
+  (M-F-68 HIGH-1'in gerçek imzası burada görünür). Aile ölçümü: push_up
+  medyan 1,000 · squat 0,922 · 0/72 take <0,70 — gerilme sınıfı henüz
+  hiçbir gerçek artefaktta gözlenmedi.
+
 ## 0.8.6 — 2026-07-30 — evidenceThickness zayıf-take alanı (M-F-68 HIGH-1)
 
 - `CanonicalReference.takeEvidence` + artefakta `evidenceThickness.takes`

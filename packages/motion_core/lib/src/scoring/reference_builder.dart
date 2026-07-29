@@ -159,6 +159,7 @@ final class TakeEvidence {
     required this.frames,
     required this.durationUs,
     required this.alignedDistinctShare,
+    required this.capFillShare,
   });
 
   /// Frames the take actually carries (before alignment).
@@ -169,15 +170,33 @@ final class TakeEvidence {
   final int durationUs;
 
   /// Share of the medoid timeline this take answered with DISTINCT samples,
-  /// in `(0, 1]`. 1.0 = every aligned position got its own measurement;
-  /// 0.01 = one sample stretched across the timeline (replication posing
-  /// as measurement). The medoid itself is 1.0 by construction.
+  /// in `(0, 1]`. The medoid itself is 1.0 by construction.
+  ///
+  /// **Read [capFillShare] before reading this raw number.** Measured on
+  /// both material classes (Ostinato hold-class §2d, Gravita movement-class
+  /// G-081): the raw share is dominated by the LENGTH RATIO to the medoid —
+  /// a short take caps at `frames/medoidFrames` with every sample real. The
+  /// raw value is a length proxy first and a degeneracy signal only after
+  /// normalization.
   final double alignedDistinctShare;
+
+  /// [alignedDistinctShare] normalized by its own ceiling
+  /// (`min(1, frames/medoidFrames)`) — how much of what this take COULD
+  /// answer it actually answered, in `(0, 1]`.
+  ///
+  /// ~1.0 = every sample the take had went to a distinct aligned position
+  /// (an honest short take); markedly below 1.0 = the alignment parked on a
+  /// subset of the take's material — the replication-posing-as-measurement
+  /// class (M-F-68 HIGH-1). Family measurement 2026-07-30: push_up median
+  /// 1.000, squat 0.922, 0/72 takes under 0.70 — no stretching class
+  /// observed in real artifacts yet; this field is where it would show.
+  final double capFillShare;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'frames': frames,
         'durationS': durationUs / 1e6,
         'alignedDistinctShare': alignedDistinctShare,
+        'capFillShare': capFillShare,
       };
 }
 
@@ -855,6 +874,7 @@ final class ReferenceBuilder {
           frames: base.length,
           durationUs: spanUs(base),
           alignedDistinctShare: 1.0,
+          capFillShare: 1.0,
         );
         continue;
       }
@@ -866,11 +886,14 @@ final class ReferenceBuilder {
       // timeline this take answered with its OWN samples rather than
       // stretched repeats. Reported, not gated — the gate's threshold must
       // come from the measured distribution of this very field.
+      final double share = r.refToLearner.toSet().length / base.length;
+      final double cap =
+          math.min(1.0, other.length / base.length);
       takeEvidence[takes[t].id] = TakeEvidence(
         frames: other.length,
         durationUs: spanUs(other),
-        alignedDistinctShare:
-            r.refToLearner.toSet().length / base.length,
+        alignedDistinctShare: share,
+        capFillShare: cap > 0 ? math.min(1.0, share / cap) : 0,
       );
       aligned.add(List<JointAngleVector>.generate(
         base.length,

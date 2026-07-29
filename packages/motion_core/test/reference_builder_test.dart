@@ -656,10 +656,15 @@ void main() {
           reason: 'a span nobody measured is not declared');
       expect(thinEv.alignedDistinctShare, closeTo(1 / 8, 1e-9),
           reason: 'one sample answered an 8-frame timeline');
+      expect(thinEv.capFillShare, closeTo(1.0, 1e-9),
+          reason: 'the single sample went to a distinct position — an '
+              'HONEST short take fills its own ceiling (the raw share is '
+              'a length proxy; degeneracy would show HERE, below 1.0)');
       // Healthy takes answer with their own material.
       expect(ref.takeEvidence['a']!.alignedDistinctShare, 1.0);
       expect(ref.takeEvidence['b']!.alignedDistinctShare,
           greaterThan(0.9));
+      expect(ref.takeEvidence['b']!.capFillShare, greaterThan(0.9));
     });
 
     test('the default remains the full-joint gate, unchanged', () {
