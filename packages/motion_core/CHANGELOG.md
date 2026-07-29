@@ -3,6 +3,16 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.4.0 — 2026-07-29 (gece vardiyası, tur 11)
+
+- **`PhaseConfig` — mühürlü v3.0 şemasının kanonik okuyucusu (M-F-40):**
+  model + KATI parser (bilinmeyen alan = sert hata; kare-başına delta parse
+  anında red — L-069) + aile-değişmezleri doğrulayıcısı (#1 timeout/J-009 ·
+  D1 cyclic/repCompletedOn · M-F-06 ham-taraf yasağı · tanımsız-metrik ·
+  G-016 menzil · #9 uç-örtüşmesi/V11 · #11 perturbasyon≥noiseBand/C-011).
+  Bu artırım = config linter'ı (5 app bugün koşabilir); PhaseStateMachine
+  evaluator'ı sonraki artırım. 13 test; toplam 148/148.
+
 ## 0.3.0 — 2026-07-29 (gece vardiyası, tur 5)
 
 - **`FrameSize` + `PoseFrame.toIsotropic` (M-F-30/J-028 kanonik API):** ham

@@ -22,6 +22,7 @@ export 'src/geometry/vec3.dart';
 export 'src/engine/ai_disclosure.dart';
 export 'src/engine/feedback_prioritizer.dart';
 export 'src/engine/motion_clock.dart';
+export 'src/engine/phase_config.dart';
 export 'src/engine/phase_state_machine.dart';
 export 'src/engine/provenance.dart';
 export 'src/pose/confidence_gate.dart';
