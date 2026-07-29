@@ -287,6 +287,21 @@ def check_rom_mode() -> None:
           and isinstance(squat.passive_execution_possible, bool),
           "RomVerdict alanları doğru slotlarda (konumsal kayma yok)")
 
+    # M-F-104 (J-058, JabLab): birinci-şahıs GÖSTERİM dili — eğitmen kendi
+    # hareketini birinci şahısla anlatır. Frolov'un jab transkripti bu sınıf
+    # eklenene dek `unknown`da kalıyordu; sınıf ekli hâliyle isimli test.
+    frolov = classify(
+        title="Boxing: quick 1-2-3 with a lead hand",
+        transcript=(
+            "Look, my stance is not too narrow. If it's too narrow, I won't "
+            "be able to swing my body. When in this body swing, here is the "
+            "first punch. I'm not going forward yet. I punch while I'm "
+            "still in the air. I throw the fist away from me."
+        ),
+    )
+    check(frolov.mode == ACTIVE and frolov.reference_eligible,
+          "birinci-şahıs gösterim dili (frolov, J-058) -> active")
+
     # Sınıflandırma FIXTURE'a akıyor mu — manifestte kalırsa kural uygulanmaz.
     m = HarvestManifest.start(app="lissom", video_id="x", source_url="u")
     m.rom_mode, m.reference_eligible = PASSIVE, False
