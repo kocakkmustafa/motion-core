@@ -79,7 +79,8 @@ UP = np.array([0.0, -1.0, 0.0])
 
 
 def angle_to_vertical(
-    p_from: np.ndarray, p_to: np.ndarray, plane: str = "none"
+    p_from: np.ndarray, p_to: np.ndarray, plane: str = "none",
+    axes: np.ndarray | None = None,
 ) -> float:
     """p_from -> p_to segmentinin DİKEY eksenle açısı, derece (0 = tam dik yukarı).
 
@@ -91,7 +92,7 @@ def angle_to_vertical(
     """
     seg = p_to - p_from
     if plane != "none":
-        seg = project(seg, plane)
+        seg = project(seg, plane, axes)
     n = float(np.linalg.norm(seg))
     if n < 1e-9:
         return math.nan
@@ -100,7 +101,68 @@ def angle_to_vertical(
     return math.degrees(math.acos(cos))
 
 
-def project(v: np.ndarray, plane: str) -> np.ndarray:
+def body_axes(xyz: np.ndarray, mode: str = "gravityYaw") -> np.ndarray:
+    """İskeletten ANATOMİK eksenleri türet — satırlar [ML, SI, AP], birim.
+
+    Neden gerekli (M-F-53): sabit dünya ekseniyle izdüşüm, vücudun
+    medial-lateral ekseninin kamera x'iyle çakıştığını VARSAYAR. Varsayım
+    yalnız kişi kameraya dönükken doğru; yandan durduğunda sagittal izdüşüm
+    öne eğilmeyi ATAR. Ölçüldü: kısalma 0,40'ta sapma 19,1°.
+
+    ML : iki omuz ve iki kalça hattının ortalaması, YATAYA izdüşürülmüş
+    SI : YERÇEKİMİ dikeyi (dünya y) — vücudun kendi gövde ekseni DEĞİL
+    AP : SI x ML (öne doğru)
+
+    ⚠️ SI neden gövdeden türetilmiyor: `trunk_lean` gövdenin DİKEYDEN sapmasını
+    ölçer. SI'yı gövde ekseninden (kalça->omuz) alırsak çerçeve ölçmek
+    istediğimiz şeyle birlikte döner ve sapmayı tanım gereği SIFIRLAR — ilk
+    sürümde tam bu oldu ve kapı yakaladı (A1 60,000° hata, A9 1 ölü metrik).
+    Çerçeve yalnız kişinin YÖNELİMİNİ (yaw) izlemeli, duruşunu değil.
+
+    `mode` (M-F-54 taksonomisi):
+      gravityYaw : SI = yerçekimi dikeyi. POSTÜR metrikleri için — gövdenin
+                   dikeyden sapmasını ölçen metrik, gövdeyle dönen bir
+                   çerçevede tanım gereği sıfırlanır.
+      proximal   : SI = GÖVDE ekseni (kalça ortası -> omuz ortası), pitch
+                   DAHİL. Küresel-eklem fleksiyonu için — gövde öne eğilince
+                   uzvun sagittal düzlemi de eğilir. `gravityYaw` ile ölçülen
+                   16,96° hip_flexion sapması tam bu farkın imzasıydı.
+
+    Ek landmark GEREKMEZ; dördü de zaten her karede var.
+    """
+    from . import landmarks as lm
+
+    i = {n: lm.NAMES.index(n) for n in
+         ("LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_HIP", "RIGHT_HIP")}
+    ml = ((xyz[i["RIGHT_SHOULDER"]] - xyz[i["LEFT_SHOULDER"]])
+          + (xyz[i["RIGHT_HIP"]] - xyz[i["LEFT_HIP"]]))
+    if mode == "proximal":
+        mid_sh = (xyz[i["LEFT_SHOULDER"]] + xyz[i["RIGHT_SHOULDER"]]) / 2.0
+        mid_hip = (xyz[i["LEFT_HIP"]] + xyz[i["RIGHT_HIP"]]) / 2.0
+        si = mid_sh - mid_hip
+        n = np.linalg.norm(si)
+        if n < 1e-9:
+            return np.eye(3)
+        si = si / n
+    elif mode == "gravityYaw":
+        # Dünya y aşağı baktığı için yukarı yön -y.
+        si = np.array([0.0, -1.0, 0.0])
+    else:
+        raise ValueError(f"bilinmeyen body_axes modu: {mode!r}")
+    if np.linalg.norm(ml) < 1e-9:
+        return np.eye(3)
+    # ML'yi yataya indir (Gram-Schmidt): omuz/kalça hattı eğik olabilir ve dik
+    # olmayan eksenler izdüşümü bozar.
+    ml = ml - np.dot(ml, si) * si
+    n = np.linalg.norm(ml)
+    if n < 1e-9:
+        return np.eye(3)
+    ml = ml / n
+    ap = np.cross(si, ml)
+    return np.stack([ml, si, ap])
+
+
+def project(v: np.ndarray, plane: str, axes: np.ndarray | None = None) -> np.ndarray:
     """Vektörü anatomik düzleme izdüşür.
 
     sagittal : yan düzlem — medial-lateral ekseni (x) sıfırla
@@ -112,27 +174,34 @@ def project(v: np.ndarray, plane: str) -> np.ndarray:
     (bkz. research/05, PMC10635560). Bu fonksiyon matematiği yapar; hangi
     ölçümün kullanıcıya gösterileceği kararı config/kapı seviyesindedir.
     """
-    out = v.astype(float).copy()
-    if plane == "sagittal":
-        out[..., 0] = 0.0
-    elif plane == "frontal":
-        out[..., 2] = 0.0
-    elif plane == "transverse":
-        out[..., 1] = 0.0
-    elif plane != "none":
+    if plane == "none":
+        return v.astype(float).copy()
+    drop = {"sagittal": 0, "frontal": 2, "transverse": 1}.get(plane)
+    if drop is None:
         raise ValueError(f"Bilinmeyen düzlem: {plane!r}")
-    return out
+    if axes is None:
+        # ESKİ davranış — dünya ekseni. Göç sırasında diff için korunuyor
+        # (M-F-53 şart c: sessiz değişim yok).
+        out = v.astype(float).copy()
+        out[..., drop] = 0.0
+        return out
+    # ANATOMİK izdüşüm: vektörü vücut eksenlerine ayrıştır, ilgili bileşeni
+    # sıfırla, geri kur. `axes` satırları [ML, SI, AP] ve ortonormal.
+    comp = v.astype(float) @ axes.T
+    comp[..., drop] = 0.0
+    return comp @ axes
 
 
 def angle_3pt_projected(
-    a: np.ndarray, b: np.ndarray, c: np.ndarray, plane: str
+    a: np.ndarray, b: np.ndarray, c: np.ndarray, plane: str,
+    axes: np.ndarray | None = None,
 ) -> float:
     """A-B-C açısını verilen düzleme izdüşürerek hesapla."""
     if plane == "none":
         return angle_3pt(a, b, c)
     origin = np.zeros(3)
-    ba = project(a - b, plane)
-    bc = project(c - b, plane)
+    ba = project(a - b, plane, axes)
+    bc = project(c - b, plane, axes)
     return angle_3pt(ba, origin, bc)
 
 
@@ -182,7 +251,8 @@ def normalized_distance(xyz: np.ndarray, i: int, j: int) -> float:
 
 
 def line_deviation(p: np.ndarray, a: np.ndarray, b: np.ndarray,
-                   plane: str = "none") -> float:
+                   plane: str = "none",
+                   axes: np.ndarray | None = None) -> float:
     """P noktasının A→B doğrusuna dik uzaklığı (İŞARETLİ değil, mutlak).
 
     "Hizada mı?" sorusunun ölçüsü: plank'ta kalçanın omuz–ayak bileği hattından
@@ -194,7 +264,7 @@ def line_deviation(p: np.ndarray, a: np.ndarray, b: np.ndarray,
     kayma birbirine karışmasın).
     """
     if plane != "none":
-        p, a, b = project(p, plane), project(a, plane), project(b, plane)
+        p, a, b = project(p, plane, axes), project(a, plane, axes), project(b, plane, axes)
     ab = b - a
     n = float(np.linalg.norm(ab))
     if n < 1e-9:
