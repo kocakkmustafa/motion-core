@@ -200,6 +200,27 @@ def transcribe(m: HarvestManifest, out_dir: Path) -> Path | None:
 # CLI
 # --------------------------------------------------------------------------
 
+def load_rom_policy(path: str | None, movement: str | None) -> bool:
+    """M-F-45: bu harekette pasif icra biyomekanik olarak mümkün mü.
+
+    Varsayılan `True` = muhafazakâr (fail-closed sürer). Profil politika
+    taşıyor ama hareket orada YOKSA sert hata: sessizce varsayılana düşmek,
+    kuralın hangi harekette uygulandığını belirsizleştirir.
+    """
+    if not path:
+        return True
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    policy = doc.get("movementRomPolicy")
+    if not policy:
+        return True
+    if movement not in policy:
+        raise SystemExit(
+            f"{path}: movementRomPolicy'de '{movement}' yok. "
+            f"Tanımlı: {', '.join(sorted(policy))}"
+        )
+    return bool(policy[movement])
+
+
 def load_triage_profile(
     path: str | None, movement: str | None = None
 ) -> TriageThresholds:
@@ -282,7 +303,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         # kaynaktan türetilen referans ULAŞILAMAZ hedef koyar. Ayrım kamerada
         # GÖRÜNMEZ, yalnız kaynağın anlatısında vardır. Klip REDDEDİLMEZ —
         # taksonomi/yöntem kaynağı olarak değerli — ama referansa giremez.
-        rom = classify_rom(title=m.title or "", description=m.description or "")
+        pep = load_rom_policy(getattr(args, "triage_profile", None),
+                              getattr(args, "movement", None))
+        rom = classify_rom(title=m.title or "", description=m.description or "",
+                           passive_execution_possible=pep)
         m.rom_mode = rom.mode
         m.reference_eligible = rom.reference_eligible
         m.record("romMode", rom.mode, **rom.to_detail())
@@ -315,7 +339,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 for seg in json.loads(tr_path.read_text(encoding="utf-8"))
             )
             rom2 = classify_rom(title=m.title or "", description=m.description or "",
-                                transcript=spoken)
+                                transcript=spoken, passive_execution_possible=pep)
             if rom2.mode != m.rom_mode:
                 print(f"↻ romMode transkriptle güncellendi: "
                       f"{m.rom_mode} → {rom2.mode} ({rom2.reason})")
