@@ -242,7 +242,13 @@ def find_movement_windows(
 
 def load_frames(path: str) -> tuple[list[list[list[float]]], float]:
     d = json.load(open(path, encoding="utf-8"))
-    fps = d.get("recordingMeta", {}).get("fps", 30) or 30
+    # Fail-closed, never a silent 30 (M-F-59 class; Choreia found the same
+    # leak in its copy and fixed it first — ff4f665): a wrong fps corrupts
+    # every per-second number downstream while looking plausible.
+    fps = d.get("recordingMeta", {}).get("fps")
+    if not fps:
+        raise SystemExit(f"fps yok: {path} — recordingMeta.fps zorunlu "
+                         "(sessiz 30 varsayımı yasak, doc 60 §1)")
     out = []
     for f in d.get("frames", []):
         if f.get("detected") is False:

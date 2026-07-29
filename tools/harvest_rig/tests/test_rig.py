@@ -15,6 +15,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import hold_isolator  # noqa: E402
 from harvest import hamming, perceptual_signature  # noqa: E402
 from manifest import HarvestManifest  # noqa: E402
 from triage import TriageThresholds, triage  # noqa: E402
@@ -544,6 +545,10 @@ def main() -> int:
 
     print("[9] bağlam etiketleri (M-F-51 eki)")
     check_context_tags()
+
+    print("[10] statik-tutuş izolatörü (M-F-75)")
+    if hold_isolator.self_test() != 0:
+        FAILURES.append("hold_isolator self-test")
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
