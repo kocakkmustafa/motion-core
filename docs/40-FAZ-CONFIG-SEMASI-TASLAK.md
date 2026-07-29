@@ -1,10 +1,23 @@
-# Faz-Config Şeması — UZLAŞTIRMA TASLAĞI v2 (M-F-35/36)
+# Faz-Config Şeması — UZLAŞTIRMA TASLAĞI v3 (M-F-35/36/37)
 
-**Tarih:** 2026-07-29 (gece, tur 7) · **Statü:** TASLAK v2 — dört oturumun
-diff'leri işlendi (Gravita D1-D5+2 değişmez · JabLab M-J-04 A-D · Ostinato
-A1-A3 · Choreia M-C-24). **Mühür şartı:** Lissom diff'i (bekleniyor) + bir
-onay turu. Çelişkide çekirdek kazanır; ama bu sürüm DÖRT çalışan/tasarlanan
-motorun itirazlarıyla yazıldı.
+**Tarih:** 2026-07-29 (gece, tur 8) · **Statü:** TASLAK v3 — MÜHÜR ADAYI.
+Onay turu işlendi: Gravita F1-F3 + değişmez #11 · JabLab M-J-05 (1)-(3) ·
+Ostinato M-O-07. İlk gerçek tüketici var: Ostinato `voice@0.1.0-draft`
+doğrudan bu şemaya yazıldı. **Mühür şartı: yalnız Lissom onayı** (şemanın
+omurgası zaten Lissom önerisi; itirazsız onayla MÜHÜRLENIR).
+
+**v2→v3:** hata kaydına `priority` (F1: safety>blocking>quality — aynı anda
+ateşlenen hatalarda GÜVENLİK önce söylenir) ve `perturbation` (F2: tespit
+kuralı + onu üreten bozulma AYNI kayıtta; değişmez #11) · varyant-atlanabilir
+faz (F3: `skippableIn:[varyant...]`) · işaret taksonomisi bildirimsel (M-J-05.1:
+`phase|combinationEnd|periodic{everyMs}|appEvent` — serbest-metin işaret YOK) ·
+normatif ayrım (M-J-05.2: **`quality` = SKORLANAN faz-içi kalite; hata katmanı
+= KOÇLANAN sorun** — drillId/cooldown taşır; skor ile konuşma farklı kanallar) ·
+`verdictGates.effect: collectNoVerdict|discardWindow` (M-O-07: geçerli-ama-
+aperiyodik veri TOPLANIR, kirli veri ATILIR — kirli pencereyi arşive toplayan
+config sonraki analize temiz görünür) · göç maliyeti düzeltmesi (M-J-05.3:
+yalnız baseline değil, metrik başına unit+range+noiseBand+baseline(+cutoffHz)
+tam sözlük) · ölçülmüş noiseBand örneği: cent metriği ~20 (Ostinato G1-C).
 
 **v1→v2 değişiklik özeti:** tekrar/döngü modeli (D1) · giriş-eşiği↔kalite-hedefi
 ayrımı (D2) · checkpoint fazı (D3) · taraf-çözümü + `limb` (D4+J-A) ·
@@ -93,22 +106,45 @@ metrik := {
 ## 3. Hata/geri-bildirim katmanı (J-C — fazların DIŞINDA)
 
 ```
+işaret := { kind: phase|combinationEnd|periodic|appEvent,
+            phaseId?, everyMs?, event? }
+     // M-J-05.1: işaret sözlüğü BİLDİRİMSEL — serbest-metin işaret yasak;
+     //   iki app uyumsuz sözlük icat edemez, yorumlayıcı hepsini ateşler.
+     //   JabLab STANCE_SAMPLE = periodic{everyMs: 2000}
+
 hata := {
   code,
-  evaluateAt: ANY | <faz-id> | COMBINATION_END | <işaret>,
-     // hatalar fazda değil İŞARETTE değerlendirilir — sesli koçun tur-içi
-     // tek-düzeltme disiplini buna dayanır
-  koşul, cooldownMs?, maxPerRound?, suppressesJudgement?: bool
+  evaluateAt: işaret,           // hatalar fazda değil İŞARETTE değerlendirilir
+  koşul,
+  priority: safety|blocking|quality,   // F1: aynı anda ateşlenende GÜVENLİK
+                                       //   önce söylenir; tek-düzeltme
+                                       //   disiplini bu alansız kurulamaz
+  perturbation?: { metric, targetValue },
+     // F2: tespit kuralı + onu üreten bozulma AYNI kayıtta — nöbetçi ancak
+     //   ikisini birlikte görünce C-011 sınıfını denetleyebilir
+  cooldownMs?, maxPerRound?, suppressesJudgement?: bool, drillId?
 }
+// NORMATİF AYRIM (M-J-05.2): faz-içi `quality` = SKORLANAN kalite (skora
+// akar); bu katman = KOÇLANAN sorun (sesli koça akar). Aynı hüküm iki yerde
+// İFADE EDİLMEZ — çapraz-app araçlar tek biçimde akıl yürütür.
+
 combinations := [ { id, sequence: [teknik-id...], maxGapMs?, errors?: [...] } ]
      // J-B: teknik DİZİSİ kavramı; WRONG_HAND/ORDER hataları buradan
+
+faz.skippableIn?: [varyant...]  // F3: varyanta göre atlanabilir faz —
+                                //   tek fazlık fark için zincir kopyalanmaz
 ```
 
 ## 4. Olay-tetikli hüküm pencereleri (O-A3 + CueGate politika notu)
 
 ```
-verdictGates := [ { onEvent: <olay>, holdMs, effect: collectNoVerdict } ]
+verdictGates := [ { onEvent: <olay>, holdMs,
+                    effect: collectNoVerdict | discardWindow } ]
 ```
+- **`collectNoVerdict`** (Ostinato atak penceresi): veri GEÇERLİ, yalnız
+  aperiyodik — toplanır, hüküm verilmez. **`discardWindow`** (koç sesi,
+  mikrofon kirli): veri KİRLİ — toplanmaz; toplansaydı arşivdeki sonraki
+  analiz onu temiz sanırdı (M-O-07).
 - Üçüncü durum: **ölç ama hüküm verme** — faz-yapısal değil OLAY-tetikli
   (yay değişimi sonrası ~100 ms; Ostinato üç-durumlu kapısı).
 - **CueGate politika notu (JabLab dersi):** çekirdek `CueGate` yalnız ZAMAN
@@ -135,6 +171,9 @@ verdictGates := [ { onEvent: <olay>, holdMs, effect: collectNoVerdict } ]
    örtüşürse her kare iki uçta birden sayılır, motor durmadan tekrar üretir).
 10. **Ölü-metrik yasağı** (M-L-05): sabit değer üreten metrik yükleme anında
     reddedilir.
+11. **Perturbasyon hedefi eşiği en az `noiseBand` kadar aşmalı** (Gravita F2:
+    `noiseBand` zaten zorunlu olduğundan bedava denetim — toleransın içinde
+    kalan fixture hiçbir şey sınamaz, C-011).
 
 ## 7. Göç yolu (değişmedi + JabLab uyum notu)
 
