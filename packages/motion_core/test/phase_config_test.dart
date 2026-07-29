@@ -211,4 +211,79 @@ void main() {
       expect(issues.single, contains('D1'));
     });
   });
+
+  _round2();
+}
+
+// ---------------------------------------------------------------------------
+// 0.4.1 — M-O-10 + Gravita boşlukları
+// ---------------------------------------------------------------------------
+
+void _round2() {
+  const PhaseConfigParser parser = PhaseConfigParser();
+  const PhaseConfigValidator validator = PhaseConfigValidator();
+
+  group('0.4.1 reader alignment (M-O-10, Gravita gaps)', () {
+    test('verdictGates parse with both effects (M-O-07)', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      (cfg['techniques'] as List)[0]['verdictGates'] = <dynamic>[
+        <String, dynamic>{
+          'onEvent': 'onsetDetected',
+          'holdMs': 100,
+          'effect': 'collectNoVerdict',
+        },
+        <String, dynamic>{
+          'onEvent': 'coachCueStarted',
+          'holdMs': 300,
+          'effect': 'discardWindow',
+        },
+      ];
+      final PhaseConfig c = parser.parse(cfg);
+      expect(c.techniques.single.verdictGates, hasLength(2));
+      expect(c.techniques.single.verdictGates[1].effect,
+          VerdictGateEffect.discardWindow);
+    });
+
+    test('requires.signals keeps op/value — a bare name list loses the '
+        'precondition (O-A2)', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      (cfg['techniques'] as List)[0]['requires'] = <String, dynamic>{
+        'signals': <dynamic>[
+          <String, dynamic>{'signal': 'snrDb', 'op': 'gte', 'value': 6},
+          'midiConnected',
+        ],
+      };
+      final PhaseConfig c = parser.parse(cfg);
+      final List<SignalRequirement> reqs = c.techniques.single.requiredSignals;
+      expect(reqs, hasLength(2));
+      expect(reqs.first.op, CompareOp.gte);
+      expect(reqs.first.value, 6);
+      expect(reqs.last.op, isNull, reason: 'presence-only requirement');
+    });
+
+    test('fastTransition without cutoffHz is a violation, not a doc comment '
+        '(Gravita gap #1)', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      (cfg['metrics'] as Map<String, dynamic>)['extensionRatio']
+          ['fastTransition'] = true;
+      final List<String> issues = validator.validate(parser.parse(cfg));
+      expect(issues.single, contains('J-027'));
+    });
+
+    test('an error can carry its coach line (Gravita gap #2)', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      ((cfg['techniques'] as List)[0]['errors'] as List)[0]['cue'] =
+          'cue.knee_locked';
+      final PhaseConfig c = parser.parse(cfg);
+      expect(c.techniques.single.errors.single.cue, 'cue.knee_locked');
+    });
+
+    test('measurementSpace: world is declarable (M-O-08/J-028)', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      (cfg['metrics'] as Map<String, dynamic>)['kneeAngle']
+          ['measurementSpace'] = 'world';
+      final PhaseConfig c = parser.parse(cfg);
+      expect(c.metrics['kneeAngle']!.measurementSpace, MeasurementSpace.world);
+    });
+  });
 }

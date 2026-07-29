@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.4.1 — 2026-07-29 (gece vardiyası, tur 12)
+
+- **Okuyucu, mühürlü şemaya hizalandı (M-O-10 + Gravita M-talebi):**
+  `verdictGates` parse ediliyor (collectNoVerdict/discardWindow — atlanmıştı) ·
+  `requires:{landmarks,signals}` iç-içe biçim + sinyal ön-koşulları op/value
+  taşır (SNR ≥6dB artık düzyazı değil) · `measurementSpace: world|isotropic|
+  pixel` (M-O-08/J-028) · `fastTransition` bayrağı + cutoffHz zorunluluğu
+  ARTIK DOĞRULANIYOR (düzyazı-kural kod-kuralı oldu) · `ErrorSpec.cue`
+  (koçun söyleyeceği söz — içeriksiz koçlanan hata sessizce düşer).
+  5 yeni test; 152/152. Şema-tarafı kalanlar (quality yön-bilgisi,
+  signalConditioning yuvası, evaluateAt doc netleşmesi) v3.1 kalemi.
+
 ## 0.4.0 — 2026-07-29 (gece vardiyası, tur 11)
 
 - **`PhaseConfig` — mühürlü v3.0 şemasının kanonik okuyucusu (M-F-40):**

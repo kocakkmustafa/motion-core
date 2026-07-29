@@ -164,6 +164,8 @@ final class MetricSpec {
     this.baselineRef,
     this.interval = false,
     this.cutoffHz,
+    this.measurementSpace = MeasurementSpace.isotropic,
+    this.fastTransition = false,
   });
 
   final String id;
@@ -179,10 +181,22 @@ final class MetricSpec {
   /// O-A1: values are window-intervals (tStartUs/tEndUs), not instants.
   final bool interval;
 
-  /// Mandatory for fast-transition metrics (G-V10/J-027): the smoothing
-  /// filter is an inseparable part of the threshold.
+  /// Mandatory when [fastTransition] is true (G-V10/J-027): the smoothing
+  /// filter is an inseparable part of the threshold. Enforced by the
+  /// validator, not by prose (Gravita gap #1: a rule that lives only in a
+  /// doc comment binds the reader, never the writer).
   final double? cutoffHz;
+
+  /// M-F-30/M-O-08: which space this metric's math runs in. Metrics over 3D
+  /// body axes on habitually-angled subjects must declare `world`.
+  final MeasurementSpace measurementSpace;
+
+  /// Marks a metric whose signal transitions faster than the default
+  /// smoothing can follow (J-027). Makes the cutoffHz obligation checkable.
+  final bool fastTransition;
 }
+
+enum MeasurementSpace { world, isotropic, pixel }
 
 // ---------------------------------------------------------------------------
 // Phases, techniques, error layer
@@ -203,7 +217,7 @@ final class PhaseSpec {
     this.checkpoint = false,
     this.skippableIn = const <String>[],
     this.requiredLandmarks = const <String>[],
-    this.requiredSignals = const <String>[],
+    this.requiredSignals = const <SignalRequirement>[],
   });
 
   final String id;
@@ -225,7 +239,7 @@ final class PhaseSpec {
   final bool checkpoint;
   final List<String> skippableIn;
   final List<String> requiredLandmarks;
-  final List<String> requiredSignals;
+  final List<SignalRequirement> requiredSignals;
 }
 
 enum SideResolution { visible, calibrated, explicit }
@@ -262,6 +276,33 @@ final class Marker {
 
 enum ErrorPriority { safety, blocking, quality }
 
+/// O-A3 + M-O-07: event-triggered verdict windows. `collectNoVerdict` =
+/// data is valid but aperiodic (bow-change attack window): collect, do not
+/// judge. `discardWindow` = data is dirty (coach voice in the mic): do not
+/// even collect — archived dirty data looks clean to the next analysis.
+enum VerdictGateEffect { collectNoVerdict, discardWindow }
+
+final class VerdictGateSpec {
+  const VerdictGateSpec({
+    required this.onEvent,
+    required this.holdMs,
+    required this.effect,
+  });
+  final String onEvent;
+  final int holdMs;
+  final VerdictGateEffect effect;
+}
+
+/// O-A2 (tam biçim): a signal precondition is a *measurable* requirement
+/// (SNR ≥ 6 dB, periodicity ≥ 0.5, MIDI connected) — a bare name list loses
+/// the op/value and turns the precondition into prose.
+final class SignalRequirement {
+  const SignalRequirement({required this.signal, this.op, this.value});
+  final String signal;
+  final CompareOp? op;
+  final double? value;
+}
+
 final class ErrorSpec {
   const ErrorSpec({
     required this.code,
@@ -273,6 +314,7 @@ final class ErrorSpec {
     this.maxPerRound,
     this.suppressesJudgement = false,
     this.drillId,
+    this.cue,
   });
 
   final String code;
@@ -290,6 +332,12 @@ final class ErrorSpec {
   final int? maxPerRound;
   final bool suppressesJudgement;
   final String? drillId;
+
+  /// What the coach *says* when this error wins the correction slot —
+  /// an i18n key, not display text. A coached error with nothing to say
+  /// either drops silently or lets UI copy drift from the detection rule
+  /// (the same drift the generated honesty box exists to kill).
+  final String? cue;
 }
 
 final class TechniqueSpec {
@@ -303,7 +351,8 @@ final class TechniqueSpec {
     this.resetBetweenReps = const <String>[],
     this.fallback = false,
     this.requiredLandmarks = const <String>[],
-    this.requiredSignals = const <String>[],
+    this.requiredSignals = const <SignalRequirement>[],
+    this.verdictGates = const <VerdictGateSpec>[],
     this.errors = const <ErrorSpec>[],
   });
 
@@ -319,7 +368,8 @@ final class TechniqueSpec {
   final List<PhaseSpec> phases;
   final bool fallback;
   final List<String> requiredLandmarks;
-  final List<String> requiredSignals;
+  final List<SignalRequirement> requiredSignals;
+  final List<VerdictGateSpec> verdictGates;
   final List<ErrorSpec> errors;
 }
 
@@ -374,7 +424,9 @@ final class PhaseConfigParser {
     final String path = 'metrics.$id';
     _expectKeys(m, path,
         required: const {'unit', 'range', 'noiseBand', 'baseline'},
-        optional: const {'interval', 'cutoffHz', r'$doc'});
+        optional: const {
+          'interval', 'cutoffHz', 'measurementSpace', 'fastTransition', r'$doc'
+        });
     final List<dynamic> range = _list(m, 'range', path);
     if (range.length != 2) {
       throw PhaseConfigError('$path.range', 'iki değer ister: [min, max]');
@@ -408,6 +460,11 @@ final class PhaseConfigParser {
       interval: (m['interval'] as bool?) ?? false,
       cutoffHz:
           m.containsKey('cutoffHz') ? _num(m['cutoffHz'], '$path.cutoffHz') : null,
+      measurementSpace: m.containsKey('measurementSpace')
+          ? _enumValue(MeasurementSpace.values, m['measurementSpace'],
+              '$path.measurementSpace')
+          : MeasurementSpace.isotropic,
+      fastTransition: (m['fastTransition'] as bool?) ?? false,
     );
   }
 
@@ -425,6 +482,8 @@ final class PhaseConfigParser {
       'fallback',
       'requiredLandmarks',
       'requiredSignals',
+      'requires',
+      'verdictGates',
       'errors',
       r'$doc',
     });
@@ -443,6 +502,8 @@ final class PhaseConfigParser {
           '$path.errors[$i]'));
     }
 
+    final (List<String> reqLm, List<SignalRequirement> reqSig) =
+        _requires(t, path);
     return TechniqueSpec(
       id: t['id'].toString(),
       limb: t['limb']?.toString(),
@@ -453,8 +514,9 @@ final class PhaseConfigParser {
       resetBetweenReps: _strList(t['resetBetweenReps']),
       phases: phases,
       fallback: (t['fallback'] as bool?) ?? false,
-      requiredLandmarks: _strList(t['requiredLandmarks']),
-      requiredSignals: _strList(t['requiredSignals']),
+      requiredLandmarks: reqLm,
+      requiredSignals: reqSig,
+      verdictGates: _verdictGates(t['verdictGates'], '$path.verdictGates'),
       errors: errors,
     );
   }
@@ -476,6 +538,7 @@ final class PhaseConfigParser {
       'skippableIn',
       'requiredLandmarks',
       'requiredSignals',
+      'requires',
       r'$doc',
     });
     final Map<String, double> quality = <String, double>{};
@@ -502,8 +565,8 @@ final class PhaseConfigParser {
       terminal: (p['terminal'] as bool?) ?? false,
       checkpoint: (p['checkpoint'] as bool?) ?? false,
       skippableIn: _strList(p['skippableIn']),
-      requiredLandmarks: _strList(p['requiredLandmarks']),
-      requiredSignals: _strList(p['requiredSignals']),
+      requiredLandmarks: _requires(p, path).$1,
+      requiredSignals: _requires(p, path).$2,
     );
   }
 
@@ -519,6 +582,7 @@ final class PhaseConfigParser {
       'maxPerRound',
       'suppressesJudgement',
       'drillId',
+      'cue',
       r'$doc',
     });
     ({String metric, double targetValue})? perturbation;
@@ -545,7 +609,71 @@ final class PhaseConfigParser {
       maxPerRound: (e['maxPerRound'] as num?)?.toInt(),
       suppressesJudgement: (e['suppressesJudgement'] as bool?) ?? false,
       drillId: e['drillId']?.toString(),
+      cue: e['cue']?.toString(),
     );
+  }
+
+  List<SignalRequirement> _signalReqs(Object? v, String path) {
+    if (v == null) return const <SignalRequirement>[];
+    final List<SignalRequirement> out = <SignalRequirement>[];
+    final List<dynamic> raw = v as List<dynamic>;
+    for (int i = 0; i < raw.length; i++) {
+      final Object? item = raw[i];
+      if (item is String) {
+        out.add(SignalRequirement(signal: item));
+      } else {
+        final Map<String, dynamic> m = _castMap(item, '$path[$i]');
+        _expectKeys(m, '$path[$i]',
+            required: const {'signal'}, optional: const {'op', 'value'});
+        out.add(SignalRequirement(
+          signal: m['signal'].toString(),
+          op: m.containsKey('op')
+              ? _enumValue(CompareOp.values, m['op'], '$path[$i].op')
+              : null,
+          value: m.containsKey('value')
+              ? _num(m['value'], '$path[$i].value')
+              : null,
+        ));
+      }
+    }
+    return out;
+  }
+
+  (List<String>, List<SignalRequirement>) _requires(
+      Map<String, dynamic> owner, String path) {
+    List<String> landmarks = _strList(owner['requiredLandmarks']);
+    List<SignalRequirement> signals =
+        _signalReqs(owner['requiredSignals'], '$path.requiredSignals');
+    if (owner['requires'] != null) {
+      final Map<String, dynamic> r = _castMap(owner['requires'], '$path.requires');
+      _expectKeys(r, '$path.requires',
+          required: const <String>{},
+          optional: const {'landmarks', 'signals'});
+      landmarks = <String>[...landmarks, ..._strList(r['landmarks'])];
+      signals = <SignalRequirement>[
+        ...signals,
+        ..._signalReqs(r['signals'], '$path.requires.signals'),
+      ];
+    }
+    return (landmarks, signals);
+  }
+
+  List<VerdictGateSpec> _verdictGates(Object? v, String path) {
+    if (v == null) return const <VerdictGateSpec>[];
+    final List<dynamic> raw = v as List<dynamic>;
+    final List<VerdictGateSpec> out = <VerdictGateSpec>[];
+    for (int i = 0; i < raw.length; i++) {
+      final Map<String, dynamic> g = _castMap(raw[i], '$path[$i]');
+      _expectKeys(g, '$path[$i]',
+          required: const {'onEvent', 'holdMs', 'effect'});
+      out.add(VerdictGateSpec(
+        onEvent: g['onEvent'].toString(),
+        holdMs: (g['holdMs'] as num).toInt(),
+        effect: _enumValue(
+            VerdictGateEffect.values, g['effect'], '$path[$i].effect'),
+      ));
+    }
+    return out;
   }
 
   Marker _marker(Map<String, dynamic> m, String path) {
@@ -701,6 +829,15 @@ final class PhaseConfigValidator {
   /// a red CI line teaches the reader which measured lesson it protects.
   List<String> validate(PhaseConfig config) {
     final List<String> issues = <String>[];
+
+    // Gravita gap #1: a rule that lives only in a doc comment binds the
+    // reader, never the writer. fastTransition => cutoffHz, enforced.
+    for (final MetricSpec m in config.metrics.values) {
+      if (m.fastTransition && m.cutoffHz == null) {
+        issues.add('metric ${m.id}: fastTransition metrik cutoffHz beyan '
+            'etmeli — filtre eşiğin ayrılmaz parçasıdır (J-027/G-V10)');
+      }
+    }
 
     for (final TechniqueSpec t in config.techniques) {
       final String tp = 'technique ${t.id}';
