@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.6 — 2026-07-30 — evidenceThickness zayıf-take alanı (M-F-68 HIGH-1)
+
+- `CanonicalReference.takeEvidence` + artefakta `evidenceThickness.takes`
+  bloğu: take başına `{frames, durationS, alignedDistinctShare}`. DTW'nin
+  eğim-normalize koridoru uzunluk oranını TASARIMI GEREĞİ kabul eder
+  (tempo esnekliği) — 1-karelik take tek örneğini tüm medoid zaman
+  çizgisine gererek "hizalanır" ve enjekte ettiği varyans tolerans
+  etiketini floor→variance çevirebilir (kimsenin ölçmediği eğitmen
+  anlaşmazlığı iddiası; kopyalama ≠ ölçüm — G-078 dersinin hizalama
+  düzeyi). RAPOR, kapı değil: kapının eşiği bu alanın gerçek
+  artefaktlardaki ölçülmüş dağılımından türeyecek.
+
 ## 0.8.5 — 2026-07-30 — beyan-edilen kapı-eklem-kümesi + zaman-histerezisi
 
 - **gateJoints/gateBasis (M-O-56 dördüncü sınıf):** M-F-47 kapısının

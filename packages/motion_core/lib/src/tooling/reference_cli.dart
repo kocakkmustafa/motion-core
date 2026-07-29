@@ -466,6 +466,18 @@ final class ReferenceCli {
         'excludedUnalignable': excludedUnalignable,
       },
       'takes': takeReports,
+      // M-F-60 evidenceThickness, weak-take leg (M-F-68 HIGH-1): how much
+      // measured material stands behind each contribution. A tiny
+      // alignedDistinctShare is one sample stretched across the timeline —
+      // replication posing as measurement. Reported, not gated; the gate's
+      // threshold derives from this field's measured distribution.
+      'evidenceThickness': <String, dynamic>{
+        'takes': <String, dynamic>{
+          for (final MapEntry<String, TakeEvidence> e
+              in ref.takeEvidence.entries)
+            e.key: e.value.toJson(),
+        },
+      },
       'result': <String, dynamic>{
         'contributingTakes': ref.contributingTakes,
         'sources': ref.sources,

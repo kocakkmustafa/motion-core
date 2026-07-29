@@ -624,6 +624,44 @@ void main() {
       );
     });
 
+    test('a stretched single-frame take is EXPOSED by takeEvidence '
+        '(M-F-68 HIGH-1, report-first)', () {
+      // One take carries a single frame that agrees with everyone's posture
+      // — the M-F-47 gate cannot see it (its one sample deviates little),
+      // and DTW's slope-normalized corridor stretches it across the whole
+      // medoid timeline. The artifact must SAY that its contribution is one
+      // sample replicated, not measured variance.
+      final ReferenceTake thin = ReferenceTake(
+        id: 'thin',
+        source: 'synthetic:thin',
+        frames: <JointAngleVector>[
+          JointAngleVector(
+            tUs: 0,
+            values: const <double>[0.10, 0.20],
+            specs: const <JointSpec>[trunk, arm],
+          ),
+        ],
+      );
+      final CanonicalReference ref = const ReferenceBuilder().build(
+        <ReferenceTake>[
+          postureTake('a', 0.20),
+          postureTake('b', 0.21),
+          thin,
+        ],
+      );
+      expect(ref.contributingTakes, 3);
+      final TakeEvidence thinEv = ref.takeEvidence['thin']!;
+      expect(thinEv.frames, 1);
+      expect(thinEv.durationUs, 0,
+          reason: 'a span nobody measured is not declared');
+      expect(thinEv.alignedDistinctShare, closeTo(1 / 8, 1e-9),
+          reason: 'one sample answered an 8-frame timeline');
+      // Healthy takes answer with their own material.
+      expect(ref.takeEvidence['a']!.alignedDistinctShare, 1.0);
+      expect(ref.takeEvidence['b']!.alignedDistinctShare,
+          greaterThan(0.9));
+    });
+
     test('the default remains the full-joint gate, unchanged', () {
       // Same pool with agreeing arms passes with NO gate declaration — the
       // legacy path is untouched.

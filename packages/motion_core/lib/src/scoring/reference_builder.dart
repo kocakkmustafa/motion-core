@@ -152,6 +152,35 @@ final class MirrorResolution {
   final List<String> priorDisagreements;
 }
 
+/// Measured material behind one contributing take — see
+/// [CanonicalReference.takeEvidence].
+final class TakeEvidence {
+  const TakeEvidence({
+    required this.frames,
+    required this.durationUs,
+    required this.alignedDistinctShare,
+  });
+
+  /// Frames the take actually carries (before alignment).
+  final int frames;
+
+  /// Measured time span of those frames, µs (0 for a single frame — a span
+  /// nobody measured is not declared).
+  final int durationUs;
+
+  /// Share of the medoid timeline this take answered with DISTINCT samples,
+  /// in `(0, 1]`. 1.0 = every aligned position got its own measurement;
+  /// 0.01 = one sample stretched across the timeline (replication posing
+  /// as measurement). The medoid itself is 1.0 by construction.
+  final double alignedDistinctShare;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'frames': frames,
+        'durationS': durationUs / 1e6,
+        'alignedDistinctShare': alignedDistinctShare,
+      };
+}
+
 /// Thrown when the sources do not agree enough to distil a reference
 /// (M-F-47): a count gate alone cannot see that 23° and 112° are both "in".
 final class ReferenceAgreementError implements Exception {
@@ -209,6 +238,7 @@ final class CanonicalReference {
     this.priorDisagreements = const <String>[],
     this.gateJoints,
     this.gateBasis,
+    this.takeEvidence = const <String, TakeEvidence>{},
   });
 
   /// The joint names the M-F-47 agreement gate's per-take median was
@@ -222,6 +252,21 @@ final class CanonicalReference {
   /// mandatory whenever the gate set is narrowed, so the narrowing can never
   /// silently re-litigate a coached_only decision without naming it.
   final String? gateBasis;
+
+  /// Per contributing take: how much MEASURED material stands behind its
+  /// contribution (M-F-60 evidenceThickness, weak-take leg; M-F-68 HIGH-1).
+  ///
+  /// DTW's slope-normalized corridor deliberately accepts any length ratio
+  /// (tempo elasticity), so a 1-frame take aligns "successfully" by
+  /// stretching its single sample across the whole medoid timeline — and
+  /// the variance it injects can flip a joint's tolerance label from floor
+  /// to variance, making the artifact claim instructor disagreement nobody
+  /// measured (replication is not measurement — the G-078 lesson at the
+  /// alignment level). This field REPORTS the degeneracy instead of gating
+  /// it: a gate needs a measured threshold, and the measured distribution
+  /// of [TakeEvidence.alignedDistinctShare] across real artifacts is where
+  /// that threshold will come from.
+  final Map<String, TakeEvidence> takeEvidence;
 
   /// M-F-46 rule 7 input: whether the orientation assignment was decisive.
   final bool mirrorConfident;
@@ -800,15 +845,33 @@ final class ReferenceBuilder {
 
     // Warp every take onto the medoid's time base.
     final List<List<JointAngleVector>> aligned = <List<JointAngleVector>>[];
+    final Map<String, TakeEvidence> takeEvidence = <String, TakeEvidence>{};
+    int spanUs(List<JointAngleVector> frames) =>
+        frames.length < 2 ? 0 : frames.last.tUs - frames.first.tUs;
     for (int t = 0; t < takes.length; t++) {
       if (t == medoid) {
         aligned.add(base);
+        takeEvidence[takes[t].id] = TakeEvidence(
+          frames: base.length,
+          durationUs: spanUs(base),
+          alignedDistinctShare: 1.0,
+        );
         continue;
       }
       final List<JointAngleVector> other = takes[t].frames;
       final DtwResult r = dtw.align(base.length, other.length,
           (int i, int j) => similarity.distance(base[i], other[j]),
           dtUs: _dtUsOf(other));
+      // Weak-take accounting (M-F-68 HIGH-1): how much of the medoid
+      // timeline this take answered with its OWN samples rather than
+      // stretched repeats. Reported, not gated — the gate's threshold must
+      // come from the measured distribution of this very field.
+      takeEvidence[takes[t].id] = TakeEvidence(
+        frames: other.length,
+        durationUs: spanUs(other),
+        alignedDistinctShare:
+            r.refToLearner.toSet().length / base.length,
+      );
       aligned.add(List<JointAngleVector>.generate(
         base.length,
         (int i) => other[r.refToLearner[i]],
@@ -849,6 +912,7 @@ final class ReferenceBuilder {
       priorDisagreements: resolution.priorDisagreements,
       gateJoints: gateJoints,
       gateBasis: gateBasis,
+      takeEvidence: takeEvidence,
     );
   }
 
