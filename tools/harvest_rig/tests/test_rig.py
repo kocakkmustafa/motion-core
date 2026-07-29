@@ -192,6 +192,26 @@ def check_usable_window() -> None:
             check(r.accepted and r.usable_window_s == 12.0,
                   "oran düşük ama pencere yeterli -> KABUL")
 
+            # L-090/L-091: kurtarma ÜST-gövde reddine de uygulanmalı ve sonda
+            # iki kümenin BİRLEŞİMİNİ görmeli (kullanılabilir pencere = her
+            # gerekli landmark AYNI ANDA görünür).
+            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.50, 0.95)
+            seen_ids: dict = {}
+
+            def win_spy(path, dur, model, need, step, cap):
+                seen_ids["need"] = need
+                return 20.0
+
+            triage_mod._usable_window = win_spy
+            r = triage_mod.triage(
+                vid, thresholds=triage_mod.TriageThresholds(
+                    **base, min_usable_window_s=6.0, lower_body_ids=(23, 24)),
+                pose_model=Path("d.task"))
+            check(r.accepted, "üst-gövde oranı düşük ama pencere yeterli -> KABUL")
+            check(seen_ids.get("need") == (0, 11, 12, 23, 24),
+                  "pencere sondası üst+alt kümelerin BİRLEŞİMİNİ alıyor")
+
+            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.30)
             triage_mod._usable_window = lambda *a, **k: 3.0
             r = triage_mod.triage(
                 vid, thresholds=triage_mod.TriageThresholds(

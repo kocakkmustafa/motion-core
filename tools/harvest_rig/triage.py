@@ -305,36 +305,50 @@ def triage(
             lower_ids=th.lower_body_ids,
         )
         report.upper_body_ratio = upper
+        pending: list[str] = []
         if report.upper_body_ratio < th.min_upper_body_ratio:
-            report.rejects.append(
+            pending.append(
                 f"üst-gövde oranı {report.upper_body_ratio:.2f} < "
                 f"{th.min_upper_body_ratio} (baş-kırpık/el-yakın kadraj?)"
             )
         if th.min_full_body_ratio > 0.0:
             report.full_body_ratio = full
             if report.full_body_ratio < th.min_full_body_ratio:
-                # Oran düştü — ama fixture bir temiz TEKRAR ister, temiz bir
-                # video değil. Kesintisiz pencere yeterliyse red kalkar.
-                if th.min_usable_window_s > 0.0:
-                    report.usable_window_s = _usable_window(
-                        p, duration_s, pose_model, th.lower_body_ids,
-                        th.window_probe_step_s, th.max_window_probe_frames,
-                    )
-                # DİKKAT: kurtarma yalnız özellik AÇIKKEN geçerli. Sade bir
-                # `window < esik` karşılaştırması, eşik 0 iken 0<0 = False
-                # verip her düşük-oranlı klibi sessizce KABUL ediyordu.
-                rescued = (th.min_usable_window_s > 0.0
-                           and (report.usable_window_s or 0.0)
-                           >= th.min_usable_window_s)
-                if not rescued:
-                    extra = ""
-                    if th.min_usable_window_s > 0.0:
-                        extra = (f"; en uzun kesintisiz pencere "
-                                 f"{report.usable_window_s:.0f}sn < "
-                                 f"{th.min_usable_window_s:.0f}sn")
-                    report.rejects.append(
-                        f"tam-gövde oranı {report.full_body_ratio:.2f} < "
-                        f"{th.min_full_body_ratio} (bu hareketin istediği "
-                        f"landmark'lar {th.lower_body_ids} kadraj dışı){extra}"
-                    )
+                pending.append(
+                    f"tam-gövde oranı {report.full_body_ratio:.2f} < "
+                    f"{th.min_full_body_ratio} (bu hareketin istediği "
+                    f"landmark'lar {th.lower_body_ids} kadraj dışı)"
+                )
+
+        # Oran ölçütü iki ayrı nedenle zayıf ve İKİSİ de ölçüldü:
+        #  (1) Video GENELİNİ ölçüyor, oysa fixture bir temiz TEKRAR ister —
+        #      giriş/konuşma bölümleri ölçülebilir klipleri aşağı çekiyordu
+        #      (L-085: reddedilen 6 klibin 6'sında da pencere vardı).
+        #  (2) `pose_probe_frames` 12 kareyle oran tahmininin standart hatası
+        #      ~0,14; karar eşiği 0,60. Yani eşik civarında hüküm KISMEN
+        #      RASTLANTISAL. Ölçülen iki klip: gerçek üst-gövde oranı 0,70 ve
+        #      0,79 iken 12 kare 0,50 ve 0,58 raporladı (L-091).
+        # Pencere sondası yoğun örneklediği için ikisini birden çözer: hem
+        # hareket anına bakar hem gürültüsü düşüktür. Bu yüzden kurtarma ARTIK
+        # ÜST-GÖVDE reddine de uygulanıyor, yalnız alt-gövdeye değil.
+        if pending and th.min_usable_window_s > 0.0:
+            need = tuple(sorted({0, 11, 12, *th.lower_body_ids}))
+            report.usable_window_s = _usable_window(
+                p, duration_s, pose_model, need,
+                th.window_probe_step_s, th.max_window_probe_frames,
+            )
+        # Kurtarma yalnız özellik AÇIKKEN geçerli — sade bir `window < esik`,
+        # eşik 0 iken 0<0=False verip her düşük-oranlı klibi sessizce KABUL
+        # ediyordu (L-087).
+        rescued = (th.min_usable_window_s > 0.0
+                   and (report.usable_window_s or 0.0) >= th.min_usable_window_s)
+        if pending and not rescued:
+            if th.min_usable_window_s > 0.0:
+                pending.append(
+                    f"en uzun kesintisiz pencere "
+                    f"{(report.usable_window_s or 0.0):.0f}sn < "
+                    f"{th.min_usable_window_s:.0f}sn"
+                )
+            report.rejects.extend(pending)
+
     return report
