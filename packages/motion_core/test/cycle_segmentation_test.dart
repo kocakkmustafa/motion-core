@@ -73,6 +73,53 @@ void main() {
     });
   });
 
+  group('temporal band (doc 60 §1 — wf_dfb1dcd3 bandRadius leak)', () {
+    test('0.6 s of drift is tolerated identically at 30 and 60 fps', () {
+      const AngularSimilarity sim = AngularSimilarity();
+      const Dtw dtw = Dtw();
+      for (final int fps in <int>[30, 60]) {
+        final List<PoseFrame> ref = fourCountPhrase().sample(fps: fps);
+        final List<PoseFrame> del = delayedByFrames(ref, (0.6 * fps).round());
+        final List<JointAngleVector> a = angleSeries(ref);
+        final List<JointAngleVector> b = angleSeries(del);
+        final DtwResult r = dtw.align(a.length, b.length,
+            (int i, int j) => sim.distance(a[i], b[j]),
+            dtUs: (1e6 / fps).round());
+        expect(r.bandSaturated, isFalse,
+            reason: 'fps=$fps: 0.6 s drift sits inside the declared 0.8 s '
+                'corridor at ANY rate');
+      }
+    });
+
+    test('the legacy frame-count path is exactly the defect', () {
+      // Same 0.6 s of drift, 60 fps, no measured dt: 24 FRAMES is only
+      // 0.4 s there, and the alignment honestly reports saturation — this
+      // pins why callers must pass dtUs.
+      const AngularSimilarity sim = AngularSimilarity();
+      const Dtw dtw = Dtw();
+      final List<PoseFrame> ref = fourCountPhrase().sample(fps: 60);
+      final List<PoseFrame> del = delayedByFrames(ref, 36);
+      final List<JointAngleVector> a = angleSeries(ref);
+      final List<JointAngleVector> b = angleSeries(del);
+      final DtwResult r = dtw.align(
+          a.length, b.length, (int i, int j) => sim.distance(a[i], b[j]));
+      expect(r.bandSaturated, isTrue);
+    });
+
+    test('the period estimate is rate-independent (two-speed rule)', () {
+      final SyntheticSequence seq = tiled(fourCountPhrase(), 5);
+      final CyclePeriodEstimate p30 = const CyclePeriodEstimator()
+          .estimate(angleSeries(seq.sample(fps: 30)));
+      final CyclePeriodEstimate p60 = const CyclePeriodEstimator()
+          .estimate(angleSeries(seq.sample(fps: 60)));
+      expect(p30.measured, isTrue, reason: p30.reason);
+      expect(p60.measured, isTrue, reason: p60.reason);
+      // Same 2.5 s period, expressed in each rate's own frames.
+      expect(p30.periodFrames, closeTo(75, 3));
+      expect(p60.periodFrames, closeTo(150, 6));
+    });
+  });
+
   group('cycle segmentation acceptance (L-139)', () {
     test('two rep-segments cut from the same source agree to ~zero', () {
       // Noise-free on purpose: with jitter the comparison measures the

@@ -88,14 +88,23 @@ def normalized_series(frames: list[list[list[float]]]) -> list[list[float]]:
     return out
 
 
-def _motion_energy(seg: list[list[float]]) -> float:
-    """Mean per-frame change — how much the body is actually moving."""
-    if len(seg) < 2:
+def _motion_energy(seg: list[list[float]], fps: float) -> float:
+    """Mean change PER SECOND — how much the body is actually moving.
+
+    Per-second, not per-frame (doc 60 §1 / M-O-23, wf_dfb1dcd3 confirmed
+    this as a frame-unit leak): per-frame deltas shrink as the frame rate
+    grows, so the same real movement read half the "energy" at 60 fps and
+    a fixed per-frame floor silently rejected it. The floor below is
+    declared in per-second units; 0.30/s is the old 0.010/frame at the
+    30 fps the number was tuned on — identical behavior there, correct
+    behavior everywhere else.
+    """
+    if len(seg) < 2 or fps <= 0:
         return 0.0
     total = 0.0
     for a, b in zip(seg, seg[1:]):
         total += sum(abs(x - y) for x, y in zip(a, b)) / len(a)
-    return total / (len(seg) - 1)
+    return (total / (len(seg) - 1)) * fps
 
 
 def _periodicity(
@@ -176,7 +185,7 @@ def find_movement_windows(
     min_period_s: float = 0.4,
     max_period_s: float = 4.0,
     min_periodicity: float = 0.5,
-    min_energy: float = 0.010,
+    min_energy_per_s: float = 0.30,
     max_windows: int = 5,
 ) -> list[MovementWindow]:
     """Windows that are both repeating and moving."""
@@ -204,8 +213,8 @@ def find_movement_windows(
         seg = [r for r in series[s:s + win] if r is not None]
         if len(seg) < win * 0.8:
             continue
-        energy = _motion_energy(seg)
-        if energy < min_energy:
+        energy = _motion_energy(seg, fps)
+        if energy < min_energy_per_s:
             continue                      # standing still — reject before the
                                           # autocorrelation can flatter it
         per, lag = _periodicity(seg, lo, min(hi, len(seg) - 2))

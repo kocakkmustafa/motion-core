@@ -3,6 +3,33 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.1 — 2026-07-29 (yeni vardiya, tur 1 devamı)
+
+- **`Dtw` koridoru ZAMANSAL oldu (wf_dfb1dcd3 doğrulanmış çekirdek bulgu /
+  doc 60 §1):** `bandRadius: 24` kare, yalnız 30 fps'te 0,8 s demekti —
+  60 fps'te aynı sürüklenme toleransı sessizce yarıya iniyordu. Yeni:
+  `bandRadiusS` (SANİYE, beyan edilen anlam) + `align(..., dtUs:)` —
+  kare yarıçapı çağrı başına ÖLÇÜLMÜŞ kare aralığından türetilir
+  (`Dtw.medianDtUs`); dt bilinmiyorsa eski kare-yolu beyanlı fallback.
+  Kablolandı: ReferenceBuilder (medoid/warp/sapma yolları, öğrenen-taraf
+  dt) · CycleAligner (`align(dtUs:)`; ayrım formülü ETKİN yarıçapı
+  kullanır; kendi Dtw'si `bandRadiusS: 0.267` = 8 kare @30) ·
+  ReferenceCli (take-başına ölçülmüş dt). İki-hız testleri: 0,6 s
+  sürüklenme 30 VE 60 fps'te aynı tolere edilir; eski kare-yolunun tam
+  kusuru pinli; periyot tahmini hız-bağımsız (75↔150 kare = aynı 2,5 s).
+- **Rig `_motion_energy` saniye-birimli** (4 doğrulanmamış iddiadan #4
+  DOĞRULANDI+DÜZELTİLDİ): kare-başına delta 60 fps'te aynı hareketi yarı
+  "enerji" okuyor, sabit taban gerçek hareket penceresini reddediyordu →
+  `min_energy_per_s: 0.30` (= eski 0.010/kare @30 fps, davranış-koruyucu).
+  Rig testleri + izolatör öz-testi yeşil.
+- Kalan iddialar: `hysteresisFrames` (#2) DOĞRULANDI — kare-sayımlı
+  histerezis 60 fps'te 2× hızlı taahhüt eder; zaman-tabanlı tasarım
+  (133 ms + ≥2 kare tabanı) DEFTER'de, ayrı sürümde uygulanacak.
+  `analyze_d2 wr_jump` (#3) DOĞRULANDI-nüanslı — eşik glitch/hareket
+  ayrıştırıcı, hareket tarafı dt ile ölçekleniyor (24 fps'te gerçek hızlı
+  yumruk 0,56'ya çıkar > 0,55) — diagnostik-yalnız, JabLab'a sevk.
+- Test: 194/194.
+
 ## 0.8.0 — 2026-07-29 (yeni vardiya, tur 1)
 
 - **L-139 / ÇEVRİM-SEGMENTASYONU (kanonik CLI):** tam videolar arası DTW,

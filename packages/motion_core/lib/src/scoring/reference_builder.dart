@@ -375,9 +375,15 @@ final class ReferenceBuilder {
   /// mirrored. Near-ties are left alone rather than coin-flipped.
   final double mirrorMargin;
 
+  static int? _dtUsOf(List<JointAngleVector> frames) =>
+      Dtw.medianDtUs(<int>[for (final JointAngleVector f in frames) f.tUs]);
+
   double _distance(List<JointAngleVector> a, List<JointAngleVector> b) =>
-      dtw.align(a.length, b.length,
-          (int i, int j) => similarity.distance(a[i], b[j])).normalizedCost;
+      dtw
+          .align(a.length, b.length,
+              (int i, int j) => similarity.distance(a[i], b[j]),
+              dtUs: _dtUsOf(b))
+          .normalizedCost;
 
   /// Index of the take most similar to all the others — used as the time base.
   ///
@@ -707,7 +713,8 @@ final class ReferenceBuilder {
       }
       final List<JointAngleVector> other = takes[t].frames;
       final DtwResult r = dtw.align(base.length, other.length,
-          (int i, int j) => similarity.distance(base[i], other[j]));
+          (int i, int j) => similarity.distance(base[i], other[j]),
+          dtUs: _dtUsOf(other));
       aligned.add(List<JointAngleVector>.generate(
         base.length,
         (int i) => other[r.refToLearner[i]],
@@ -765,7 +772,8 @@ final class ReferenceBuilder {
                     base.length,
                     takes[t].frames.length,
                     (int i, int j) =>
-                        similarity.distance(base[i], takes[t].frames[j]));
+                        similarity.distance(base[i], takes[t].frames[j]),
+                    dtUs: _dtUsOf(takes[t].frames));
                 return List<JointAngleVector>.generate(base.length,
                     (int i) => takes[t].frames[r.refToLearner[i]],
                     growable: false);

@@ -74,7 +74,7 @@ final class CycleAlignment {
 /// already measures them via autocorrelation); this class never guesses them.
 final class CycleAligner {
   const CycleAligner({
-    this.dtw = const Dtw(bandRadius: 8, minBandRadius: 3),
+    this.dtw = const Dtw(bandRadius: 8, bandRadiusS: 0.267, minBandRadius: 3),
     this.phaseStep = 1,
     this.minPhaseMargin = 0.02,
   });
@@ -106,6 +106,7 @@ final class CycleAligner {
     required int learnerLen,
     required int learnerPeriod,
     required PairCost cost,
+    int? dtUs,
   }) {
     if (refPeriod < 4 || learnerPeriod < 4) {
       return const CycleAlignment.undetermined(
@@ -132,6 +133,7 @@ final class CycleAligner {
         refPeriod,
         learnerPeriod,
         (int i, int j) => cost(refStart + i, s + j),
+        dtUs: dtUs,
       );
       costs[s] = r.normalizedCost;
       if (r.normalizedCost < bestCost) {
@@ -157,8 +159,9 @@ final class CycleAligner {
     // separation can only raise the runner-up's cost, so material that
     // resolved before still resolves — the change removes false ambiguity,
     // it cannot add any.
-    final int separation = math.max(math.max(1, learnerPeriod ~/ 8),
-        dtw.bandRadius + dtw.minBandRadius + 1);
+    final int effRadius = dtw.effectiveRadius(dtUs);
+    final int separation = math.max(
+        math.max(1, learnerPeriod ~/ 8), effRadius + dtw.minBandRadius + 1);
     double runnerUp = double.infinity;
     for (int s = 0; s < learnerPeriod; s += phaseStep) {
       final int dist = math.min(
@@ -178,7 +181,7 @@ final class CycleAligner {
         secondCycleCost: null,
         reason: 'no candidate phase outside the aligner\'s warp reach — '
             'period ($learnerPeriod frames) too short relative to the '
-            'alignment band (radius ${dtw.bandRadius}) to verify phase',
+            'alignment band (radius $effRadius) to verify phase',
       );
     }
     final double margin = runnerUp - bestCost;
@@ -193,6 +196,7 @@ final class CycleAligner {
             refPeriod,
             learnerPeriod,
             (int i, int j) => cost(refStart + i, secondStart + j),
+            dtUs: dtUs,
           )
           .normalizedCost;
     }

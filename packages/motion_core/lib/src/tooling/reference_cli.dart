@@ -4,6 +4,7 @@ import '../geometry/normalization.dart';
 import '../pose/confidence_gate.dart';
 import '../pose/pose_frame.dart';
 import '../scoring/cycle_aligner.dart';
+import '../scoring/dtw.dart';
 import '../scoring/cycle_segmentation.dart';
 import '../scoring/reference_builder.dart';
 
@@ -284,7 +285,9 @@ final class ReferenceCli {
                     a.length,
                     b.length,
                     (int i, int j) =>
-                        builder.similarity.distance(a[i], b[j]))
+                        builder.similarity.distance(a[i], b[j]),
+                    dtUs: Dtw.medianDtUs(
+                        <int>[for (final JointAngleVector f in b) f.tUs]))
                 .normalizedCost;
           }
           if (total < bestCost) {
@@ -315,6 +318,8 @@ final class ReferenceCli {
             learnerPeriod: p,
             cost: (int i, int j) =>
                 builder.similarity.distance(anchor.frames[i], t.frames[j]),
+            dtUs: Dtw.medianDtUs(
+                <int>[for (final JointAngleVector f in t.frames) f.tUs]),
           );
           if (!al.resolved) {
             excludedUnalignable[t.id] = al.reason;

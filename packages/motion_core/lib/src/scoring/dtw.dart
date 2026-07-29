@@ -66,6 +66,7 @@ final class DtwResult {
 final class Dtw {
   const Dtw({
     this.bandRadius = 24,
+    this.bandRadiusS = 0.8,
     this.minBandRadius = 4,
     this.saturationRatio = 0.15,
     this.warpPenalty = 0.08,
@@ -73,11 +74,46 @@ final class Dtw {
 
   /// Corridor half-width in frames around the slope-adjusted diagonal.
   ///
-  /// At 30 fps, 24 frames ≈ 0.8 s of tolerated drift over a phrase — roughly a
-  /// beat at 75 BPM. Tune per style in versioned config, not here.
+  /// Legacy fallback, used only when [align] is not told the frame interval:
+  /// 24 frames is 0.8 s *at the 30 fps this number was tuned on*, and at any
+  /// other rate it silently means a different amount of time — the M-O-23
+  /// unit-leak class (wf_dfb1dcd3 confirmed it here). Callers that know
+  /// their material's measured `dtUs` should pass it so [bandRadiusS]
+  /// governs instead.
   final int bandRadius;
 
+  /// Corridor half-width in SECONDS — the declared meaning of the band.
+  ///
+  /// The tolerated drift is temporal ("roughly a beat at 75 BPM"), so the
+  /// parameter is temporal; frames are derived per call from the measured
+  /// frame interval, never assumed (doc 60 §1). Null disables the
+  /// time-based path entirely.
+  final double? bandRadiusS;
+
   final int minBandRadius;
+
+  /// The corridor radius in frames for material with the given measured
+  /// frame interval; falls back to the legacy [bandRadius] when the
+  /// interval is unknown.
+  int effectiveRadius(int? dtUs) {
+    if (bandRadiusS != null && dtUs != null && dtUs > 0) {
+      return math.max(minBandRadius, (bandRadiusS! * 1e6 / dtUs).round());
+    }
+    return math.max(minBandRadius, bandRadius);
+  }
+
+  /// Median frame interval of [timestampsUs], in µs — the measured `dtUs`
+  /// that [align] wants. Null when it cannot be measured (fewer than two
+  /// frames or non-increasing timestamps).
+  static int? medianDtUs(List<int> timestampsUs) {
+    if (timestampsUs.length < 2) return null;
+    final List<int> dts = <int>[
+      for (int i = 1; i < timestampsUs.length; i++)
+        timestampsUs[i] - timestampsUs[i - 1],
+    ]..sort();
+    final int dt = dts[dts.length ~/ 2];
+    return dt > 0 ? dt : null;
+  }
 
   /// Share of the path that must ride the band edge before the alignment is
   /// declared untrustworthy.
@@ -105,7 +141,7 @@ final class Dtw {
 
   static const double _inf = double.infinity;
 
-  DtwResult align(int n, int m, PairCost cost) {
+  DtwResult align(int n, int m, PairCost cost, {int? dtUs}) {
     if (n == 0 || m == 0) {
       return const DtwResult(
         normalizedCost: 1.0,
@@ -116,7 +152,7 @@ final class Dtw {
       );
     }
 
-    final int radius = math.max(minBandRadius, bandRadius);
+    final int radius = effectiveRadius(dtUs);
     final double slope = (n > 1) ? (m - 1) / (n - 1) : 0.0;
 
     // The band as the *slope* defines it, before clipping to the array. Edge
