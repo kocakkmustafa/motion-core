@@ -139,6 +139,14 @@ final class PoseFrame {
   /// already metric and never need this — they remain the recommended space
   /// for offline reference building, while corrected image landmarks are the
   /// recommended runtime space (world x/y carries its own regression error).
+  ///
+  /// **Angled-subject caveat (M-O-08, measured):** this corrects the 2D
+  /// projection only. When the subject sits *rotated* relative to the camera
+  /// (piano side-on, guitar diagonal, cello right-front), a 3D axis
+  /// foreshortens in depth and no in-plane scaling can recover it — on real
+  /// harvest frames the correction improved the median trunk-axis error
+  /// (41%→27%) while worsening the worst case (62%→74%). Metrics involving
+  /// 3D body axes on habitually-angled subjects must use world coordinates.
   PoseFrame toIsotropic(FrameSize size) {
     final double a = size.aspect;
     final List<PoseLandmark> out = landmarks

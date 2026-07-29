@@ -98,12 +98,28 @@ def _motion_energy(seg: list[list[float]]) -> float:
     return total / (len(seg) - 1)
 
 
-def _periodicity(seg: list[list[float]], lo: int, hi: int) -> tuple[float, int]:
-    """Best normalized autocorrelation over a lag range, on the centred series.
+def _periodicity(
+    seg: list[list[float]], lo: int, hi: int, *, min_prominence: float = 0.08
+) -> tuple[float, int]:
+    """Periodicity as a *prominent local peak* of the autocorrelation.
 
     Centring is what stops a held pose from scoring 1.0: subtracting the window
     mean leaves a static segment with almost no signal to correlate, so its
     score collapses instead of saturating.
+
+    M-C-25 (P0, measured on real harvest footage): taking the ACF's *global
+    maximum* over the lag range is structurally wrong for real recordings.
+    Continuous motion makes adjacent frames similar, so the ACF **decays
+    monotonically** and its maximum sits at the smallest allowed lag on
+    every non-repetitive segment — the reported "period" was the search
+    floor, not a measurement (4/5 selected segments had no real peak at
+    all). A true repetition instead produces a *local peak rising above the
+    decaying envelope* (measured positive case: acf 0.588 at 1.20 s with its
+    2.40 s harmonic alongside). So: only interior local maxima with at least
+    [min_prominence] of rise over their neighbouring valleys count; a window
+    whose ACF has no such peak is *moving but not repeating* and is rejected.
+    Synthetic sinusoids cannot catch this defect — their ACF has a genuine
+    peak AND a non-decaying envelope — which is how it survived self-tests.
     """
     n = len(seg)
     if n < hi + 2:
@@ -116,8 +132,9 @@ def _periodicity(seg: list[list[float]], lo: int, hi: int) -> tuple[float, int]:
     if energy < 1e-9:
         return 0.0, 0
 
-    best, best_lag = 0.0, 0
-    for lag in range(lo, hi + 1):
+    lags = list(range(lo, hi + 1))
+    r: list[float] = []
+    for lag in lags:
         num = 0.0
         for t in range(n - lag):
             num += sum(c[t][d] * c[t + lag][d] for d in range(dim))
@@ -125,11 +142,28 @@ def _periodicity(seg: list[list[float]], lo: int, hi: int) -> tuple[float, int]:
         e1 = sum(sum(v * v for v in c[t]) for t in range(n - lag))
         e2 = sum(sum(v * v for v in c[t + lag]) for t in range(n - lag))
         denom = math.sqrt(e1 * e2)
-        if denom < 1e-12:
+        r.append(num / denom if denom >= 1e-12 else 0.0)
+
+    best, best_lag = 0.0, 0
+    for k in range(1, len(r) - 1):
+        if not (r[k] > r[k - 1] and r[k] >= r[k + 1]):
+            continue  # not an interior local maximum
+        # Walk down to the valley on each side; prominence is the rise above
+        # the *higher* of the two valleys — a micro-bump on a decaying slope
+        # has a shallow uphill side and fails this.
+        j = k
+        while j > 0 and r[j - 1] < r[j]:
+            j -= 1
+        left_valley = r[j]
+        j = k
+        while j < len(r) - 1 and r[j + 1] < r[j]:
+            j += 1
+        right_valley = r[j]
+        prominence = r[k] - max(left_valley, right_valley)
+        if prominence < min_prominence:
             continue
-        r = num / denom
-        if r > best:
-            best, best_lag = r, lag
+        if r[k] > best:
+            best, best_lag = r[k], lags[k]
     return best, best_lag
 
 
@@ -255,6 +289,27 @@ def self_test() -> int:
     run("standing still (the trap)", _synth(300, period=0, amp=0.0), False)
     run("tiny idle sway", _synth(300, period=30, amp=0.004), False)
     run("moving but not repeating", _synth(300, period=400, amp=0.10), False)
+
+    # M-C-25 class in its purest form: continuous, energetic, NEVER repeating.
+    # Its ACF decays monotonically — under the old global-max rule this scored
+    # "periodic" at the search floor on every real tutorial's talking segments.
+    rng = __import__("random").Random(7)
+    walk = []
+    wx, wy = 0.5, 0.5
+    for _t in range(300):
+        wx += rng.gauss(0, 0.004)
+        wy += rng.gauss(0, 0.004)
+        lm = [[0.5, 0.5, 0.0, 1.0] for _ in range(33)]
+        lm[L_HIP] = [0.45, 0.60, 0, 1]
+        lm[R_HIP] = [0.55, 0.60, 0, 1]
+        lm[L_SHOULDER] = [0.42, 0.38, 0, 1]
+        lm[R_SHOULDER] = [0.58, 0.38, 0, 1]
+        for i in BODY:
+            if i in (L_HIP, R_HIP, L_SHOULDER, R_SHOULDER):
+                continue
+            lm[i] = [wx, wy, 0, 1]
+        walk.append(lm)
+    run("random walk (M-C-25 class)", walk, False)
 
     print()
     if fails:
