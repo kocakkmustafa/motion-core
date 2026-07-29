@@ -92,7 +92,17 @@ WEAK_PASSIVE_MARKERS = (
 #: güvenli yön bilinçli olarak seçildi.
 POSTURE_CUE_MARKERS = (
     r"\b(sit|stand) (up )?(tall|straight|upright)\b",
-    r"\bkeep your (back|spine|shoulders?|head|chin|neck|wrist)\b",
+    # MECAZ KAPISI (M-F-143 sevki, JabLab M-F-137 deseniyle AYNI): vücut
+    # adının ardından "in the"/"on the" gelirse bu bir DURUŞ yönergesi değil
+    # deyimdir — "keep your head IN THE game", "keep your eyes ON THE prize".
+    # LATENT kusurdu: aile korpusunda bugün SIFIR isabeti var (ölçtüm), ama
+    # kalıp eşleşiyordu ve JabLab izole kıyasla benim ailemden ACTIVE
+    # ürettiğini gösterdi. Ölçülmüş geçiş olmadan da kapatılır, çünkü
+    # yanlış yön AKTİF tarafta: kötü kaynağı referansa SOKAR (M-F-43).
+    # Bedeli isimle: "keep your back ON THE wall" gibi gerçek ama seyrek
+    # yönergeler de elenir — güvenli yön bilinçli seçildi (M-O-54 aynı karar).
+    r"\bkeep your (back|spine|shoulders?|head|chin|neck|wrist)\b"
+    r"(?!\s+(?:in|on)\s+the\b)",
     r"\b(drop|lower|roll) your shoulders?\b",
     r"\byour shoulders? (back and )?down\b",
     r"\byour chin (up|down|level|parallel)\b",
