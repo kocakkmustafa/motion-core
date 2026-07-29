@@ -54,6 +54,19 @@ class TriageThresholds:
     #: Çağıran, ölçeceği metriklerin gerçekten istediği indeksleri verir.
     #: Varsayılan = kalça+ayak bileği (eski davranış birebir korunur).
     lower_body_ids: tuple[int, ...] = (23, 24, 27, 28)
+    #: Bir fixture için gereken şey temiz bir TEKRAR, temiz bir VİDEO değil.
+    #: Görünürlük oranı videonun tamamına yayılmış karelerden hesaplandığı için
+    #: giriş/konuşma bölümleri ölçülebilir klipleri aşağı çekiyordu. ÖLÇÜLDÜ
+    #: (L-085): reddedilen 6 overhead_reach klibinin 6'sında da kesintisiz
+    #: kullanılabilir pencere vardı — 114/54/36/19/9/7 sn. 114 saniye kusursuz
+    #: görünürlük taşıyan klip, genel oranı 0,47 olduğu için elenmişti.
+    #: >0 ise: oran eşiği KALSA DA bu uzunlukta kesintisiz pencere varsa kabul.
+    #: Pencere GÖRÜNÜRLÜK garantisi verir, tekrarın gerçekleştiğini DEĞİL —
+    #: hareket-varlığı ayrı bir kontroldür.
+    min_usable_window_s: float = 0.0
+    #: pencere taraması: adım ve üst sınır (maliyet sınırlı kalsın)
+    window_probe_step_s: float = 2.0
+    max_window_probe_frames: int = 90
     #: sonda yoğunlukları
     cut_probe_fps: float = 2.0
     pose_probe_frames: int = 12
@@ -70,6 +83,7 @@ class TriageReport:
     sharpness: float | None = None
     upper_body_ratio: float | None = None
     full_body_ratio: float | None = None
+    usable_window_s: float | None = None
     rejects: list[str] = field(default_factory=list)
 
     @property
@@ -84,6 +98,7 @@ class TriageReport:
             "sharpness": None if self.sharpness is None else round(self.sharpness, 1),
             "upperBodyRatio": None if self.upper_body_ratio is None else round(self.upper_body_ratio, 2),
             "fullBodyRatio": None if self.full_body_ratio is None else round(self.full_body_ratio, 2),
+            "usableWindowS": None if self.usable_window_s is None else round(self.usable_window_s, 1),
             "rejects": self.rejects,
         }
 
@@ -188,6 +203,49 @@ def _body_presence(
     return seen_upper / total, seen_full / total
 
 
+def _usable_window(
+    path: Path, duration_s: float, model_path: Path,
+    need_ids: tuple[int, ...], step_s: float, max_frames: int,
+) -> float:
+    """Gerekli landmark'ların KESİNTİSİZ görünür olduğu en uzun pencere (sn).
+
+    Oran sondasından farkı: oran videonun genelini ölçer, bu tek bir temiz
+    tekrarın var olup olmadığını ölçer. Fixture için gereken ikincisi.
+    Maliyet `max_frames` ile sınırlanır; uzun videoda adım otomatik büyür,
+    yani çözünürlük düşer ama tarama tamamlanır.
+    """
+    import mediapipe as mp  # noqa: PLC0415
+    from mediapipe.tasks import python as mp_python  # noqa: PLC0415
+    from mediapipe.tasks.python import vision  # noqa: PLC0415
+
+    span = max(duration_s - 1.0, 1.0)
+    step = max(step_s, span / max_frames)
+    times = np.arange(0.5, span, step)
+    options = vision.PoseLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
+        running_mode=vision.RunningMode.IMAGE,
+        num_poses=1,
+        min_pose_detection_confidence=0.3,
+    )
+    cap = cv2.VideoCapture(str(path))
+    best = cur = 0
+    with vision.PoseLandmarker.create_from_options(options) as lm:
+        for t in times:
+            cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
+            ok, frame = cap.read()
+            visible = False
+            if ok:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                res = lm.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
+                if res.pose_landmarks:
+                    pts = res.pose_landmarks[0]
+                    visible = all(pts[i].visibility >= 0.5 for i in need_ids)
+            cur = cur + 1 if visible else 0
+            best = max(best, cur)
+    cap.release()
+    return best * step
+
+
 def triage(
     path: str | Path,
     *,
@@ -255,9 +313,28 @@ def triage(
         if th.min_full_body_ratio > 0.0:
             report.full_body_ratio = full
             if report.full_body_ratio < th.min_full_body_ratio:
-                report.rejects.append(
-                    f"tam-gövde oranı {report.full_body_ratio:.2f} < "
-                    f"{th.min_full_body_ratio} (bu hareketin istediği "
-                    f"landmark'lar {th.lower_body_ids} kadraj dışı)"
-                )
+                # Oran düştü — ama fixture bir temiz TEKRAR ister, temiz bir
+                # video değil. Kesintisiz pencere yeterliyse red kalkar.
+                if th.min_usable_window_s > 0.0:
+                    report.usable_window_s = _usable_window(
+                        p, duration_s, pose_model, th.lower_body_ids,
+                        th.window_probe_step_s, th.max_window_probe_frames,
+                    )
+                # DİKKAT: kurtarma yalnız özellik AÇIKKEN geçerli. Sade bir
+                # `window < esik` karşılaştırması, eşik 0 iken 0<0 = False
+                # verip her düşük-oranlı klibi sessizce KABUL ediyordu.
+                rescued = (th.min_usable_window_s > 0.0
+                           and (report.usable_window_s or 0.0)
+                           >= th.min_usable_window_s)
+                if not rescued:
+                    extra = ""
+                    if th.min_usable_window_s > 0.0:
+                        extra = (f"; en uzun kesintisiz pencere "
+                                 f"{report.usable_window_s:.0f}sn < "
+                                 f"{th.min_usable_window_s:.0f}sn")
+                    report.rejects.append(
+                        f"tam-gövde oranı {report.full_body_ratio:.2f} < "
+                        f"{th.min_full_body_ratio} (bu hareketin istediği "
+                        f"landmark'lar {th.lower_body_ids} kadraj dışı){extra}"
+                    )
     return report

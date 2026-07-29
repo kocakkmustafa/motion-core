@@ -158,6 +158,50 @@ def check_per_movement() -> None:
           "sonda pozitif yönde de ölçülüyor (daima-0 sonda burada kalır)")
 
 
+def check_usable_window() -> None:
+    """L-085: oran düşse de kesintisiz pencere yeterliyse klip kabul edilir.
+
+    Fixture bir temiz TEKRAR ister, temiz bir VİDEO değil. Ölçüldü: reddedilen
+    6 overhead_reach klibinin 6'sında da kullanılabilir pencere vardı; biri
+    114 sn kusursuz görünürlük taşırken genel oranı 0,47 olduğu için elenmişti.
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+
+    import triage as triage_mod
+
+    real_body, real_win = triage_mod._body_presence, triage_mod._usable_window
+    triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.30)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            vid = os.path.join(td, "c.mp4")
+            write_video(vid, seconds=5.0, size=(640, 360))
+            base = dict(min_full_body_ratio=0.6, min_duration_s=4.0)
+
+            # Pencere kapalıyken (varsayılan) davranış eskisiyle aynı olmalı.
+            r = triage_mod.triage(vid, thresholds=triage_mod.TriageThresholds(**base),
+                                  pose_model=Path("d.task"))
+            check(not r.accepted and r.usable_window_s is None,
+                  "pencere kapalıyken eski davranış birebir korunuyor")
+
+            triage_mod._usable_window = lambda *a, **k: 12.0
+            r = triage_mod.triage(
+                vid, thresholds=triage_mod.TriageThresholds(
+                    **base, min_usable_window_s=6.0), pose_model=Path("d.task"))
+            check(r.accepted and r.usable_window_s == 12.0,
+                  "oran düşük ama pencere yeterli -> KABUL")
+
+            triage_mod._usable_window = lambda *a, **k: 3.0
+            r = triage_mod.triage(
+                vid, thresholds=triage_mod.TriageThresholds(
+                    **base, min_usable_window_s=6.0), pose_model=Path("d.task"))
+            check(not r.accepted and any("pencere" in x for x in r.rejects),
+                  "pencere de yetersizse red ve gerekçe pencereyi söylüyor")
+    finally:
+        triage_mod._body_presence, triage_mod._usable_window = real_body, real_win
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -245,6 +289,9 @@ def main() -> int:
 
     print("[5] harekete özel landmark şartı")
     check_per_movement()
+
+    print("[6] kullanılabilir pencere (L-085)")
+    check_usable_window()
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
