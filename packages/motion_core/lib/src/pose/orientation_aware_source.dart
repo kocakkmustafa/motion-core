@@ -92,8 +92,11 @@ final class OrientationAwarePoseSource {
     this._driver, {
     StructuralValidator Function()? validatorFactory,
     this.hysteresisFrames = 5,
+    this.hysteresisMs,
     List<int>? confidencePoints,
-  })  : _validatorFactory = validatorFactory ?? StructuralValidator.new,
+  })  : assert(hysteresisMs == null || hysteresisMs > 0,
+            'hysteresisMs must be positive when given'),
+        _validatorFactory = validatorFactory ?? StructuralValidator.new,
         _confidencePoints = confidencePoints ?? LmRegion.fullBody {
     _validators = <BodyOrientation, StructuralValidator>{
       for (final BodyOrientation o in BodyOrientation.values)
@@ -106,8 +109,22 @@ final class OrientationAwarePoseSource {
   final List<int> _confidencePoints;
 
   /// Consecutive frames a *different* orientation must win before the
-  /// source's settled belief flips.
+  /// source's settled belief flips. Ignored when [hysteresisMs] is set.
   final int hysteresisFrames;
+
+  /// Time-based hysteresis (M-F-72): the challenger must keep winning for at
+  /// least this many milliseconds of frame-timestamp time, with a floor of
+  /// two winning frames, before the settled belief flips.
+  ///
+  /// Frame-COUNT hysteresis means variable TIME on a live camera: 5 frames
+  /// is 500 ms at 10 fps (sluggish) and 83 ms at 60 fps (jittery) — the same
+  /// config would behave differently on every device. Time is what the
+  /// design actually means, and the frames carry their own timestamps, so it
+  /// is measured directly rather than converted through an assumed fps.
+  ///
+  /// Null (the default) keeps the legacy frame-count behavior; flipping the
+  /// family default is a separate, deliberate decision.
+  final int? hysteresisMs;
 
   /// One validator per orientation stream: temporal checks (bone stability,
   /// jump limits) must each see a consistent history, and in a dual-pass
@@ -117,6 +134,8 @@ final class OrientationAwarePoseSource {
   BodyOrientation _resolved = BodyOrientation.upright;
   BodyOrientation? _challenger;
   int _challengerStreak = 0;
+  int _challengerFirstTUs = 0;
+  int _challengerLastTUs = 0;
 
   /// The source's current settled belief.
   BodyOrientation get resolved => _resolved;
@@ -125,6 +144,8 @@ final class OrientationAwarePoseSource {
     _resolved = to;
     _challenger = null;
     _challengerStreak = 0;
+    _challengerFirstTUs = 0;
+    _challengerLastTUs = 0;
     for (final StructuralValidator v in _validators.values) {
       v.reset();
     }
@@ -172,7 +193,7 @@ final class OrientationAwarePoseSource {
     }
 
     final bool usable = accepted != null && accepted.usable;
-    _updateHysteresis(usable ? accepted.orientation : null);
+    _updateHysteresis(usable ? accepted.orientation : null, tUs);
 
     return OrientationResolution(
       tUs: tUs,
@@ -204,20 +225,38 @@ final class OrientationAwarePoseSource {
     return usable.first;
   }
 
-  void _updateHysteresis(BodyOrientation? winner) {
+  void _updateHysteresis(BodyOrientation? winner, int tUs) {
     if (winner == null) return; // an unusable frame is evidence of nothing
     if (winner == _resolved) {
       _challenger = null;
       _challengerStreak = 0;
       return;
     }
-    if (_challenger == winner) {
+    final int? windowUs =
+        hysteresisMs == null ? null : hysteresisMs! * 1000;
+    final bool stale = windowUs != null &&
+        _challenger == winner &&
+        tUs - _challengerLastTUs > windowUs;
+    if (_challenger == winner && !stale) {
       _challengerStreak += 1;
     } else {
+      // A new challenger — or the same one whose last win is older than the
+      // hysteresis window itself: evidence too old to count toward the
+      // window cannot seed a flip (no extra constant invented; the window
+      // is its own continuity bound).
       _challenger = winner;
       _challengerStreak = 1;
+      _challengerFirstTUs = tUs;
     }
-    if (_challengerStreak >= hysteresisFrames) {
+    _challengerLastTUs = tUs;
+
+    final bool flip = windowUs == null
+        ? _challengerStreak >= hysteresisFrames
+        // M-F-72: sustained time AND at least two winning frames — a single
+        // frame is never enough to turn the engine's world upside down, no
+        // matter how much silence surrounds it.
+        : _challengerStreak >= 2 && tUs - _challengerFirstTUs >= windowUs;
+    if (flip) {
       _resolved = winner;
       _challenger = null;
       _challengerStreak = 0;

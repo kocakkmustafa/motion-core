@@ -190,4 +190,79 @@ void main() {
       expect(source.resolved, BodyOrientation.inverted);
     });
   });
+
+  group('time-based hysteresis (M-F-72: 133 ms + ≥2 frame floor)', () {
+    OrientationAwarePoseSource timeSource() => OrientationAwarePoseSource(
+        _InvertedPersonDriver(),
+        hysteresisMs: 133,
+        // Would flip after 2 frames if frame-count mode were still active —
+        // every test below would fail fast if hysteresisMs were ignored.
+        hysteresisFrames: 2);
+
+    void winAt(OrientationAwarePoseSource s, int tUs) =>
+        s.next(tUs, const OrientationExpectation.ambiguous());
+
+    test('30 fps: flips once the window is spanned, not before', () {
+      final OrientationAwarePoseSource s = timeSource();
+      for (int i = 0; i < 4; i++) {
+        winAt(s, i * 33333); // 0..100 ms: inside the window
+        expect(s.resolved, BodyOrientation.upright,
+            reason: '${i * 33333} µs elapsed < 133 ms');
+      }
+      winAt(s, 4 * 33333); // 133.3 ms spanned
+      expect(s.resolved, BodyOrientation.inverted);
+    });
+
+    test('60 fps: frame COUNT that would satisfy the old mode is not enough',
+        () {
+      final OrientationAwarePoseSource s = timeSource();
+      // 5 frames at 60 fps = 66 ms — the legacy default (5 frames) would
+      // have flipped here; time-based hysteresis must not.
+      for (int i = 0; i < 5; i++) {
+        winAt(s, i * 16667);
+      }
+      expect(s.resolved, BodyOrientation.upright,
+          reason: '66 ms of evidence is 66 ms regardless of frame rate');
+      winAt(s, 8 * 16667); // 133.3 ms
+      expect(s.resolved, BodyOrientation.inverted);
+    });
+
+    test('a single frame never flips, no matter how much time surrounds it',
+        () {
+      final OrientationAwarePoseSource s = timeSource();
+      winAt(s, 0);
+      // One win, then nothing usable for a second — floor of two frames.
+      expect(s.resolved, BodyOrientation.upright);
+    });
+
+    test('evidence older than the window cannot seed a flip (stale gap)', () {
+      final OrientationAwarePoseSource s = timeSource();
+      winAt(s, 0);
+      // The second win arrives 500 ms later — the first is stale by the
+      // window's own clock, so the streak restarts here instead of
+      // spanning 0→500 ms and flipping on two isolated frames.
+      winAt(s, 500000);
+      expect(s.resolved, BodyOrientation.upright);
+      // A genuine sustained run from the restart point still flips.
+      winAt(s, 500000 + 70000);
+      winAt(s, 500000 + 140000);
+      expect(s.resolved, BodyOrientation.inverted);
+    });
+
+    test('an unusable frame neither resets nor advances the window', () {
+      final OrientationAwarePoseSource s = timeSource();
+      winAt(s, 0);
+      winAt(s, 70000);
+      // A "no verdict" frame in the middle: an exact-upright pass on the
+      // inverted person yields a structurally broken skeleton → unusable.
+      // Evidence of nothing must not erase the challenger's window.
+      s.next(100000,
+          const OrientationExpectation.exactly(BodyOrientation.upright));
+      expect(s.resolved, BodyOrientation.upright);
+      winAt(s, 140000); // 140 ms spanned since the first win
+      expect(s.resolved, BodyOrientation.inverted,
+          reason: 'the unusable frame was not contrary evidence — the '
+              'window from t=0 must still count');
+    });
+  });
 }
