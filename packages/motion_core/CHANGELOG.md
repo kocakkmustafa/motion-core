@@ -3,6 +3,17 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.6.1 — 2026-07-29 (tur 23)
+
+- **Tolerans-kaynağı etiketi (G-050/M-F-55, Gravita'nın bulgusu):** ilk gerçek
+  referansta 9/9 eklemin dağılımı (5,9-8,0°) 8° tabanının ALTINDA çıktı —
+  yayımlanan her tolerans varyans kılığında tabandı. `ToleranceSource`
+  (`variance|floor|ceiling|unmeasured`) + `toleranceSourceAt()` +
+  `floorBoundShare()` (eklem-başına taban-bağlılık oranı; 1.0 = tolerans bir
+  kez bile ölçülmüş ayrışmadan gelmedi). Yalnız `variance` "varyans-türetimli"
+  iddiasını taşıyabilir; taban bağlıyorken G-014 kapanmaz. Test: 167/167
+  (sıkı-küme=floor + stilli-kol=variance karşıt-çifti).
+
 ## 0.6.0 — 2026-07-29 (tur 22)
 
 - **Fixture şema-v2 köprüsü (referans-CLI ön şartı):** Dart okuyucu ile Python

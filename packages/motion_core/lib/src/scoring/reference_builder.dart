@@ -142,6 +142,24 @@ final class ReferenceAgreementError implements Exception {
   }
 }
 
+/// Where a published tolerance number actually came from (G-050 / M-F-55).
+enum ToleranceSource {
+  /// Observed instructor disagreement — the only source that lets a consumer
+  /// claim the tolerance is variance-derived (M-F-38).
+  variance,
+
+  /// The product floor bound — survivors agreed more tightly than the floor,
+  /// so the number says nothing about disagreement.
+  floor,
+
+  /// The product ceiling bound — disagreement exceeded the cap; the joint is
+  /// effectively unscored territory.
+  ceiling,
+
+  /// No usable measurements at this point.
+  unmeasured,
+}
+
 /// A reference distilled from several real performances.
 final class CanonicalReference {
   const CanonicalReference({
@@ -203,6 +221,53 @@ final class CanonicalReference {
         ? freeCeilingDeg
         : (sd * radToDeg).clamp(freeFloorDeg, freeCeilingDeg);
     return Tolerance.degrees(free: freeDeg, zeroAt: freeDeg * zeroMultiplier);
+  }
+
+  /// Which bound produced the number [toleranceAt] returned (G-050 / M-F-55).
+  ///
+  /// Measured on Gravita's first real reference: all nine joints' survivor
+  /// dispersion (5.9–8.0°) sat BELOW the 8° floor, so every published
+  /// tolerance was the floor wearing a variance-derived costume. The number
+  /// is real either way — what changes is the claim a consumer may make:
+  /// only [ToleranceSource.variance] measures instructor disagreement;
+  /// `floor` is a product minimum, `ceiling` a product cap, `unmeasured`
+  /// an admission. A reference whose joints are floor-bound cannot close a
+  /// "tolerance is variance-derived" claim (G-014).
+  ToleranceSource toleranceSourceAt(
+    int frameIndex,
+    int jointIndex, {
+    double freeFloorDeg = 8,
+    double freeCeilingDeg = 45,
+  }) {
+    final double sd = dispersion[frameIndex][jointIndex];
+    if (sd.isNaN) return ToleranceSource.unmeasured;
+    final double sdDeg = sd * radToDeg;
+    if (sdDeg <= freeFloorDeg) return ToleranceSource.floor;
+    if (sdDeg >= freeCeilingDeg) return ToleranceSource.ceiling;
+    return ToleranceSource.variance;
+  }
+
+  /// Per joint: the share of measured frames where the floor binds.
+  ///
+  /// The artifact-level honesty number — `1.0` means the joint's published
+  /// tolerance never once came from observed disagreement. Unmeasured
+  /// frames are excluded from the denominator rather than diluting it.
+  Map<String, double> floorBoundShare({double freeFloorDeg = 8}) {
+    if (frames.isEmpty) return const <String, double>{};
+    final List<JointSpec> specs = frames.first.specs;
+    final Map<String, double> out = <String, double>{};
+    for (int j = 0; j < specs.length; j++) {
+      int measured = 0;
+      int floored = 0;
+      for (int f = 0; f < dispersion.length; f++) {
+        final double sd = dispersion[f][j];
+        if (sd.isNaN) continue;
+        measured++;
+        if (sd * radToDeg <= freeFloorDeg) floored++;
+      }
+      if (measured > 0) out[specs[j].id] = floored / measured;
+    }
+    return out;
   }
 
   /// Mean agreement across all joints of a frame, in `[0, 1]`.

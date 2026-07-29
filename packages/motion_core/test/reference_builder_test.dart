@@ -289,6 +289,54 @@ void main() {
               'it is the only symptom of a consensus that resolves wrongly');
     });
 
+    test('a floor-bound tolerance says so instead of posing as measured '
+        'disagreement (G-050)', () {
+      // Gravita's real reference: survivors of the agreement gate agree so
+      // tightly that every joint's dispersion sits under the 8° floor — the
+      // published tolerance is the floor, and claiming it was derived from
+      // instructor variance would be false. The styled-arm scenario below
+      // is the contrast: genuine disagreement must read as `variance`.
+      final CanonicalReference tight =
+          const ReferenceBuilder().build(instructorTakes());
+      final Map<String, double> share = tight.floorBoundShare();
+      expect(share['left_thigh'], greaterThan(0.9),
+          reason: 'near-identical takes must be floor-bound almost '
+              'everywhere — if this fails the fixture stopped being tight');
+      expect(
+          tight.toleranceSourceAt(
+              tight.length ~/ 2, 0, freeFloorDeg: 8),
+          anyOf(ToleranceSource.floor, ToleranceSource.variance));
+
+      final SyntheticSequence seq = fourCountPhrase();
+      final math.Random rng = math.Random(41);
+      final List<ReferenceTake> styled =
+          List<ReferenceTake>.generate(6, (int i) {
+        final double armStyle = (rng.nextDouble() - 0.5) * 1.6;
+        final SyntheticSequence s = SyntheticSequence(
+          seq.keyframes
+              .map((SyntheticKeyframe k) => SyntheticKeyframe(
+                    k.tUs,
+                    k.pose.copyWith(
+                      leftUpperArm: k.pose.leftUpperArm + armStyle,
+                      leftForearm: k.pose.leftForearm + armStyle,
+                    ),
+                  ))
+              .toList(growable: false),
+        );
+        return takeOf('s$i', s, jitterSeed: 300 + i);
+      });
+      final CanonicalReference loose = const ReferenceBuilder()
+          .build(styled, clusterToleranceDeg: 40);
+      final List<JointSpec> specs = loose.frames.first.specs;
+      final int armIdx =
+          specs.indexWhere((JointSpec s) => s.id == 'left_upper_arm');
+      expect(loose.toleranceSourceAt(loose.length ~/ 2, armIdx),
+          ToleranceSource.variance,
+          reason: 'real disagreement above the floor must be labelled as '
+              'measured, not clamped silently');
+      expect(loose.floorBoundShare()['left_upper_arm'], lessThan(0.5));
+    });
+
     test('teacher disagreement becomes the tolerance', () {
       // Every teacher performs the footwork identically but styles the arms
       // differently. The reference must end up strict on the feet and lenient
