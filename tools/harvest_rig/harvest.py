@@ -345,9 +345,14 @@ def cmd_run(args: argparse.Namespace) -> int:
                    if not args.no_transcribe
                    else m.record("transcribe", "skipped",
                                  reason="--no-transcribe"))
-        # Transkript en güçlü kanıt: "I'll move your arm", "just relax" gibi
-        # ifadeler başlıkta görünmez. Erken sınıflandırma fail-closed olduğu
-        # için yalnız DAHA İZİNLİ yöne dönebilir; bu yüzden yeniden koşulur.
+        # Transkript en güçlü kanıt: "let me move", "over pressure", "just
+        # relax the arm" gibi ifadeler başlıkta görünmez. ÖLÇÜLDÜ: başlıktan
+        # `unknown` çıkan bir klip transkriptle `passive`a döndü.
+        #
+        # DİKKAT — düzeltme: bu yeniden koşum yalnız daha İZİNLİ yöne dönmez,
+        # DARALTABİLİR de. M-F-45 muafiyeti olan (pasif icrası imkânsız) bir
+        # harekette `unknown` UYGUNDUR; transkript onu `passive` yaparsa
+        # uygunluk KALKAR. Yani transkript atlanırsa kapı gevşek kalır.
         if isinstance(tr_path, Path) and tr_path.exists():
             spoken = " ".join(
                 seg.get("text", "")
