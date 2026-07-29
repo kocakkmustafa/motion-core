@@ -102,6 +102,76 @@ POSTURE_CUE_MARKERS = (
     r"\byour (sitting|seated) position\b",
 )
 
+#: HAREKET-YÖNERGESİ (İKİNCİ-ŞAHIS EMİR KİPİ) sınıfı — J-065/M-F-137.
+#:
+#: NE OLDUĞU: koçun öğrenciye verdiği, ÖĞRENCİNİN KENDİ gövdesini hareket
+#: ettirmesini isteyen emir kipi ("keep your hands up", "tuck your chin",
+#: "drop your hands"). `POSTURE_CUE_MARKERS`in tamamlayıcısı: o STATİK
+#: konumlandırmayı ("dik otur", "omuzların geride") tanır, bu HAREKETİ.
+#:
+#: NEDEN AYRI DEMET — ve neden M-O-54'ün ailesi GEVŞETİLMEDİ: M-O-54,
+#: şartlı-kalıp ailesini tereddütsüz ikinci-şahısa sıkarken bedelini isimle
+#: kaydetti — "keep your hands up, chin down" (jablab/umI6jNMVG-s) gibi
+#: GERÇEK yönergeler de elendi. O feda DOĞRUYDU (aktif yanlış-pozitifi KÖTÜ
+#: kaynağı referansa sokar, M-F-43). Bu demet o fedanın **tamamlayıcı
+#: geri-kazanımı**: onların kalıplarını gevşetmek yerine, kaybedilen sınıfı
+#: kendi kapılarıyla geri alır. Böylece iki demet bağımsız açılıp
+#: kapatılabilir ve izole süpürme her birini ayrı ölçebilir.
+#:
+#: ÖLÇÜLEN KÖR NOKTA (J-064): iki jab kaynağı `unknown`da kalıp HARD BLOCK
+#: yedi ve jab referansının yeniden kurulmasını imkânsız kıldı:
+#:   · umI6jNMVG-s (Precision Striking): 7.451 karakter, 15 emir kipi +
+#:     88 "you + fiil" — "keep your hands up" dahil. ACTIVE isabet 0.
+#:   · InSkFbZWoBY (Sören/Kenny Weldon): 8.075 karakter — "tuck your chin",
+#:     "drop your hands", "put your hands down", "throw your punches".
+#:     ACTIVE isabet 0.
+#: Mevcut `(raise|lift|reach|bring) your` yalnız DÖRT fiil tanıyor; boks
+#: koçu "raise your arm" demez, "keep your hands up" der.
+#:
+#: ÜÇ SERT KAPI (hepsi ölçülmüş tuzaklara karşı):
+#:  1. **`your` ZORUNLU, `the` KABUL EDİLMEZ.** Kanıttaki "bend the knees",
+#:     "turn the other way", "step the next step" bilinçli olarak DIŞARIDA:
+#:     `the` üçüncü-şahıs anlatımda da geçer, `your` geçmez. M-O-54'ün
+#:     seçtiği güvenli yön aynen korunuyor.
+#:  2. **ÜÇÜNCÜ-ŞAHIS ANLATIM GEÇMEZ** — bilinen tuzak sınıfı, M-O-54
+#:     süpürmesinin adıyla kaydettiği vaka: "he walks in with HIS chin down"
+#:     (jablab/InSkFbZWoBY). `his`/`her`/`their` bu kalıplara UYMAZ.
+#:  3. **BİRİNCİ ŞAHIS GEÇMEZ** — "I've got nice control with MY feet flat"
+#:     (ostinato/dc8PNOTTUlg) bu sınıfın değil `FIRST_PERSON_DEMO_MARKERS`in
+#:     işi; `my` bu kalıplara uymaz.
+#:
+#: `relax` KASTEN YOK: `relax (your|the) (arm|leg|shoulder)` ZATEN
+#: PASSIVE_MARKERS'ta (terapist uzvu hareket ettirebilsin diye gevşetme).
+#: Çakışan bir kalıbı iki tarafa birden yazmak sınıflandırmayı
+#: belirsizleştirir — bu dosyanın kendi ilkesi.
+#:
+#: `move|lift` gibi pasif cümlelerde de görünebilen fiiller listede DURUYOR
+#: ama tehlikeli DEĞİL: `classify()` pasifi ÖNCE kontrol eder ve pasif
+#: kazanır, yani "I'll move your arm" PASSIVE'e düşer (aynı güvence
+#: `(raise|lift|...) your` için de zaten geçerliydi).
+#:
+#: İsim demeti ANATOMİK + genel hareket nesnesi: fiil tek başına
+#: ("keep your eyes on the prize") mecazı da yakalardı; ismi sınırlamak
+#: POSTURE_CUE_MARKERS'in felsefesini sürdürür.
+#: MECAZ KAPISI — ölçüldü, varsayılmadı. İlk sürüm ismi sınırlamakla yetindi
+#: ve kendi negatif korpusum bir yanlış pozitif yakaladı: "keep your head IN
+#: THE game" → `keep your head` isabet etti. Mecaz bir hareket yönergesi
+#: değildir ve aktif yanlış-pozitifi KÖTÜ kaynağı referansa sokar. Bu yüzden
+#: kalıp, ismin ardından `in the` / `on the` gelmesini REDDEDER — mecazların
+#: ("head in the game", "eyes on the prize") taşıyıcı yapısı budur.
+#: Bedeli isimle: "keep your hands IN THE guard position" gibi gerçek ama
+#: seyrek yönergeler de elenir — güvenli yön bilinçli seçildi (M-O-54 aynı
+#: kararı aynı gerekçeyle vermişti).
+MOVEMENT_CUE_MARKERS = (
+    r"\b(keep|bring|snap|extend|turn|rotate|drop|raise|lift|push|pull|step|"
+    r"pivot|tuck|shift|square|point|plant|drive|throw|land|return|bend|"
+    r"straighten|move|place|put)\s+your\s+"
+    r"(hands?|fists?|arms?|elbows?|shoulders?|chin|head|hips?|knees?|"
+    r"foot|feet|legs?|guard|punch(?:es)?|jab|weight|back|spine|core|"
+    r"toes?|heels?|stance|body|torso|chest|wrists?|thighs?|shins?)\b"
+    r"(?!\s+(?:in|on)\s+the\b)",
+)
+
 #: Aktif/kendi-üretimli hareket işaretleri.
 ACTIVE_MARKERS = (
     r"\bactive range of motion\b", r"\bAROM\b", r"\bactively\b",
@@ -109,7 +179,7 @@ ACTIVE_MARKERS = (
     r"\b(raise|lift|reach|bring) your\b", r"\byour turn\b",
     r"\bdo (this|it) (with me|yourself)\b", r"\bon your own\b",
     r"\bexercise demo(nstration)?\b",
-) + POSTURE_CUE_MARKERS
+) + POSTURE_CUE_MARKERS + MOVEMENT_CUE_MARKERS
 
 #: BİRİNCİ-ŞAHIS GÖSTERİM sınıfı (J-058/M-F-104): eğitmen kendi hareketini
 #: birinci şahısla anlatır ("I throw the fist away from me", "here is the

@@ -357,6 +357,62 @@ def check_rom_mode() -> None:
     check(frolov.mode == ACTIVE and frolov.reference_eligible,
           "birinci-şahıs gösterim dili (frolov, J-058) -> active")
 
+    # ---- HAREKET-YÖNERGESİ sınıfı (J-065/M-F-137) ----------------------
+    # M-O-54, şartlı-kalıp ailesini ikinci-şahısa sıkarken bedelini isimle
+    # kaydetti: "keep your hands up, chin down" (umI6jNMVG-s) gibi GERÇEK
+    # yönergeler elendi. Aşağıdaki iki vaka o fedanın geri-kazanımıdır ve
+    # HARD BLOCK yediği için jab referansının yeniden kurulmasını
+    # imkânsızlaştırmışlardı (J-064).
+    precision = classify(
+        title="How To Get A POWERFUL Jab In Boxing",
+        transcript=(
+            "A good powerful jab can do so much for you if you know how to "
+            "throw it. In the meantime, keep your hands up, chin down, eyes "
+            "on the prize."
+        ),
+    )
+    check(precision.mode == ACTIVE and precision.reference_eligible,
+          "ikinci-şahıs emir kipi (precision_striking, J-064) -> active")
+
+    weldon = classify(
+        title="Teaching the boxing stance",
+        transcript=(
+            "Mike, now tuck your chin, let your arms hang down. You can drop "
+            "your hands. Put your hands down, there you go. Then throw your "
+            "punches and stay relaxed."
+        ),
+    )
+    check(weldon.mode == ACTIVE and weldon.reference_eligible,
+          "ikinci-şahıs emir kipi (kennyweldon, J-064) -> active")
+
+    # NEGATİF KORPUS — üçü de M-O-54 süpürmesinin ADIYLA kaydettiği tuzaklar.
+    third = classify(transcript=(
+        "He walks in with his chin down and he keeps his hands up the whole "
+        "time. She drops her hands when she gets tired."))
+    check(third.mode == UNKNOWN and not third.reference_eligible,
+          "ÜÇÜNCÜ-ŞAHIS anlatım (his/her) yönerge SAYILMAZ -> unknown")
+
+    first_person_posture = classify(transcript=(
+        "I've got nice control with my feet flat on the floor."))
+    check(first_person_posture.mode == UNKNOWN,
+          "birinci-şahıs duruşu hareket-yönergesi kalıplarına UYMAZ")
+
+    the_form = classify(transcript=(
+        "Bend the knees and turn the other way, then step the next step."))
+    check(the_form.mode == UNKNOWN,
+          "'the' kalıbı (üçüncü-şahısta da geçer) bilinçli olarak DIŞARIDA")
+
+    metaphor = classify(transcript="Keep your hands on the wheel at all times.")
+    check(metaphor.mode == UNKNOWN,
+          "mecaz ('... on the wheel') hareket yönergesi SAYILMAZ")
+
+    # Pasif ÖNCELİĞİ hareket-yönergesi sınıfıyla da bozulmuyor: fiil listesi
+    # `move|lift` içeriyor ama `classify` pasifi ÖNCE kontrol ediyor.
+    passive_wins = classify(transcript=(
+        "Let me move your arm for you. I'll lift your leg."))
+    check(passive_wins.mode == PASSIVE and not passive_wins.reference_eligible,
+          "pasif önceliği korunuyor (let me move your / I'll lift your)")
+
     # Sınıflandırma FIXTURE'a akıyor mu — manifestte kalırsa kural uygulanmaz.
     m = HarvestManifest.start(app="lissom", video_id="x", source_url="u")
     m.rom_mode, m.reference_eligible = PASSIVE, False

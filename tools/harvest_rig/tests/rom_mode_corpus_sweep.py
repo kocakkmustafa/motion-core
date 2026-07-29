@@ -1,11 +1,16 @@
-"""M-F-104: rom_mode.py'ye yeni işaret sınıfı eklenince AİLE-GENELİ regresyon
-süpürmesi. Kanıt yükümlülüğü: hiçbir kaynak, YENİ sınıf eklenince (aynı
-kod tabanında ESKİ-hâl vs YENİ-hâl kıyası — manifest'teki BAYAT kayıtlı
+"""M-F-104/M-O-54: rom_mode.py'ye yeni işaret sınıfı eklenince AİLE-GENELİ
+regresyon süpürmesi. Kanıt yükümlülüğü: hiçbir kaynak, YENİ sınıf eklenince
+(aynı kod tabanında ESKİ-hâl vs YENİ-hâl kıyası — manifest'teki BAYAT kayıtlı
 değere karşı DEĞİL, çünkü o çoktan başka iyileştirmelerle kaymış olabilir)
 passive'den active'e DÖNMEMELİ.
 
+HANGİ AİLE süpürülüyor: `--family` ile seçilir. Sınıf adının parametre
+olması bir kolaylık değil ZORUNLULUK — her yeni demet (birinci-şahıs,
+duruş-yönergesi, hareket-yönergesi) KENDİ izole kıyasını hak eder; hepsini
+birden kapatıp açmak, hangi demetin hangi geçişi ürettiğini ölçülemez kılar.
+
 Koşum: fixture_pipeline venv'iyle (mediapipe gerekmez, yalnız stdlib+re).
-  .venv/bin/python tests/rom_mode_corpus_sweep.py
+  .venv/bin/python tests/rom_mode_corpus_sweep.py --family MOVEMENT_CUE_MARKERS
 """
 from __future__ import annotations
 
@@ -18,6 +23,28 @@ import rom_mode  # noqa: E402
 
 HARVEST_ROOT = Path.home() / "motion-harvest"
 APPS = ["ostinato", "lissom", "jablab", "gravita", "gravita-squat", "choreia"]
+
+#: Süpürülebilir demetler. `ACTIVE_MARKERS` bunları İÇERDİĞİ için, bir demeti
+#: devre dışı bırakmak onu ACTIVE_MARKERS'tan da çıkarmayı gerektirir —
+#: yoksa "kapattım" sanılan sınıf hâlâ isabet eder ve süpürme SESSİZCE
+#: hiçbir şey ölçmez (bu tuzağa bir kez düştüm, J-059).
+SWEEPABLE = ("FIRST_PERSON_DEMO_MARKERS", "POSTURE_CUE_MARKERS",
+             "MOVEMENT_CUE_MARKERS")
+
+
+def _disable(family: str):
+    """Demeti hem kendi adından hem ACTIVE_MARKERS'tan çıkarır."""
+    saved_family = getattr(rom_mode, family)
+    saved_active = rom_mode.ACTIVE_MARKERS
+    setattr(rom_mode, family, ())
+    rom_mode.ACTIVE_MARKERS = tuple(
+        p for p in rom_mode.ACTIVE_MARKERS if p not in saved_family)
+    return saved_family, saved_active
+
+
+def _restore(family: str, saved_family, saved_active) -> None:
+    setattr(rom_mode, family, saved_family)
+    rom_mode.ACTIVE_MARKERS = saved_active
 
 
 def load_transcript(app: str, video_id: str) -> str:
@@ -32,6 +59,14 @@ def load_transcript(app: str, video_id: str) -> str:
 
 
 def main() -> int:
+    family = "FIRST_PERSON_DEMO_MARKERS"
+    for i, a in enumerate(sys.argv):
+        if a == "--family" and i + 1 < len(sys.argv):
+            family = sys.argv[i + 1]
+    if family not in SWEEPABLE:
+        print(f"bilinmeyen demet: {family}\nseçenekler: {', '.join(SWEEPABLE)}")
+        return 64
+    print(f"süpürülen demet: {family}\n")
     total = 0
     flips_dangerous: list[tuple[str, str, str, str, list]] = []
     flips_benign: list[tuple[str, str, str, str]] = []
@@ -48,12 +83,11 @@ def main() -> int:
             desc = m.get("description") or ""
             transcript = load_transcript(app, video_id)
 
-            # ESKİ-hâl: aynı kod tabanı, yalnız yeni sınıf devre dışı.
-            saved = rom_mode.FIRST_PERSON_DEMO_MARKERS
-            rom_mode.FIRST_PERSON_DEMO_MARKERS = ()
+            # ESKİ-hâl: aynı kod tabanı, yalnız SEÇİLEN sınıf devre dışı.
+            sf, sa = _disable(family)
             old = rom_mode.classify(title=title, description=desc,
                                      transcript=transcript)
-            rom_mode.FIRST_PERSON_DEMO_MARKERS = saved
+            _restore(family, sf, sa)
             # YENİ-hâl.
             new = rom_mode.classify(title=title, description=desc,
                                      transcript=transcript)
