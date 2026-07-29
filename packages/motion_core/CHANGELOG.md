@@ -3,6 +3,28 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.5 — 2026-07-30 — beyan-edilen kapı-eklem-kümesi + zaman-histerezisi
+
+- **gateJoints/gateBasis (M-O-56 dördüncü sınıf):** M-F-47 kapısının
+  take-medyanı artık BEYAN EDİLEN eklem kümesinde koşabilir — postür/hold
+  malzemesinde kapı, ürünün skorlamadığı serbest uzuvlarda anlaşma arayıp
+  skorlanan metriğe 0,3° uyan take'i reddediyordu. Daraltma gateBasis
+  olmadan İSİMLİ reddedilir (coached_only kararı bir kez, isimli
+  tüketilir); artefakta `agreementGateJoints`/`agreementGateBasis`
+  damgalanır; varsayılan tam-küme davranışı DEĞİŞMEDİ.
+  `build_reference.dart`: `--gate-joints`/`--gate-basis`. Sonuç: guitar
+  3→5 take (gerekçe düzeldi, 22° özel-barı öldü) · İLK ŞAN (4) · İLK
+  PİYANO (3) referansları, üçü de varsayılan 14°'de.
+- **hysteresisMs (M-F-72):** OrientationAwarePoseSource'a zaman-tabanlı
+  histerezis (133ms + ≥2 kazanan kare tabanı; kare-damgalarından ölçülür,
+  fps varsayımı yok; bayat-boşluk kuralı sabitsiz). Varsayılan null =
+  eski kare-sayısı davranışı.
+- **priorDisagreements semantiği (J-063):** alan yalnız KARARLI aramaya
+  karşı sayar — yakın-beraberede bestMask atılmış yazı-turadır; "prior
+  boşluğu doldurdu" artık "prior konsensüsü ezdi" diye okunmaz.
+- `--lead-side-prior` (M-J-06 resmi kanalı, JabLab): ölçülmüş öncü-taraf
+  önseli build ANINDA verilir; bozuk/bayat prior dosyası isimli reddedilir.
+
 ## 0.8.4 — 2026-07-29 — NaN→null artefakt kodlaması
 
 - 0.8.3'ün kapısı dürüst NaN üretince JSON kodlama çöktü (NaN JSON'da
