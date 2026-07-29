@@ -170,11 +170,20 @@ class Measurement:
 
 
 def evaluate(metric: MetricDef, frame: geo.Frame, *,
-             anatomical: bool = False) -> Measurement:
+             anatomical: bool = False, mask_invalid: bool = True) -> Measurement:
     """Bir metriği tek karede hesapla — güven kapısı DAHİL.
 
-    Güven eşiğin altındaysa değer hesaplanır ama `valid=False` döner ve
-    çağıran taraf bunu skora KATMAMALIDIR.
+    L-155/M-F-114 (mocore valid-bayrağı mimarisi kararı): geçersiz bir
+    ölçüm eskiden HAM (çöp olabilecek) sayıyı `value` alanında taşıyordu,
+    yalnız `valid=False` yan-kanal bayrağıyla işaretlenmiş olarak — Dart'ın
+    0.8.3-öncesi mimarisiyle AYNI sınıf, aynı riskle: yan-kanal bayrağı
+    çürür, kontrolü unutan (ya da hiç yazılmamış) bir tüketici çöpü gerçek
+    ölçüm sanır. `mask_invalid=True` (varsayılan) `value`'yu NaN'a maskeler
+    her üç geçersiz-durumda da; `valid`/`reason`/`confidence` alanları AYNEN
+    kalır — bilgi kaybolmaz, yalnız YANLIŞ KULLANIMIN maliyeti değişir:
+    kontrolü unutan kod artık çöp sayı değil NaN görür (aşağı akışta ya
+    açıkça patlar ya `np.isfinite` filtreleriyle zaten dışlanır). Ham değeri
+    isteyen çağıran (teşhis/hata-ayıklama) `mask_invalid=False` geçer.
     """
     # M-F-53: `anatomical=True` düzlemleri iskeletten türetir; kamera
     # yönelimine bağımsızdır. Varsayılan False — göç sırasında eski davranış
@@ -222,21 +231,21 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
     else:  # pragma: no cover - MetricDef doğrulaması engeller
         raise ValueError(f"Bilinmeyen metrik tipi: {metric.kind}")
 
+    def _invalid(reason: str) -> Measurement:
+        v = float("nan") if mask_invalid else value
+        return Measurement(metric.id, v, conf, False, reason, metric.unit)
+
     if not np.isfinite(value):
-        return Measurement(metric.id, value, conf, False, INVALID_DEGENERATE, metric.unit)
+        return _invalid(INVALID_DEGENERATE)
     if conf < metric.min_confidence:
-        return Measurement(
-            metric.id, value, conf, False, INVALID_LOW_CONFIDENCE, metric.unit
-        )
+        return _invalid(INVALID_LOW_CONFIDENCE)
     # Fiziksel olarak imkânsız değer = izleme artefaktı. Güven kapısı bunu
     # YAKALAMIYOR: landmark'lar yüksek görünürlükle ama yanlış yerde
     # kestirilebiliyor ve sonuç anatomik olarak mümkün olmayan bir açı oluyor.
     if metric.value_range is not None:
         lo, hi = metric.value_range
         if not (lo <= value <= hi):
-            return Measurement(
-                metric.id, value, conf, False, INVALID_OUT_OF_RANGE, metric.unit
-            )
+            return _invalid(INVALID_OUT_OF_RANGE)
     return Measurement(metric.id, value, conf, True, None, metric.unit)
 
 
