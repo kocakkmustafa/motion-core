@@ -282,7 +282,7 @@ def load_triage_profile(
         # koyup perMovement'ta unutmak, L-080'in yeni bir yerde tekrarı olurdu.
         if isinstance(entry, dict):
             unknown_pm = set(entry) - {
-                "lower_body_ids", "trunk_angle_band_deg", "identity",
+                "lower_body_ids", "trunk_angle_band_deg", "identity", "presence",
             }
             if unknown_pm:
                 raise SystemExit(
@@ -351,6 +351,42 @@ def load_triage_profile(
                             f"{path}: identity['{sig}'] {status} iken "
                             "'basis' + en az bir sınır (min/max) ister"
                         )
+            # M-F-85: `presence_isolator`'ın sürücü sözlüğü — `identity`'nin
+            # kardeşi, aynı gerekçeyle (M-F-60: kelime dağarcığı TEK yerde).
+            # Şekil doğrulanır ki bir yazım hatası sessizce "hiç kesme
+            # olmadı"ya dönüşmesin; tüketimi `presence_isolator.py` yapar.
+            if "presence" in entry:
+                pres = entry["presence"]
+                if not isinstance(pres, dict):
+                    raise SystemExit(
+                        f"{path}: perMovement['{movement}'].presence nesne olmalı")
+                required_pres = {
+                    "proximal", "joint", "distal", "op", "thresholdDeg",
+                    "minHoldS", "status", "basis",
+                }
+                missing_pres = required_pres - set(pres)
+                if missing_pres:
+                    raise SystemExit(
+                        f"{path}: presence eksik alan(lar) — "
+                        f"{', '.join(sorted(missing_pres))}"
+                    )
+                unknown_pres = set(pres) - required_pres
+                if unknown_pres:
+                    raise SystemExit(
+                        f"{path}: presence bilinmeyen anahtar: "
+                        f"{', '.join(sorted(unknown_pres))}"
+                    )
+                if pres["op"] not in (">", ">=", "<", "<="):
+                    raise SystemExit(f"{path}: presence.op geçersiz: {pres['op']!r}")
+                if pres["status"] not in ("measured", "provisional", "pending"):
+                    raise SystemExit(
+                        f"{path}: presence.status (measured|provisional|"
+                        f"pending) olmalı, verilen: {pres['status']!r}"
+                    )
+                # `pending` şekli burada REDDEDİLMEZ (alanlar hâlâ zorunlu —
+                # G-043'ün "sayı taşımasın" kuralı burada değil, tüketim
+                # anında uygulanır: `presence_isolator.presence_from_profile`
+                # pending'i kullanmayı reddeder, izolatör tarafı).
             if "lower_body_ids" in entry:
                 raw["lower_body_ids"] = tuple(entry["lower_body_ids"])
             if "trunk_angle_band_deg" in entry:
