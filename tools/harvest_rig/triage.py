@@ -64,6 +64,29 @@ class TriageThresholds:
     #: Pencere GÖRÜNÜRLÜK garantisi verir, tekrarın gerçekleştiğini DEĞİL —
     #: hareket-varlığı ayrı bir kontroldür.
     min_usable_window_s: float = 0.0
+    #: DURUŞ bandı: gövdenin DÜŞEYDEN sapma açısının kabul aralığı, derece.
+    #: `(0, 45)` = dik duruş (squat, curl) · `(60, 90)` = yatay gövde (şınav,
+    #: plank). `None` = KAPALI (geriye uyumlu).
+    #:
+    #: Neden gerekli: görünürlük sondaları "kişi kadrajda mı" sorusunu yanıtlar,
+    #: "bu kişi ARANAN HAREKETİ yapıyor mu" sorusunu yanıtlamaz — pencere
+    #: sondasının kendi notu da bunu söylüyor ("pencere görünürlük garantisi
+    #: verir, tekrarın gerçekleştiğini değil"). Gravita'da ÖLÇÜLDÜ (G-043):
+    #: kimlik kapısı olmadan çıkarılan 85 push-up "tekrarının" 65'i (%76)
+    #: gövdesi 50-90° eğimli — yani AYAKTA konuşan — kayıtlardan geldi. Tekrar
+    #: FSM'i sinyal ekleminin salınımını sayar, hareketi değil; konuşurken el
+    #: hareketi de dirseği 155°↔100° arasında gezdirir.
+    #:
+    #: Birim, uygulamaların `torso_angle_from_vertical` metriğiyle AYNIDIR —
+    #: rig eşiği ile motor ön koşulu arasında çeviri katmanı olmasın diye.
+    #:
+    #: Sabit bir "yatay" varsaymak L-080'in tekrarı olurdu: squat/curl gibi dik
+    #: hareketleri sessizce reddederdi. Bandı çağıran beyan eder.
+    trunk_angle_band_deg: tuple[float, float] | None = None
+    #: Bant içindeki karelerin gereken asgari oranı. Öğretim videosunda anlatım
+    #: bölümleri normaldir; istenen "video boyunca hareket" değil, hareketin
+    #: kayda değer bir kısmında GERÇEKTEN yapılıyor olması.
+    min_posture_ratio: float = 0.25
     #: pencere taraması: adım ve üst sınır (maliyet sınırlı kalsın)
     window_probe_step_s: float = 2.0
     max_window_probe_frames: int = 90
@@ -84,6 +107,7 @@ class TriageReport:
     upper_body_ratio: float | None = None
     full_body_ratio: float | None = None
     usable_window_s: float | None = None
+    posture_ratio: float | None = None
     rejects: list[str] = field(default_factory=list)
 
     @property
@@ -99,6 +123,7 @@ class TriageReport:
             "upperBodyRatio": None if self.upper_body_ratio is None else round(self.upper_body_ratio, 2),
             "fullBodyRatio": None if self.full_body_ratio is None else round(self.full_body_ratio, 2),
             "usableWindowS": None if self.usable_window_s is None else round(self.usable_window_s, 1),
+            "postureRatio": None if self.posture_ratio is None else round(self.posture_ratio, 2),
             "rejects": self.rejects,
         }
 
@@ -152,16 +177,46 @@ def _sharpness(grays: list[np.ndarray]) -> float:
     return float(np.median([cv2.Laplacian(g, cv2.CV_64F).var() for g in grays]))
 
 
+def _in_trunk_band(pts, band: tuple[float, float], h: int, w: int) -> bool:
+    """Gövde ekseninin DÜŞEYDEN sapması [band] içinde mi (derece)?
+
+    ⚠️ Açı, en-boy oranıyla düzeltilmiş (izotropik) uzayda hesaplanır.
+    MediaPipe normalize koordinatı x'i genişliğe, y'yi yüksekliğe AYRI böler;
+    16:9'da ham koordinatla ölçülen bir açı 5-20° sapabilir (J-028/M-F-30).
+    Duruş bandının kenarında bu, kararı doğrudan çevirir.
+
+    Omuz veya kalça görünmüyorsa yanıt YOK sayılır (False) — fail-closed:
+    duruşu doğrulanamayan kare "hareket yapılıyor" kanıtı değildir.
+    """
+    ids = (11, 12, 23, 24)
+    if any(pts[i].visibility < 0.5 for i in ids):
+        return False
+    sx = (pts[11].x + pts[12].x) / 2 * w
+    sy = (pts[11].y + pts[12].y) / 2 * h
+    hx = (pts[23].x + pts[24].x) / 2 * w
+    hy = (pts[23].y + pts[24].y) / 2 * h
+    import math
+    # Düşeyden sapma: 0° = dik gövde, 90° = yatay gövde.
+    dev = math.degrees(math.atan2(abs(sx - hx), abs(sy - hy)))
+    lo, hi = band
+    return lo <= dev <= hi
+
+
 def _body_presence(
     path: Path, duration_s: float, n_frames: int, model_path: Path,
     lower_ids: tuple[int, ...] = (23, 24, 27, 28),
-) -> tuple[float, float]:
-    """Örneklenmiş karelerde (üst-gövde oranı, tam-gövde oranı) — TEK geçişte.
+    trunk_band: tuple[float, float] | None = None,
+) -> tuple[float, float, float]:
+    """(üst-gövde oranı, tam-gövde oranı, duruş oranı) — TEK geçişte.
 
     Üst-gövde = burun + iki omuz ("kişi kadrajda mı").
     Tam-gövde = + kalçalar + ayak bilekleri ("alt vücut da ölçülebilir mi") —
-    alt-vücut testi olan app'ler (Lissom L-046, Gravita) için. İki oran aynı
-    çıkarım geçişinden türetilir; sonda maliyeti eşik sayısından bağımsızdır.
+    alt-vücut testi olan app'ler (Lissom L-046, Gravita) için.
+    Duruş oranı = gövde ekseninin DÜŞEYDEN sapması [trunk_band] içinde olan
+    karelerin oranı ("bu kişi aranan hareketi yapıyor mu" — G-043).
+
+    Üç oran da aynı çıkarım geçişinden türetilir; sonda maliyeti eşik
+    sayısından bağımsızdır.
     """
     import mediapipe as mp  # noqa: PLC0415 - ağır import yalnız gerektiğinde
     from mediapipe.tasks import python as mp_python  # noqa: PLC0415
@@ -180,6 +235,7 @@ def _body_presence(
     times = np.linspace(0.5, max(duration_s - 0.5, 1.0), n_frames)
     seen_upper = 0
     seen_full = 0
+    seen_posture = 0
     total = 0
     with vision.PoseLandmarker.create_from_options(options) as lm:
         for t in times:
@@ -188,6 +244,7 @@ def _body_presence(
             if not ok:
                 continue
             total += 1
+            h, w = frame.shape[:2]
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = lm.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
             if not res.pose_landmarks:
@@ -197,10 +254,12 @@ def _body_presence(
                 seen_upper += 1
                 if all(pts[i].visibility >= 0.5 for i in lower_ids):
                     seen_full += 1
+            if trunk_band is not None and _in_trunk_band(pts, trunk_band, h, w):
+                seen_posture += 1
     cap.release()
     if total == 0:
-        return 0.0, 0.0
-    return seen_upper / total, seen_full / total
+        return 0.0, 0.0, 0.0
+    return seen_upper / total, seen_full / total, seen_posture / total
 
 
 def _usable_window(
@@ -300,9 +359,10 @@ def triage(
         return report
 
     if pose_model is not None:
-        upper, full = _body_presence(
+        upper, full, posture = _body_presence(
             p, duration_s, th.pose_probe_frames, pose_model,
             lower_ids=th.lower_body_ids,
+            trunk_band=th.trunk_angle_band_deg,
         )
         report.upper_body_ratio = upper
         pending: list[str] = []
@@ -318,6 +378,21 @@ def triage(
                     f"tam-gövde oranı {report.full_body_ratio:.2f} < "
                     f"{th.min_full_body_ratio} (bu hareketin istediği "
                     f"landmark'lar {th.lower_body_ids} kadraj dışı)"
+                )
+
+        # DURUŞ kapısı (G-043) — görünürlükten AYRI bir soru: "kadrajda mı"
+        # değil, "aranan hareketi yapıyor mu". Pencere kurtarması bu redde
+        # UYGULANMAZ: pencere sondası görünürlük ölçer, kimlik ölçmez; bir
+        # ayakta-konuşma videosunda kusursuz görünürlük penceresi bulunur ve
+        # kurtarma tam da elemek istediğimiz klibi geri alırdı.
+        if th.trunk_angle_band_deg is not None:
+            report.posture_ratio = posture
+            if posture < th.min_posture_ratio:
+                lo, hi = th.trunk_angle_band_deg
+                report.rejects.append(
+                    f"duruş oranı {posture:.2f} < {th.min_posture_ratio} "
+                    f"(gövde düşeyden {lo:.0f}-{hi:.0f}° bandında değil — "
+                    f"aranan hareket yapılmıyor olabilir)"
                 )
 
         # Oran ölçütü iki ayrı nedenle zayıf ve İKİSİ de ölçüldü:

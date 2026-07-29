@@ -134,9 +134,10 @@ def check_per_movement() -> None:
     seen: dict = {}
     real = triage_mod._body_presence
 
-    def spy(path, duration_s, n_frames, model_path, lower_ids=(23, 24, 27, 28)):
+    def spy(path, duration_s, n_frames, model_path, lower_ids=(23, 24, 27, 28),
+            trunk_band=None):
         seen["ids"] = lower_ids
-        return 1.0, 1.0
+        return 1.0, 1.0, 1.0
 
     triage_mod._body_presence = spy
     try:
@@ -172,7 +173,7 @@ def check_usable_window() -> None:
     import triage as triage_mod
 
     real_body, real_win = triage_mod._body_presence, triage_mod._usable_window
-    triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.30)
+    triage_mod._body_presence = lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.92, 0.30, 1.0)
     try:
         with tempfile.TemporaryDirectory() as td:
             vid = os.path.join(td, "c.mp4")
@@ -195,7 +196,7 @@ def check_usable_window() -> None:
             # L-090/L-091: kurtarma ÜST-gövde reddine de uygulanmalı ve sonda
             # iki kümenin BİRLEŞİMİNİ görmeli (kullanılabilir pencere = her
             # gerekli landmark AYNI ANDA görünür).
-            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.50, 0.95)
+            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.50, 0.95, 1.0)
             seen_ids: dict = {}
 
             def win_spy(path, dur, model, need, step, cap):
@@ -211,7 +212,7 @@ def check_usable_window() -> None:
             check(seen_ids.get("need") == (0, 11, 12, 23, 24),
                   "pencere sondası üst+alt kümelerin BİRLEŞİMİNİ alıyor")
 
-            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.30)
+            triage_mod._body_presence = lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.92, 0.30, 1.0)
             triage_mod._usable_window = lambda *a, **k: 3.0
             r = triage_mod.triage(
                 vid, thresholds=triage_mod.TriageThresholds(
@@ -329,7 +330,8 @@ def main() -> int:
         # iki NameError/AttributeError'ı tam bu yolda saklanıyordu).
         import triage as triage_mod
         real_probe = triage_mod._body_presence
-        triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.50)
+        triage_mod._body_presence = (
+            lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.92, 0.50, 1.0))
         try:
             full_th = TriageThresholds(min_duration_s=4.0,
                                        min_full_body_ratio=0.6)
@@ -344,6 +346,56 @@ def main() -> int:
                        pose_model=__import__("pathlib").Path("stub.task"))
             check(r.accepted and r.full_body_ratio is None,
                   "eşik kapalıyken tam-gövde reddi yok (geriye uyum)")
+        finally:
+            triage_mod._body_presence = real_probe
+
+        print("[1c] DURUŞ kapısı (G-043; sonda stub'lı)")
+        # Görünürlük kusursuz ama kişi ARANAN HAREKETİ yapmıyor: ayakta
+        # konuşan eğitmen. Gravita'da ölçüldü — kimlik kapısı olmadan çıkarılan
+        # 85 push-up "tekrarının" 65'i böyle kliplerden geldi.
+        real_probe = triage_mod._body_presence
+        try:
+            stub_path = __import__("pathlib").Path("stub.task")
+            triage_mod._body_presence = (
+                lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.95, 0.95, 0.05))
+            posture_th = TriageThresholds(min_duration_s=4.0,
+                                          trunk_angle_band_deg=(60.0, 90.0))
+            r = triage(long_ok, thresholds=posture_th, pose_model=stub_path)
+            check(not r.accepted and any("duruş" in x for x in r.rejects),
+                  "görünürlük 0.95 kusursuz ama duruş 0.05 → RET (ayakta konuşma)")
+
+            # Kritik: pencere kurtarması bu reddi GERİ ALMAMALI. Pencere sondası
+            # görünürlük ölçer, kimlik ölçmez; ayakta-konuşma videosunda da
+            # kusursuz pencere bulunur ve kurtarma tam elemek istediğimiz klibi
+            # geri alırdı.
+            rescue_th = TriageThresholds(min_duration_s=4.0,
+                                         trunk_angle_band_deg=(60.0, 90.0),
+                                         min_usable_window_s=1.0)
+            r = triage(long_ok, thresholds=rescue_th, pose_model=stub_path)
+            check(not r.accepted and any("duruş" in x for x in r.rejects),
+                  "pencere kurtarması duruş reddini GERİ ALMIYOR")
+
+            # Kapı körleştirmemeli: gerçekten şınav yapan klip geçmeli.
+            triage_mod._body_presence = (
+                lambda p, d, n, m, lower_ids=(), trunk_band=None: (0.95, 0.95, 0.60))
+            r = triage(long_ok, thresholds=posture_th, pose_model=stub_path)
+            check(r.accepted and r.posture_ratio == 0.60,
+                  "duruş 0.60 → KABUL, oran rapora yazılıyor")
+
+            # Bant harekete göre değişir (L-080 dersi): aynı klip DİK bantta
+            # reddedilmeli — sabit "yatay" varsaymak squat'ı sessizce elerdi.
+            upright_th = TriageThresholds(min_duration_s=4.0,
+                                          trunk_angle_band_deg=(0.0, 45.0))
+            triage_mod._body_presence = (
+                lambda p, d, n, m, lower_ids=(), trunk_band=None:
+                (0.95, 0.95, 0.60 if trunk_band == (60.0, 90.0) else 0.02))
+            r = triage(long_ok, thresholds=upright_th, pose_model=stub_path)
+            check(not r.accepted, "bant çağırandan gelir — dik bantta aynı klip RET")
+
+            off_th = TriageThresholds(min_duration_s=4.0)  # varsayılan: kapalı
+            r = triage(long_ok, thresholds=off_th, pose_model=stub_path)
+            check(r.accepted and r.posture_ratio is None,
+                  "bant verilmezse duruş kapısı KAPALI (geriye uyum)")
         finally:
             triage_mod._body_presence = real_probe
 
@@ -379,6 +431,54 @@ def main() -> int:
 
     print("[5] harekete özel landmark şartı")
     check_per_movement()
+
+    print("[5b] harekete özel DURUŞ bandı (G-043 + L-080 dersi)")
+    import json
+    from pathlib import Path
+    from harvest import load_triage_profile
+    with tempfile.TemporaryDirectory() as td:
+        prof = Path(td) / "p.json"
+        prof.write_text(json.dumps({
+            "thresholds": {"min_duration_s": 4.0},
+            "perMovement": {
+                "push_up": {"lower_body_ids": [23, 24],
+                            "trunk_angle_band_deg": [60, 90]},
+                "bodyweight_squat": {"lower_body_ids": [23, 24, 27, 28],
+                                     "trunk_angle_band_deg": [0, 45]},
+                "dip": [23, 24],
+            },
+        }), encoding="utf-8")
+        th = load_triage_profile(str(prof), "push_up")
+        check(th.trunk_angle_band_deg == (60.0, 90.0),
+              "yatay hareket bandı profilden okunuyor")
+        th = load_triage_profile(str(prof), "bodyweight_squat")
+        check(th.trunk_angle_band_deg == (0.0, 45.0),
+              "DİK hareket farklı bant alıyor — tek global bant yeterli olmazdı")
+        th = load_triage_profile(str(prof), "dip")
+        check(th.lower_body_ids == (23, 24) and th.trunk_angle_band_deg is None,
+              "çıplak liste biçimi korunuyor (geriye uyum), bant kapalı")
+
+        bad = Path(td) / "bad.json"
+        bad.write_text(json.dumps({
+            "thresholds": {"min_duration_s": 4.0},
+            "perMovement": {"push_up": {"trunk_angle_band_deg": [90, 60]}},
+        }), encoding="utf-8")
+        try:
+            load_triage_profile(str(bad), "push_up")
+            check(False, "ters bant (alt>üst) sert hata vermeli")
+        except SystemExit:
+            check(True, "ters bant (alt>üst) sert hata veriyor")
+
+        typo = Path(td) / "typo.json"
+        typo.write_text(json.dumps({
+            "thresholds": {"min_duration_s": 4.0},
+            "perMovement": {"push_up": {"trunk_band": [60, 90]}},
+        }), encoding="utf-8")
+        try:
+            load_triage_profile(str(typo), "push_up")
+            check(False, "perMovement'ta yazım hatası sessizce yutulmamalı")
+        except SystemExit:
+            check(True, "perMovement'ta bilinmeyen anahtar sessizce yutulmuyor")
 
     print("[6] kullanılabilir pencere (L-085)")
     check_usable_window()

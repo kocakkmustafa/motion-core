@@ -274,7 +274,32 @@ def load_triage_profile(
                 f"{path}: perMovement'ta '{movement}' yok. "
                 f"Tanımlı: {', '.join(sorted(per))}"
             )
-        raw["lower_body_ids"] = tuple(per[movement])
+        entry = per[movement]
+        # İki biçim: çıplak liste (eski, yalnız landmark kümesi) ya da nesne.
+        # DURUŞ BANDI da harekete özeldir — şınav (60,90), squat (0,45) — ve
+        # tek bir global bant ikisine birden hizmet edemez. Bandı thresholds'a
+        # koyup perMovement'ta unutmak, L-080'in yeni bir yerde tekrarı olurdu.
+        if isinstance(entry, dict):
+            unknown_pm = set(entry) - {"lower_body_ids", "trunk_angle_band_deg"}
+            if unknown_pm:
+                raise SystemExit(
+                    f"{path}: perMovement['{movement}'] bilinmeyen anahtar: "
+                    f"{', '.join(sorted(unknown_pm))}"
+                )
+            if "lower_body_ids" in entry:
+                raw["lower_body_ids"] = tuple(entry["lower_body_ids"])
+            if "trunk_angle_band_deg" in entry:
+                raw["trunk_angle_band_deg"] = tuple(entry["trunk_angle_band_deg"])
+        else:
+            raw["lower_body_ids"] = tuple(entry)
+    band = raw.get("trunk_angle_band_deg")
+    if band is not None:
+        if len(band) != 2 or band[0] > band[1]:
+            raise SystemExit(
+                f"{path}: trunk_angle_band_deg [alt, üst] olmalı ve alt <= üst "
+                f"(verilen: {list(band)})"
+            )
+        raw["trunk_angle_band_deg"] = (float(band[0]), float(band[1]))
     return TriageThresholds(**raw)
 
 

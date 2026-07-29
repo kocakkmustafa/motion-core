@@ -58,3 +58,32 @@ toplu koşum: `while read url; do $VENV harvest.py run --url "$url" ...; done`.
 kendi havuz koşumunda verir (M-O-02'nin açı-normalizasyon sorusu B4 pilotunda).
 Üst-gövde sondası pose modeli `fixture_pipeline/models/` pinli dosyalarını
 kullanır (`fetch_models.sh`).
+
+### Duruş kapısı — "kadrajda mı" ≠ "hareketi yapıyor mu" (G-043)
+
+Görünürlük sondaları kişinin kadrajda olduğunu doğrular, **aranan hareketi
+yaptığını doğrulamaz**. Gravita'da ölçüldü: kimlik kapısı olmadan çıkarılan 85
+push-up "tekrarının" **65'i (%76)** gövdesi 50-90° eğimli — yani ayakta konuşan
+— kayıtlardan geldi (bir eğitmen tek videodan 58 "tekrar"). Tekrar FSM'i sinyal
+ekleminin salınımını sayar, hareketi değil; konuşurken el hareketi de dirseği
+155°↔100° arasında gezdirir.
+
+```json
+{
+  "thresholds": {"min_posture_ratio": 0.25},
+  "perMovement": {
+    "push_up":          {"lower_body_ids": [23,24],       "trunk_angle_band_deg": [60, 90]},
+    "bodyweight_squat": {"lower_body_ids": [23,24,27,28], "trunk_angle_band_deg": [0, 45]}
+  }
+}
+```
+
+* Bant **düşeyden sapma** derecesidir: `0` = dik gövde, `90` = yatay. Birim
+  uygulamaların `torso_angle_from_vertical` metriğiyle aynıdır — rig eşiği ile
+  motor ön koşulu arasında çeviri katmanı yok.
+* Bant **harekete özeldir** (`perMovement`). Sabit bir "yatay" varsaymak L-080'in
+  tekrarı olurdu: squat/curl gibi dik hareketleri sessizce reddederdi.
+* Pencere kurtarması bu reddi **geri almaz**: pencere sondası görünürlük ölçer,
+  kimlik ölçmez — ayakta-konuşma videosunda da kusursuz pencere bulunur.
+* Bant verilmezse kapı **kapalıdır** (geriye uyumlu). `perMovement` girdisi hem
+  çıplak liste (eski) hem nesne biçimini kabul eder.
