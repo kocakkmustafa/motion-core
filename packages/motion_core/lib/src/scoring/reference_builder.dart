@@ -464,6 +464,19 @@ final class ReferenceBuilder {
 
   /// Merges takes into a canonical reference.
   ///
+  /// **Gate scope (M-J-08):** the agreement gate is a *take-level, coarse*
+  /// "same movement?" check — it is NOT the scoring authority. Which joints
+  /// may score is decided per joint by measured dispersion (M-F-41/46), on
+  /// the app side. On style-heavy references (a static stance whose arms
+  /// legitimately spread 36° while legs agree at 8°) the take-level median
+  /// can over-block; callers may widen [clusterToleranceDeg] for such
+  /// references while keeping per-joint authority strict. A finer per-joint
+  /// gate was attempted and measured to be structurally blind to
+  /// different-movement outliers (each take finds SOME agreeing joints);
+  /// the design remains open in the family ledger — this doc records the
+  /// triangle so nobody re-walks it: different-movement ⊗ style ⊗ per-joint
+  /// authority cannot all be served by one take-level statistic.
+  ///
   /// Throws [ArgumentError] below [minTakes] and [ReferenceAgreementError]
   /// when fewer than [minTakes] sources agree within [clusterToleranceDeg]
   /// (M-F-47: the count gate alone cannot see that 23° and 112° are both
