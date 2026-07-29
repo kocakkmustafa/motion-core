@@ -3,18 +3,21 @@ import Flutter
 import MediaPipeTasksVision
 import UIKit
 
-/// ⚠️ PROVISIONAL — written against MediaPipeTasksVision 0.10.21 (M-L-02 pin)
-/// but NOT yet compiled or run on a device. Liveness (a real session emitting
-/// envelopes) is a separate, named step; until it happens this file is design
-/// made concrete, not a working bridge (beyan ≠ canlı).
+/// ⚠️ COMPILED, NOT YET RUN — first compiled against MediaPipeTasksVision
+/// 0.10.21 on 2026-07-30 (J-071: two real breaks found and fixed by reading
+/// the pod's own headers). Device liveness (a real session emitting
+/// envelopes) remains a separate, named step — "derleniyor ≠ çalışıyor";
+/// until §7.3-7.7 run on hardware this is a compiling bridge, not a proven
+/// one.
 ///
 /// Contract: docs/70-KAMERA-KOPRUSU-SOZLESMESI.md. Responsibilities of this
 /// layer, and nothing more:
 ///  - own the AVCaptureSession and the PoseLandmarker (.video mode)
 ///  - latest-wins backpressure: never queue frames, count what was discarded
 ///  - run the passes the current PassPlan asks for on the SAME pixel buffer;
-///    inverted pass = ImageProcessingOptions(rotationDegrees: 180), landmarks
-///    mapped back x→1-x, y→1-y (in-plane rotation, no L/R index swap)
+///    inverted pass = MPImage(pixelBuffer:orientation: .down) (0.10.21's
+///    in-plane-rotation surface), landmarks mapped back x→1-x, y→1-y
+///    (in-plane rotation, no L/R index swap)
 ///  - stamp envelopes with the capture PTS (host clock — monotonic on iOS)
 ///  - refuse with named error codes; never request permission itself
 public class MotionCameraPlugin: NSObject, FlutterPlugin {
