@@ -63,8 +63,15 @@ class MovementWindow:
                 f"periyot={self.period_s:.2f}s")
 
 
-def normalized_series(frames: list[list[list[float]]]) -> list[list[float]]:
+def normalized_series(frames: list[list[list[float]]],
+                      ids: list[int] | None = None) -> list[list[float]]:
     """Torso-relative body landmarks, flattened per frame.
+
+    [ids] scopes WHICH landmarks enter the series (default: full BODY).
+    M-O-43: measuring energy/drift over landmarks that are structurally out
+    of frame (legs in a waist-up lesson) folds MediaPipe's guessed-position
+    noise into the measurement — the scope must match what the downstream
+    consumer actually requires.
 
     Same normalization idea as the engine: origin at the hip midpoint, scaled by
     torso length, so that a dancer stepping toward the camera does not read as
@@ -81,7 +88,7 @@ def normalized_series(frames: list[list[list[float]]]) -> list[list[float]]:
             out.append(None)
             continue
         row = []
-        for i in BODY:
+        for i in (ids if ids is not None else BODY):
             row.append((lm[i][0] - hx) / torso)
             row.append((lm[i][1] - hy) / torso)
         out.append(row)

@@ -124,8 +124,20 @@ def _drift(seg: list[list[float]]) -> float:
 
 TORSO = (11, 12, 23, 24)
 
+# Landmark scopes mirroring the Dart StandardJoints sets — the isolator's
+# criterion AND its measurements must match the downstream gate's `required`
+# set (M-O-43: a waist-up lesson has legs structurally out of frame; judging
+# it on a full-body set rejects perfectly usable upper-body material, and
+# measuring energy/drift over guessed leg positions folds noise in).
+SCOPES = {
+    "fullBody": list(BODY),
+    "upperBody": [11, 12, 13, 14, 15, 16, 23, 24],
+    "lowerBody": [23, 24, 25, 26, 27, 28],
+}
 
-def _frame_visible(lm: list[list[float]], *, min_vis: float = 0.5,
+
+def _frame_visible(lm: list[list[float]], ids: list[int], *,
+                   min_vis: float = 0.5,
                    torso_min_vis: float = 0.6,
                    min_share: float = 0.8) -> bool:
     """Body landmarks sufficiently visible AND in frame (M-O-41/42).
@@ -144,12 +156,12 @@ def _frame_visible(lm: list[list[float]], *, min_vis: float = 0.5,
         if vis < torso_min_vis or not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
             return False
     ok = 0
-    for i in BODY:
+    for i in ids:
         x, y = lm[i][0], lm[i][1]
         vis = lm[i][3] if len(lm[i]) > 3 else 1.0
         if vis >= min_vis and 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
             ok += 1
-    return ok >= min_share * len(BODY)
+    return ok >= min_share * len(ids)
 
 
 def find_hold_windows(
@@ -163,19 +175,23 @@ def find_hold_windows(
     min_coverage: float = 0.8,
     candidate_times_s: list[float] | None = None,
     max_windows: int = 5,
+    scope: str = "fullBody",
 ) -> list[HoldWindow]:
     """Finds windows where a present person holds a stable pose.
 
-    Threshold basis in the module doc — both PROVISIONAL until
-    real-footage calibration (Ostinato 1b).
+    Threshold basis in the module doc. [scope] names the landmark set the
+    DOWNSTREAM reference will require (`fullBody|upperBody|lowerBody`) —
+    visibility, energy and drift are all judged on that set (M-O-43); the
+    torso quartet is enforced unconditionally (normalization anchor).
     """
     if fps <= 0:
         raise SystemExit("fps > 0 zorunlu — sessiz varsayım yok (doc 60 §1)")
+    ids = SCOPES[scope]
     # M-O-41: a poorly-visible frame counts as ABSENT — stillness measured
     # over half-seen bodies produces windows the downstream gate rejects.
-    frames = [f if f is not None and _frame_visible(f) else None
+    frames = [f if f is not None and _frame_visible(f, ids) else None
               for f in frames]
-    series = normalized_series([f for f in frames if f is not None])
+    series = normalized_series([f for f in frames if f is not None], ids)
     # Re-expand to align indices with the raw frame list for coverage math.
     norm_by_idx: list[list[float] | None] = []
     it = iter(series)
@@ -231,7 +247,8 @@ def find_hold_windows(
 
 def _synth_hold(n: int, *, drift_total: float = 0.0, amp: float = 0.0,
                 jitter: float = 0.002, vis: float = 1.0, torso_vis: float = 1.0,
-                off_frame: bool = False, seed: int = 1):
+                legs_vis: float | None = None, off_frame: bool = False,
+                seed: int = 1):
     """Fake landmark frames: a still pose, optionally drifting or swinging."""
     rng = __import__("random").Random(seed)
     frames = []
@@ -248,7 +265,12 @@ def _synth_hold(n: int, *, drift_total: float = 0.0, amp: float = 0.0,
                 continue
             j = rng.gauss(0, jitter)
             x = (1.2 if off_frame else 0.5) + slide + swing + j
-            lm[i] = [x, 0.5 + j, 0, vis]
+            v = vis
+            if legs_vis is not None and i in (25, 26, 27, 28):
+                # structurally out of frame: garbage guessed position + ~0 vis
+                lm[i] = [rng.random(), 1.5 + rng.random(), 0, legs_vis]
+                continue
+            lm[i] = [x, 0.5 + j, 0, v]
         frames.append(lm)
     return frames
 
@@ -293,6 +315,13 @@ def self_test() -> int:
     # convention; presence is not reliability.
     run("gövde var ama güvensiz (M-O-42 reddi)",
         _synth_hold(240, torso_vis=0.55), 30, False)
+    # M-O-43: waist-up lesson — legs structurally out of frame (vis ~0.05).
+    # Judged on the fullBody set this is rejected; on the upperBody set the
+    # SAME material is a perfectly good hold. Scope must match the consumer.
+    waist_up = _synth_hold(240, legs_vis=0.05)
+    run("bel-üstü çekim, scope=fullBody (haklı ret)", waist_up, 30, False)
+    run("bel-üstü çekim, scope=upperBody (M-O-43 kabul)", waist_up, 30, True,
+        scope="upperBody")
 
     # Two-speed rule (doc 60 §1): the same physical hold at 60 fps must
     # read the SAME per-second energy class and still be found.
@@ -329,9 +358,19 @@ def self_test() -> int:
 def main(argv: list[str]) -> int:
     if len(argv) == 2 and argv[1] == "--self-test":
         return self_test()
+    scope = "fullBody"
+    if "--scope" in argv:
+        i = argv.index("--scope")
+        scope = argv[i + 1]
+        if scope not in SCOPES:
+            print(f"bilinmeyen scope: {scope} (fullBody|upperBody|lowerBody)",
+                  file=sys.stderr)
+            return 64
+        argv = argv[:i] + argv[i + 2:]
     if len(argv) < 2:
-        print("kullanım: hold_isolator.py <landmarks.json> [t1,t2,... "
-              "(aday saniyeleri)] | --self-test", file=sys.stderr)
+        print("kullanım: hold_isolator.py [--scope fullBody|upperBody|"
+              "lowerBody] <landmarks.json> [t1,t2,... (aday saniyeleri)] "
+              "| --self-test", file=sys.stderr)
         return 64
     d = json.load(open(argv[1], encoding="utf-8"))
     fps = d.get("recordingMeta", {}).get("fps")
@@ -345,7 +384,7 @@ def main(argv: list[str]) -> int:
     if len(argv) > 2:
         cands = [float(x) for x in argv[2].split(",")]
     for w in find_hold_windows(frames, fps=float(fps),
-                               candidate_times_s=cands):
+                               candidate_times_s=cands, scope=scope):
         print(w)
     return 0
 
