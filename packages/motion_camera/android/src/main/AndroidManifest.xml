@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="com.yulalab.motion_camera">
+  <!-- Beyan burada, runtime İSTEME app'te: plugin isimli retle reddeder
+       (camera-permission-denied), izin UX'i app kararıdır. -->
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+</manifest>

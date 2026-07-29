@@ -1,0 +1,32 @@
+name: motion_camera
+description: >-
+  Native camera → MediaPipe pose bridge for the Yula Motion family.
+  Streams 33-landmark frames on a monotonic clock into motion_core's
+  PoseSourceDriver contract. Pinned: iOS MediaPipeTasksVision 0.10.21,
+  Android tasks-vision 0.10.29 (M-L-02). The core never sees images.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  motion_core:
+    path: ../motion_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.yulalab.motion_camera
+        pluginClass: MotionCameraPlugin
+      ios:
+        pluginClass: MotionCameraPlugin
