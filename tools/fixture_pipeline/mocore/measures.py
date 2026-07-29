@@ -65,7 +65,14 @@ class MetricDef:
     #: için zorunludur. `shoulder_line_foreshortening` tam bu sınıf: anatomik
     #: çerçeve yaw bağımlılığını tanım gereği kaldırdığı için metrik orada
     #: SABİTLEŞİR — göç kapısı bunu ölü metrik olarak yakaladı (A9).
-    frame_ref: str = "anatomical"
+    #: M-F-54 taksonomisi. Her metrik ÇERÇEVESİNİ BEYAN EDER:
+    #:   camera     — dünya ekseni korunur; kameraya göre yönelimi ÖLÇENLER
+    #:   gravityYaw — postür açıları (yerçekimi-göreli, yaw-only çerçeve)
+    #:   proximal   — küresel-eklem fleksiyonu (proksimal segment-göreli,
+    #:                pitch dahil)
+    #:   none       — doğrudan 3D segment-arası açı, izdüşüm YOK; menteşe
+    #:                eklemler ve toplam-bükülme için
+    frame_ref: str = "gravityYaw"
 
     def __post_init__(self) -> None:
         # L-011: transverse düzlem, dikey ekseni sıfırlar; dikeye göre açı bu
@@ -138,7 +145,7 @@ class MetricDef:
             baseline=(float(d["baseline"]) if "baseline" in d else None),
             value_range=(tuple(float(x) for x in d["range"])  # type: ignore[arg-type]
                          if "range" in d else None),
-            frame_ref=d.get("frameRef", "anatomical"),
+            frame_ref=d.get("frameRef", "gravityYaw"),
         )
 
 
@@ -172,16 +179,22 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
     # M-F-53: `anatomical=True` düzlemleri iskeletten türetir; kamera
     # yönelimine bağımsızdır. Varsayılan False — göç sırasında eski davranış
     # korunuyor ve fark ÖLÇÜLEREK raporlanıyor (şart c: sessiz değişim yok).
-    axes = (geo.body_axes(frame.xyz)
-            if anatomical and metric.frame_ref == "anatomical" else None)
+    axes = None
+    if anatomical and metric.frame_ref in ("gravityYaw", "proximal"):
+        axes = geo.body_axes(frame.xyz, metric.frame_ref)
+    plane = metric.plane
+    if anatomical and metric.frame_ref == "none":
+        # Doğrudan 3D: izdüşüm bilgi kaybıdır. Menteşe eklemde fleksiyon tek
+        # serbestlik derecesidir, düzleme indirmeye gerek yok.
+        plane = "none"
     conf = frame.confidence(metric.indices)
     # Sanal noktalar bileşenlerinin ortalamasıdır; gerçek noktalar kendileridir.
     pts = [frame.xyz[list(lm.resolve(p))].mean(axis=0) for p in metric.points]
 
     if metric.kind == "angle3":
-        value = geo.angle_3pt_projected(pts[0], pts[1], pts[2], metric.plane, axes=axes)
+        value = geo.angle_3pt_projected(pts[0], pts[1], pts[2], plane, axes=axes)
     elif metric.kind == "angle_vertical":
-        value = geo.angle_to_vertical(pts[0], pts[1], metric.plane, axes=axes)
+        value = geo.angle_to_vertical(pts[0], pts[1], plane, axes=axes)
     elif metric.kind == "height_diff_norm":
         # İki nokta arasındaki DİKEY fark / gövde uzunluğu. İşaretli: pozitif =
         # ilk nokta ikincisinden yukarıda. Lunge'da arka dizin yere yaklaşması,
@@ -196,15 +209,15 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
         # Nokta–doğru uzaklığı / gövde uzunluğu. Plank'ta kalçanın omuz–ayak
         # bileği hattından sapması gibi "hizada mı?" ölçüleri.
         t = geo.torso_length(frame.xyz)
-        d = geo.line_deviation(pts[0], pts[1], pts[2], metric.plane, axes=axes)
+        d = geo.line_deviation(pts[0], pts[1], pts[2], plane, axes=axes)
         value = d / t if t > 1e-9 else float("nan")
     elif metric.kind == "distance_norm":
         a, b = pts[0], pts[1]
-        if metric.plane != "none":
+        if plane != "none":
             # Düzleme izdüşürülmüş mesafe = foreshortening ölçümü. Gövde
             # kameraya göre döndükçe omuz hattının frontal izdüşümü kısalır;
             # transverse rotasyonun 2D'de ölçülebilen tek dolaylı işareti budur.
-            a, b = geo.project(a, metric.plane, axes), geo.project(b, metric.plane, axes)
+            a, b = geo.project(a, plane, axes), geo.project(b, plane, axes)
         value = geo.normalized_distance_pts(frame.xyz, a, b)
     else:  # pragma: no cover - MetricDef doğrulaması engeller
         raise ValueError(f"Bilinmeyen metrik tipi: {metric.kind}")

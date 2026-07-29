@@ -101,7 +101,7 @@ def angle_to_vertical(
     return math.degrees(math.acos(cos))
 
 
-def body_axes(xyz: np.ndarray) -> np.ndarray:
+def body_axes(xyz: np.ndarray, mode: str = "gravityYaw") -> np.ndarray:
     """İskeletten ANATOMİK eksenleri türet — satırlar [ML, SI, AP], birim.
 
     Neden gerekli (M-F-53): sabit dünya ekseniyle izdüşüm, vücudun
@@ -119,6 +119,15 @@ def body_axes(xyz: np.ndarray) -> np.ndarray:
     sürümde tam bu oldu ve kapı yakaladı (A1 60,000° hata, A9 1 ölü metrik).
     Çerçeve yalnız kişinin YÖNELİMİNİ (yaw) izlemeli, duruşunu değil.
 
+    `mode` (M-F-54 taksonomisi):
+      gravityYaw : SI = yerçekimi dikeyi. POSTÜR metrikleri için — gövdenin
+                   dikeyden sapmasını ölçen metrik, gövdeyle dönen bir
+                   çerçevede tanım gereği sıfırlanır.
+      proximal   : SI = GÖVDE ekseni (kalça ortası -> omuz ortası), pitch
+                   DAHİL. Küresel-eklem fleksiyonu için — gövde öne eğilince
+                   uzvun sagittal düzlemi de eğilir. `gravityYaw` ile ölçülen
+                   16,96° hip_flexion sapması tam bu farkın imzasıydı.
+
     Ek landmark GEREKMEZ; dördü de zaten her karede var.
     """
     from . import landmarks as lm
@@ -127,8 +136,19 @@ def body_axes(xyz: np.ndarray) -> np.ndarray:
          ("LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_HIP", "RIGHT_HIP")}
     ml = ((xyz[i["RIGHT_SHOULDER"]] - xyz[i["LEFT_SHOULDER"]])
           + (xyz[i["RIGHT_HIP"]] - xyz[i["LEFT_HIP"]]))
-    # SI = yerçekimi dikeyi. Dünya y aşağı baktığı için yukarı yön -y.
-    si = np.array([0.0, -1.0, 0.0])
+    if mode == "proximal":
+        mid_sh = (xyz[i["LEFT_SHOULDER"]] + xyz[i["RIGHT_SHOULDER"]]) / 2.0
+        mid_hip = (xyz[i["LEFT_HIP"]] + xyz[i["RIGHT_HIP"]]) / 2.0
+        si = mid_sh - mid_hip
+        n = np.linalg.norm(si)
+        if n < 1e-9:
+            return np.eye(3)
+        si = si / n
+    elif mode == "gravityYaw":
+        # Dünya y aşağı baktığı için yukarı yön -y.
+        si = np.array([0.0, -1.0, 0.0])
+    else:
+        raise ValueError(f"bilinmeyen body_axes modu: {mode!r}")
     if np.linalg.norm(ml) < 1e-9:
         return np.eye(3)
     # ML'yi yataya indir (Gram-Schmidt): omuz/kalça hattı eğik olabilir ve dik
@@ -180,8 +200,8 @@ def angle_3pt_projected(
     if plane == "none":
         return angle_3pt(a, b, c)
     origin = np.zeros(3)
-    ba = project(a - b, plane)
-    bc = project(c - b, plane)
+    ba = project(a - b, plane, axes)
+    bc = project(c - b, plane, axes)
     return angle_3pt(ba, origin, bc)
 
 
