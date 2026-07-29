@@ -162,6 +162,19 @@ def find_presence_windows(
     [scope] mirrors the downstream JointSpec set (M-O-43); the torso
     quartet is enforced unconditionally by `_frame_visible` regardless of
     scope (normalization anchor).
+
+    J-052-v2 (JabLab measured): a proportional `scope` share can pass while
+    one landmark that will actually be SCORED sits at 0% visible the whole
+    window. `hold_isolator._frame_visible`'s `required_ids` closes this for
+    a single fixed joint set — but a `{side}`-templated driver has TWO
+    candidate joint sets (right/left) and the lesson there is "at least one
+    side's three points are ALL visible", not "these N points are ALL
+    visible" (an AND over the union would wrongly demand both arms). That
+    OR-of-ANDs guarantee is what `_driver_value` already enforces per
+    triplet, per frame — a candidate with any unresolved point simply does
+    not vote. Only when there is exactly ONE driver triplet (no side
+    ambiguity) does `required_ids` unambiguously apply here too, so it is
+    passed for defense-in-depth in that case only.
     """
     if fps <= 0:
         raise SystemExit("fps > 0 zorunlu — sessiz varsayım yok (doc 60 §1)")
@@ -175,11 +188,17 @@ def find_presence_windows(
     max_gap = max(1, round(max_gap_s * fps))
     pad = round(pad_s * fps)
 
+    required_ids = None
+    if len(driver_triplets) == 1:
+        required_ids = [i for p in driver_triplets[0]
+                        for i in (p if isinstance(p, tuple) else (p,))]
+
     vis_ok: list[bool] = []
     driver_val: list[float | None] = []
     for f in frames:
         ok = f is not None and _frame_visible(
-            f, ids, min_vis=min_vis, torso_min_vis=torso_min_vis)
+            f, ids, required_ids=required_ids,
+            min_vis=min_vis, torso_min_vis=torso_min_vis)
         vis_ok.append(ok)
         driver_val.append(
             _driver_value(f, driver_triplets, op=op, min_vis=min_vis)
@@ -426,6 +445,24 @@ def self_test() -> int:
         _synth_rep(30, rise_s=1.5, hold_s=2.0, fall_s=1.5, peak_deg=150.0,
                   torso_vis=0.55),
         30, False)
+
+    # 7. J-052-v2 (JabLab measured, hold_isolator's `required_ids`): a
+    # proportional scope share does not guarantee any ONE landmark. The
+    # actual hold (value >= 140) is UNAFFECTED here — only the padding
+    # region (the rise/return context around it) loses the right elbow's
+    # visibility, from just past the hold onward. Left elbow, both wrists,
+    # both shoulders, both hips stay visible: 7/8 of upperBody (87.5%)
+    # clears the proportional `min_share` (80%) easily. Without
+    # `required_ids` this window would be found (verified: min_coverage=0
+    # returns it, coverage=0.756 — high, not near-empty); WITH it, the
+    # padding's coverage drops below `min_coverage` because the one
+    # landmark the driver actually scores is the one going dark.
+    j052 = _synth_rep(30, rise_s=1.5, hold_s=2.0, fall_s=1.5, peak_deg=150.0,
+                      post_s=10.0)
+    for fr in j052[175:]:
+        fr[R_ELBOW] = [fr[R_ELBOW][0], fr[R_ELBOW][1], 0, 0.05]
+    run("J-052-v2: oransal geçer (7/8) ama sürücü eklem PENCEREDE görünmez",
+        j052, 30, False)
 
     if fails:
         print(f"\nSELF-TEST FAIL ({fails})")
