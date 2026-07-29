@@ -26,9 +26,11 @@ the ACF. So stability is measured twice, independently:
 Threshold basis (honesty label): the defaults below are declared
 PROVISIONAL — the energy ceiling sits ≥6× above the measured synthetic
 noise floor (~0.07/s at family jitter) and ≤¼ of the slowest synthetic
-movement class (~2.3/s swing); the drift bound (0.06) sits above the
-measured per-dim jitter extreme (~0.03 over a 3 s window) and below a real
-in-window pose change (±0.10 for half-a-torso of travel). Real-footage calibration lands with
+movement class (~2.3/s swing); the drift bound (0.08) is
+CALIBRATED BY REAL FOOTAGE (M-O-42: found holds measured drift 0.046-0.08
+across şan/gitar/piyano — the first synthetic guess of 0.06 sat ON the
+real jitter band and cost windows) while staying below a real in-window
+pose change (±0.10 for half-a-torso of travel). Real-footage calibration lands with
 Ostinato's step-1b windows. Override per call; do not silently retune here.
 
 Visibility criterion (M-O-41, measured by Ostinato): energy + drift alone
@@ -120,13 +122,27 @@ def _drift(seg: list[list[float]]) -> float:
     return worst
 
 
-def _frame_visible(lm: list[list[float]], *, min_vis: float = 0.5,
-                   min_share: float = 0.8) -> bool:
-    """Body landmarks sufficiently visible AND in frame (M-O-41).
+TORSO = (11, 12, 23, 24)
 
-    Mirrors the spirit of the canonical CLI's confidence gate so a chosen
-    window survives it. PROVISIONAL bounds, declared like the rest.
+
+def _frame_visible(lm: list[list[float]], *, min_vis: float = 0.5,
+                   torso_min_vis: float = 0.6,
+                   min_share: float = 0.8) -> bool:
+    """Body landmarks sufficiently visible AND in frame (M-O-41/42).
+
+    Mirrors the canonical CLI's confidence gate so a chosen window survives
+    it — including its TORSO rule: presence is not reliability (M-O-42:
+    piano lessons keep the camera on the hands, torso landmarks exist but
+    sit under the gate's torsoThreshold, and 3/3 chosen windows collapsed
+    to 100% torsoUnreliable downstream). Torso landmarks are held to the
+    gate's own higher bar (0.6, ConfidenceGate default) individually; the
+    rest to the share criterion.
     """
+    for i in TORSO:
+        x, y = lm[i][0], lm[i][1]
+        vis = lm[i][3] if len(lm[i]) > 3 else 1.0
+        if vis < torso_min_vis or not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            return False
     ok = 0
     for i in BODY:
         x, y = lm[i][0], lm[i][1]
@@ -143,7 +159,7 @@ def find_hold_windows(
     window_s: float = 3.0,
     stride_s: float = 0.5,
     max_energy_per_s: float = 0.5,
-    max_drift: float = 0.06,
+    max_drift: float = 0.08,
     min_coverage: float = 0.8,
     candidate_times_s: list[float] | None = None,
     max_windows: int = 5,
@@ -214,17 +230,17 @@ def find_hold_windows(
 # --------------------------------------------------------------------------
 
 def _synth_hold(n: int, *, drift_total: float = 0.0, amp: float = 0.0,
-                jitter: float = 0.002, vis: float = 1.0, off_frame: bool = False,
-                seed: int = 1):
+                jitter: float = 0.002, vis: float = 1.0, torso_vis: float = 1.0,
+                off_frame: bool = False, seed: int = 1):
     """Fake landmark frames: a still pose, optionally drifting or swinging."""
     rng = __import__("random").Random(seed)
     frames = []
     for t in range(n):
         lm = [[0.5, 0.5, 0.0, 1.0] for _ in range(33)]
-        lm[23] = [0.45, 0.60, 0, 1]
-        lm[24] = [0.55, 0.60, 0, 1]
-        lm[11] = [0.42, 0.38, 0, 1]
-        lm[12] = [0.58, 0.38, 0, 1]
+        lm[23] = [0.45, 0.60, 0, torso_vis]
+        lm[24] = [0.55, 0.60, 0, torso_vis]
+        lm[11] = [0.42, 0.38, 0, torso_vis]
+        lm[12] = [0.58, 0.38, 0, torso_vis]
         slide = drift_total * t / max(1, n - 1)
         swing = amp * math.sin(2 * math.pi * t / 30)
         for i in BODY:
@@ -273,6 +289,10 @@ def self_test() -> int:
         _synth_hold(240, vis=0.2), 30, False)
     run("durağan ama kadraj dışı (M-O-41 reddi)",
         _synth_hold(240, off_frame=True), 30, False)
+    # M-O-42: torso PRESENT but under the gate's torso bar — piano filming
+    # convention; presence is not reliability.
+    run("gövde var ama güvensiz (M-O-42 reddi)",
+        _synth_hold(240, torso_vis=0.55), 30, False)
 
     # Two-speed rule (doc 60 §1): the same physical hold at 60 fps must
     # read the SAME per-second energy class and still be found.
