@@ -22,6 +22,7 @@ import numpy as np
 
 from mocore import geometry as geo
 from mocore import measures as mz
+from mocore import phases as ph
 from mocore import synth
 
 #: Sentetik iskeletin varsayılan ölçüleri — analitik beklentiler bunlara dayanır.
@@ -84,6 +85,158 @@ SWEEPS = {
     "lateral_bend": [0, 5, 10, 20, 30, 40],
     "heel_lift": [0.0, 0.01, 0.02, 0.04, 0.06],
 }
+
+
+
+# --------------------------------------------------------------------------
+# A7/A8 — faz makinesi senaryoları
+# --------------------------------------------------------------------------
+#
+# Her senaryo bir poz alanını hedef aralıkta gezdirir. Ters eşleme (metrik ->
+# poz alanı) yalnız doğrudan sürülebilen testler için yazıldı; türev metrikli
+# testler (reach_depth, knee_height, foreshortening) kapsam DIŞI ve rapor bunu
+# isimle söyler — kapsanmayanı kapsanmış göstermek, kapının kendi zaafıdır.
+P = synth.Pose
+
+#: testId -> (poz alanı, dinlenme değeri, tepe değeri)
+#: testId -> (poz alanı, dinlenme, tepe, sabit tutulacak diğer alanlar)
+PHASE_DRIVERS = {
+    "overhead_reach":  ("shoulder_flex", 10.0, 160.0, {}),
+    "deep_squat":      ("knee_flex", 5.0, 120.0, {}),
+    # Kollar baş üstünde: `ready` koşulu çok-metrikli (all) — diz düz VE kol yukarı.
+    "overhead_squat":  ("knee_flex", 5.0, 110.0, {"shoulder_flex": 165.0}),
+    "hip_hinge":       ("trunk_lean", 3.0, 70.0, {}),
+    "lateral_bend":    ("lateral_bend", 2.0, 35.0, {}),
+}
+
+
+def _hold(pose, n):
+    return synth.ramp(pose, pose, n)
+
+
+def _scenario_frames(field: str, rest: float, peak: float, kind: str,
+                     *, confidence: float = 1.0, fixed: dict | None = None) -> list:
+    """Senaryo poz dizisi üret; kare akışına çevir."""
+    fixed = fixed or {}
+    mk = lambda v: P(**{field: float(v), **fixed})
+    if kind == "correct":
+        poses = (_hold(mk(rest), 20) + synth.ramp(mk(rest), mk(peak), 45)
+                 + _hold(mk(peak), 60) + synth.ramp(mk(peak), mk(rest), 45)
+                 + _hold(mk(rest), 20))
+    elif kind == "abandoned":
+        # Yarıda bırakma: tepeye çıkar, orada kalır, geri dönmez.
+        poses = (_hold(mk(rest), 20) + synth.ramp(mk(rest), mk(peak), 45)
+                 + _hold(mk(peak), 400))
+    elif kind == "never_starts":
+        poses = _hold(mk(rest), 200)
+    else:
+        raise ValueError(kind)
+    frames = synth.sequence(poses, fps=30.0)
+    if confidence < 1.0:
+        frames = [synth.occlude(f, tuple(synth.lm.NAMES), confidence) for f in frames]
+    return frames
+
+
+def measure_a7_a8(mset, phase_path: str) -> dict:
+    """A7: doğru dizilim tanınıyor mu · A8: hatalı dizilim doğru kodla bitiyor mu."""
+    tests = ph.load_phase_set(phase_path)
+    a7_pass, a7_total, a7_fail = 0, 0, []
+    a8_pass, a8_total, a8_fail = 0, 0, []
+    uncovered = sorted(set(tests) - set(PHASE_DRIVERS))
+
+    for tid, (field, rest, peak, fixed) in PHASE_DRIVERS.items():
+        if tid not in tests:
+            continue
+        runner = ph.PhaseRunner(tests[tid], mset)
+
+        # --- A7: doğru dizilim tamamlanmalı ---
+        a7_total += 1
+        r = runner.run(_scenario_frames(field, rest, peak, "correct", fixed=fixed))
+        if r.outcome == ph.COMPLETED and r.measured_at_ms is not None:
+            a7_pass += 1
+        else:
+            a7_fail.append(f"{tid}: {r.outcome}, fazlar={'→'.join(r.phase_sequence) or '-'}")
+
+        # --- A8a: yarıda bırakma -> timeout (park etmemeli) ---
+        a8_total += 1
+        r = runner.run(_scenario_frames(field, rest, peak, "abandoned", fixed=fixed))
+        if r.outcome in (ph.TIMED_OUT, ph.ABORTED):
+            a8_pass += 1
+        else:
+            a8_fail.append(f"{tid}/abandoned: {r.outcome} (timeout bekleniyordu)")
+
+        # --- A8b: düşük güven -> abort veya hiç başlamama ---
+        a8_total += 1
+        r = runner.run(_scenario_frames(field, rest, peak, "correct",
+                                        confidence=0.2, fixed=fixed))
+        if r.outcome != ph.COMPLETED:
+            a8_pass += 1
+        else:
+            a8_fail.append(f"{tid}/low-confidence: düşük güvende TAMAMLANDI — kaçak")
+
+    return {"a7": (a7_pass, a7_total, a7_fail), "a8": (a8_pass, a8_total, a8_fail),
+            "uncovered": uncovered}
+
+
+def measure_a10(mset, phase_path: str) -> dict:
+    """A10 — nötr/doğru duruşta hiçbir abort tetiklenmemeli.
+
+    Guard koşulları "kusur var mı" sorusunu sorar; kusursuz bir duruşta
+    tetikleniyorsa koşul terstir veya eşiği anlamsızdır. Bu, ölü-metrik
+    ailesinden bir hata: guard vardır ama hiçbir zaman doğru çalışamaz.
+    Gerçek örnek (L-072): `lateral_bend`'in TORSO_ROTATED guard'ı
+    `foreshortening > 0.15` yazılmıştı; metrik nötrde 0.80 ve rotasyonda
+    KÜÇÜLÜR — yani koşul her duruşta doğruydu ve test hep abort ediyordu.
+    """
+    tests = ph.load_phase_set(phase_path)
+    bad: list[str] = []
+    checked = 0
+    for tid, tdef in tests.items():
+        # "Nötr" testten teste değişir: overhead squat'ın doğru başlangıcı
+        # kollar YUKARIDA. Test-özel sabit alanlar uygulanmazsa A10 kendi
+        # yanlış alarmını üretir.
+        fixed = PHASE_DRIVERS.get(tid, (None, None, None, {}))[3]
+        neutral = synth.build_frame(P(**fixed))
+        runner = ph.PhaseRunner(tdef, mset)
+        for phase in tdef["phases"]:
+            cond = phase.get("abort")
+            if not cond:
+                continue
+            # Güven koşulları nötr karede zaten sağlanmaz; onları atla.
+            if cond.get("kind") == "confidence":
+                continue
+            checked += 1
+            try:
+                if runner._holds(cond, neutral, neutral, 0.0):
+                    bad.append(
+                        f"{tid}.{phase['id']} ({phase.get('abortCode')}): "
+                        f"NÖTR duruşta tetikleniyor — koşul ters veya eşik anlamsız"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                bad.append(f"{tid}.{phase['id']}: koşul değerlendirilemedi — {exc}")
+    return {"bad": bad, "checked": checked}
+
+
+def measure_a11(mset) -> dict:
+    """A11 — beyan edilen taban, kusursuz durumda ölçülenle uyuşuyor mu (M-F-34).
+
+    Tolerans taban-göreli yorumlanır; taban yanlış beyan edilmişse her eşik
+    yanlış yerden ölçülür. L-072 bunun canlı örneğiydi: tabanı 0,80 olan bir
+    metrik sıfır sanılıp guard `> 0.15` yazılmış, guard her duruşta tetiklenmişti.
+    """
+    neutral = synth.build_frame(P())
+    bad: list[str] = []
+    checked = 0
+    for mid, md in mset.metrics.items():
+        if md.baseline is None:
+            continue
+        checked += 1
+        declared = float(md.baseline)
+        actual = mz.evaluate(md, neutral).value
+        scale = max(abs(declared), 0.01)
+        if abs(actual - declared) / scale > 0.01:
+            bad.append(f"{mid}: beyan {declared:.4f} · ölçüm {actual:.4f}")
+    return {"bad": bad, "checked": checked}
 
 
 @dataclass
@@ -275,17 +428,57 @@ def main() -> int:
         "dead": dead, "uncovered": uncovered, "pass": verdicts["A9"]
     }
 
-    # --- A7/A8: state machine — HENÜZ ÖLÇÜLMEDİ ---
-    print("\nA7  State-machine doğru dizilim   : ⏳ ÖLÇÜLMEDİ (state machine G4'te yazılacak)")
-    print("A8  State-machine geçersizlik     : ⏳ ÖLÇÜLMEDİ (aynı gerekçe)")
-    report["results"]["A7_A8"] = "NOT_MEASURED_state_machine_pending"
+    # --- A7/A8: faz makinesi (taslak köprü; core sürümü çıkınca devreder) ---
+    phase_path = str(Path(args.config).parent.parent / "phases" / "lissom-phases.v1.json")
+    if Path(phase_path).exists():
+        r78 = measure_a7_a8(mset, phase_path)
+        (p7, t7, f7), (p8, t8, f8) = r78["a7"], r78["a8"]
+        verdicts["A7"] = p7 == t7
+        verdicts["A8"] = p8 == t8
+        print(f"\nA7  Doğru dizilim tanıma          : {p7}/{t7} test  "
+              f"{'✅ GEÇTİ' if verdicts['A7'] else '❌ KALDI'}")
+        for line in f7:
+            print(f"    ❌ {line}")
+        print(f"A8  Hatalı dizilim doğru bitiyor  : {p8}/{t8} senaryo  "
+              f"{'✅ GEÇTİ' if verdicts['A8'] else '❌ KALDI'}")
+        for line in f8:
+            print(f"    ❌ {line}")
+        if r78["uncovered"]:
+            print(f"    ⚠️  Senaryo üreteci OLMAYAN {len(r78['uncovered'])} test: "
+                  f"{', '.join(r78['uncovered'])}")
+            print("       Türev metrikli testler; A7/A8 bunları KAPSAMIYOR.")
+        report["results"]["A7"] = {"pass": p7, "total": t7, "failures": f7}
+        report["results"]["A8"] = {"pass": p8, "total": t8, "failures": f8,
+                                   "uncovered": r78["uncovered"]}
+
+        r10 = measure_a10(mset, phase_path)
+        verdicts["A10"] = not r10["bad"]
+        print(f"A10 Nötr duruşta yanlış abort    : {len(r10['bad'])} / "
+              f"{r10['checked']} guard  "
+              f"{'✅ GEÇTİ' if verdicts['A10'] else '❌ KALDI'}")
+        for line in r10["bad"]:
+            print(f"    ❌ {line}")
+        report["results"]["A10"] = r10
+
+        r11 = measure_a11(mset)
+        if r11["checked"]:
+            verdicts["A11"] = not r11["bad"]
+            print(f"A11 Taban beyanı doğru mu        : {len(r11['bad'])} / "
+                  f"{r11['checked']} metrik  "
+                  f"{'✅ GEÇTİ' if verdicts['A11'] else '❌ KALDI'}")
+            for line in r11["bad"]:
+                print(f"    ❌ {line}")
+            report["results"]["A11"] = r11
+    else:
+        print("\nA7/A8: faz config bulunamadı — ÖLÇÜLMEDİ")
+        report["results"]["A7_A8"] = "NOT_MEASURED_no_phase_config"
 
     # --- Hüküm ---
-    measured = ["A1", "A2", "A3", "A4", "A6", "A9"]
+    measured = ["A1", "A2", "A3", "A4", "A6", "A9"] + [k for k in ("A7", "A8", "A10", "A11") if k in verdicts]
     passed = [k for k in measured if verdicts.get(k)]
     print("\n" + "=" * 78)
     if len(passed) == len(measured):
-        verdict = "ŞARTLI GEÇTİ (A1-A6 tam; A7/A8 state machine bekliyor)"
+        verdict = "GEÇTİ (A1-A9 tam)" if {"A7","A8"} <= set(verdicts) else "ŞARTLI GEÇTİ (A1-A6 tam; A7/A8 bekliyor)"
         code = 0
     elif verdicts.get("A6") and verdicts.get("A1"):
         verdict = f"SINIRDA ({len(passed)}/{len(measured)}) — protokol §2.3 şartlı geçiş"

@@ -46,6 +46,14 @@ class TriageThresholds:
     #: %2-7'ye düşüyor — squat/ayak bileği/lunge testleri o kliplerden
     #: ölçülemez. Alt-vücut testi olan app'ler (Lissom, Gravita) bunu açar.
     min_full_body_ratio: float = 0.0
+    #: "Alt gövde"nin hangi landmark'lar olduğu HAREKETE göre değişir; sabit
+    #: bir küme app'e özgü bir varsayımdır ve sessizce yanlış reddeder.
+    #: ÖLÇÜLDÜ (L-080): kalça+ayak bileği sabit istenince Lissom'un
+    #: `overhead_reach` (bir OMUZ testi) adaylarının 8'de 7'si "alt vücut
+    #: kadraj dışı" diye reddedildi — o test ayak bileğine hiç bakmıyor.
+    #: Çağıran, ölçeceği metriklerin gerçekten istediği indeksleri verir.
+    #: Varsayılan = kalça+ayak bileği (eski davranış birebir korunur).
+    lower_body_ids: tuple[int, ...] = (23, 24, 27, 28)
     #: sonda yoğunlukları
     cut_probe_fps: float = 2.0
     pose_probe_frames: int = 12
@@ -130,7 +138,8 @@ def _sharpness(grays: list[np.ndarray]) -> float:
 
 
 def _body_presence(
-    path: Path, duration_s: float, n_frames: int, model_path: Path
+    path: Path, duration_s: float, n_frames: int, model_path: Path,
+    lower_ids: tuple[int, ...] = (23, 24, 27, 28),
 ) -> tuple[float, float]:
     """Örneklenmiş karelerde (üst-gövde oranı, tam-gövde oranı) — TEK geçişte.
 
@@ -152,7 +161,6 @@ def _body_presence(
     # BlazePose indeksleri: 0=nose · 11/12=omuzlar · 23/24=kalçalar ·
     # 27/28=ayak bilekleri.
     upper_ids = (0, 11, 12)
-    lower_ids = (23, 24, 27, 28)
     cap = cv2.VideoCapture(str(path))
     times = np.linspace(0.5, max(duration_s - 0.5, 1.0), n_frames)
     seen_upper = 0
@@ -235,7 +243,8 @@ def triage(
 
     if pose_model is not None:
         upper, full = _body_presence(
-            p, duration_s, th.pose_probe_frames, pose_model
+            p, duration_s, th.pose_probe_frames, pose_model,
+            lower_ids=th.lower_body_ids,
         )
         report.upper_body_ratio = upper
         if report.upper_body_ratio < th.min_upper_body_ratio:
@@ -248,7 +257,7 @@ def triage(
             if report.full_body_ratio < th.min_full_body_ratio:
                 report.rejects.append(
                     f"tam-gövde oranı {report.full_body_ratio:.2f} < "
-                    f"{th.min_full_body_ratio} (alt vücut kadraj dışı — "
-                    f"squat/ayak bileği/lunge ölçülemez)"
+                    f"{th.min_full_body_ratio} (bu hareketin istediği "
+                    f"landmark'lar {th.lower_body_ids} kadraj dışı)"
                 )
     return report

@@ -92,6 +92,72 @@ def check_triage_profile() -> None:
             check(True, "bilinmeyen eşik anahtarı sessizce yutulmuyor")
 
 
+def check_per_movement() -> None:
+    """L-080: kadraj şartı harekete göre değişir ve triyaja GERÇEKTEN ulaşır.
+
+    İki ayrı şey doğrulanıyor, çünkü ikisi ayrı ayrı kırıldı:
+    profil okunuyor mu (L-062: eşik vardı, CLI'ya bağlı değildi) ve okunan
+    değer `_body_presence`'a kadar gidiyor mu (L-050: entegrasyon yolu hiç
+    koşulmamıştı). Sonda ayrıca POZİTİF yönden sınanıyor — daima 0.0 dönen
+    bozuk bir sonda yalnız red testlerini geçerdi.
+    """
+    import json as _json
+    import os
+    import tempfile
+    from pathlib import Path
+
+    import triage as triage_mod
+    from harvest import load_triage_profile
+
+    prof = {"thresholds": {"min_full_body_ratio": 0.6},
+            "perMovement": {"overhead_reach": [23, 24], "deep_squat": [23, 27]}}
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "p.json"
+        f.write_text(_json.dumps(prof), encoding="utf-8")
+
+        th = load_triage_profile(str(f), "overhead_reach")
+        check(th.lower_body_ids == (23, 24),
+              "harekete özel landmark kümesi profilden okunuyor")
+        check(load_triage_profile(str(f), "deep_squat").lower_body_ids == (23, 27),
+              "farklı hareket farklı küme alıyor")
+
+        for movement, why in ((None, "--movement verilmeyince"),
+                              ("yoktur", "tanımsız hareket verilince")):
+            try:
+                load_triage_profile(str(f), movement)
+                check(False, f"{why} SESSİZCE geçilmemeli")
+            except SystemExit:
+                check(True, f"{why} sert hata")
+
+    # Eşik gerçekten sondaya ulaşıyor mu (L-050: isim hatası yüzünden hiç
+    # ulaşmıyordu ve kavramsal doğrulama bunu görmemişti).
+    seen: dict = {}
+    real = triage_mod._body_presence
+
+    def spy(path, duration_s, n_frames, model_path, lower_ids=(23, 24, 27, 28)):
+        seen["ids"] = lower_ids
+        return 1.0, 1.0
+
+    triage_mod._body_presence = spy
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            vid = os.path.join(td, "clip.mp4")
+            write_video(vid, seconds=5.0, size=(640, 360))
+            r = triage_mod.triage(
+                vid,
+                thresholds=triage_mod.TriageThresholds(
+                    min_full_body_ratio=0.6, lower_body_ids=(23, 24),
+                    min_duration_s=4.0),
+                pose_model=Path("dummy.task"),
+            )
+    finally:
+        triage_mod._body_presence = real
+    check(seen.get("ids") == (23, 24),
+          "profildeki küme _body_presence'a KADAR gidiyor")
+    check(r is not None and r.full_body_ratio == 1.0,
+          "sonda pozitif yönde de ölçülüyor (daima-0 sonda burada kalır)")
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -129,7 +195,7 @@ def main() -> int:
         # iki NameError/AttributeError'ı tam bu yolda saklanıyordu).
         import triage as triage_mod
         real_probe = triage_mod._body_presence
-        triage_mod._body_presence = lambda p, d, n, m: (0.92, 0.50)
+        triage_mod._body_presence = lambda p, d, n, m, lower_ids=(): (0.92, 0.50)
         try:
             full_th = TriageThresholds(min_duration_s=4.0,
                                        min_full_body_ratio=0.6)
@@ -174,12 +240,20 @@ def main() -> int:
                                      "toolVersions")),
               "provenance bloku fixture v2 alanlarını taşıyor")
 
-    if FAILURES:
-        print(f"\n{len(FAILURES)} HATA")
-        return 1
     print("[4] triyaj profili (CLI yolu)")
     check_triage_profile()
 
+    print("[5] harekete özel landmark şartı")
+    check_per_movement()
+
+    # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
+    # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
+    # yani yazılmış ama hükme bağlanmamış bir testti (L-063 sınıfı).
+    if FAILURES:
+        print(f"\n{len(FAILURES)} HATA")
+        for f in FAILURES:
+            print(f"  ❌ {f}")
+        return 1
     print("\nHepsi geçti.")
     return 0
 
