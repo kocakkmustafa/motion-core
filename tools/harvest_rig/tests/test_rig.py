@@ -313,6 +313,38 @@ def check_dedup_self() -> None:
               "self_id verilmezse eski davranış korunur")
 
 
+def check_context_tags() -> None:
+    """M-F-51 eki: dışlamanın NEDENİ taşınıyor ve sözlük kapalı."""
+    from context_tags import (VOCAB, ContextAnnotation, from_out_of_range,
+                              from_rom_mode)
+    from manifest import HarvestManifest
+
+    check(from_rom_mode("passive").tags == ["demo-mode-mismatch"],
+          "passive -> demo-mode-mismatch")
+    # Bilgi YOKLUĞU bir bağlam iddiası değildir; etiketlemek olmayan kanıt sunar.
+    check(from_rom_mode("unknown") is None and from_rom_mode("active") is None,
+          "unknown/active ETİKETLENMEZ")
+    check(from_out_of_range(1488, 8078).tags == ["tracking-artifact"],
+          "yüksek aralık-dışı oranı -> tracking-artifact")
+    check(from_out_of_range(15, 7500) is None,
+          "düşük aralık-dışı oranı etiket üretmez")
+    for bad in ({"tags": ["yoga"]}, {"tags": [], "source": "guess"}):
+        try:
+            ContextAnnotation(**bad)
+            check(False, f"geçersiz {bad} REDDEDİLMELİ")
+        except ValueError:
+            check(True, f"sözlük dışı değer sert hata ({list(bad)[0]})")
+    check(len(VOCAB) == 5, "aile sözlüğü 5 değerle başlıyor")
+
+    # Etiket PROVENANCE'a akmalı - manifestte kalırsa ReferenceBuilder göremez.
+    m = HarvestManifest.start(app="lissom", video_id="x", source_url="u")
+    m.context_tags, m.context_source = ["intent-variant"], "manual"
+    blk = m.provenance_block()
+    check(blk.get("contextTags") == ["intent-variant"]
+          and blk.get("contextSource") == "manual",
+          "contextTags provenance bloğuna akıyor")
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -409,6 +441,9 @@ def main() -> int:
 
     print("[8] dedup kendi-eşleşmesi (L-106)")
     check_dedup_self()
+
+    print("[9] bağlam etiketleri (M-F-51 eki)")
+    check_context_tags()
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
