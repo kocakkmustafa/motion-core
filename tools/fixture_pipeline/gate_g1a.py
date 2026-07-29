@@ -91,6 +91,40 @@ SWEEPS = {
     "heel_lift": [0.0, 0.01, 0.02, 0.04, 0.06],
 }
 
+#: EŞGÜDÜMLÜ (kinematik-zincir) problar — A9 için ZORUNLU tamamlayıcı.
+#:
+#: Neden gerekli (L-155 göçünün açığa çıkardığı kapsama boşluğu): SWEEPS her
+#: poz alanını TEK BAŞINA gezdirir. Zincirden TÜREYEN metrikler bu şekilde
+#: hiç uyarılamaz — `synth.Pose`'un kendi belgesi söylüyor: "tibia eğimi ayrı
+#: parametre DEĞİLDİR, (hip_flex - knee_flex) ilişkisinden türer". Tek-eksenli
+#: bir prob (yalnız `hip_flex=110`) anatomik olarak İMKÂNSIZ bir duruş üretir;
+#: `tibia_inclination` orada 110° okur, beyan edilen 0-90° aralığının dışına
+#: düşer ve doğru şekilde geçersiz sayılır.
+#:
+#: Eski mimaride bu geçersiz okuma HAM değeriyle (110.0) dönüyordu, sonlu
+#: olduğu için A9 onu "perturbasyona tepki" sayıyordu ve metrik SAHTE bir
+#: yeşil alıyordu. `mask_invalid=True` (L-155) bunu NaN'a çevirince A9 dürüstçe
+#: "ölü" dedi — metrik ölü DEĞİLDİ, hiç DOĞRU SORULMAMIŞTI.
+#:
+#: Ölçüldü (aynı metrik, eşgüdümlü duruşlarla): hip/knee birlikte büküldüğünde
+#: `tibia_inclination_right` = 0° → 5° → 10° → 15° (hepsi GEÇERLİ). Yani
+#: tepki gerçek, prob kümesi eksikti.
+#:
+#: AİLE DERSİ: tek-eksenli perturbasyon, zincirden türeyen metriklere YAPISAL
+#: OLARAK KÖRDÜR. Bir metrik "hiçbir bozucuya tepki vermiyor" derken, sorulacak
+#: ilk soru "bozucular bu metriği uyarabiliyor mu" olmalı.
+CHAIN_PROBES = {
+    # Gerçekçi çömelme derinlikleri: kalça ve diz BİRLİKTE bükülür (izole
+    # eksen değil). Değerler `synth.Pose`'un kinematik zinciriyle tutarlı
+    # ve üçü de metriklerin beyan ettiği fiziksel aralık İÇİNDE.
+    "squat_shallow": {"hip_flex": 40.0, "knee_flex": 45.0},
+    "squat_mid": {"hip_flex": 60.0, "knee_flex": 70.0},
+    "squat_deep": {"hip_flex": 80.0, "knee_flex": 95.0},
+    # Topuk kalkmış çömelme: `heel_rise` ile ayak-bileği zincirini AYNI
+    # karede uyarır (ankle testinin gerçek geçersizleştirme deseni).
+    "squat_heels_up": {"hip_flex": 60.0, "knee_flex": 70.0, "heel_lift": 0.04},
+}
+
 
 
 # --------------------------------------------------------------------------
@@ -408,29 +442,51 @@ def main() -> int:
         synth.build_frame(synth.Pose(**{field: float(max(values))}))
         for field, values in SWEEPS.items()
     ]
+    # Eşgüdümlü problar (yukarıdaki CHAIN_PROBES gerekçesi): zincirden türeyen
+    # metrikler tek-eksenli bozucuyla uyarılamaz.
+    probes += [
+        synth.build_frame(synth.Pose(**fields))
+        for fields in CHAIN_PROBES.values()
+    ]
     probes += [
         synth.yaw(synth.build_frame(synth.Pose()), 40),
         synth.build_frame(synth.Pose(), body=synth.BodyProportions().scaled(1.3)),
     ]
+    # Kaç prob GEÇERLİ okuma üretti — "ince kapsama" görünür kalsın.
+    # Tek geçerli değere dayanan bir metrik ölü DEĞİL ama korumasız: aralığı
+    # bir tek noktadan biliyoruz. Bunu saymadan "A9 yeşil" demek, L-155'in
+    # açığa çıkardığı sahte-yeşilin daha yumuşak bir hâli olurdu.
+    thin: list[str] = []
+    responders: dict[str, int] = {}
     for mid, metric in mset.metrics.items():
         if mid not in EXPECTED:
             uncovered.append(mid)
         vals = [mz.evaluate(metric, f, anatomical=ANATOMICAL).value for f in probes]
         finite = [v for v in vals if np.isfinite(v)]
+        responders[mid] = len(finite)
         if len(finite) < 2 or (max(finite) - min(finite)) < 1e-6:
             dead.append(mid)
+        elif len(finite) < 3:
+            thin.append(mid)
     verdicts["A9"] = not dead
     print(f"\nA9  Ölü metrik (sabit değer)      : {len(dead)} / {len(mset.metrics)} "
           f"(eşik = 0)  {'✅ GEÇTİ' if verdicts['A9'] else '❌ KALDI'}")
     if dead:
         for d in dead:
             print(f"    ❌ ÖLÜ: {d} — hiçbir bozucuya tepki vermiyor")
+    if thin:
+        print(f"    ⚠️  İNCE KAPSAMA — {len(thin)} metrik yalnız 2 geçerli probla "
+              f"yaşıyor: {', '.join(thin)}")
+        print("       Ölü değil ama aralığı iki noktadan biliyoruz; prob "
+              "kümesi genişletilmeli.")
     if uncovered:
         print(f"    ⚠️  A1-A4 kapsamı dışında {len(uncovered)} metrik "
               f"(beklenen-değer formülü yok): {', '.join(uncovered)}")
         print("       Bunlar yalnız A9 ile korunuyor — doğruluk garantisi YOK.")
     report["results"]["A9"] = {
-        "dead": dead, "uncovered": uncovered, "pass": verdicts["A9"]
+        "dead": dead, "uncovered": uncovered, "thin": thin,
+        "probeCount": len(probes), "validResponders": responders,
+        "pass": verdicts["A9"],
     }
 
     # --- A7/A8: faz makinesi (taslak köprü; core sürümü çıkınca devreder) ---
