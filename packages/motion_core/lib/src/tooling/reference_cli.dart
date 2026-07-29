@@ -64,7 +64,15 @@ final class ReferenceCli {
     this.segmentCycles = true,
     this.periodEstimator = const CyclePeriodEstimator(),
     this.cycleAligner = const CycleAligner(),
+    this.gateJoints,
+    this.gateBasis,
   });
+
+  /// Declared agreement-gate joint subset + its mandatory basis — see
+  /// [ReferenceBuilder.build] (M-O-56 fourth class). Null = gate over every
+  /// joint, the legacy meaning. Stamped into the artifact either way.
+  final List<String>? gateJoints;
+  final String? gateBasis;
 
   /// Cycle segmentation (L-139 / 0.8.0): reduce each periodic take to one
   /// phase-aligned repetition before consensus, instead of whole-video DTW —
@@ -406,6 +414,8 @@ final class ReferenceCli {
       usable,
       leadSidePrior: leadSidePrior,
       clusterToleranceDeg: clusterToleranceDeg,
+      gateJoints: gateJoints,
+      gateBasis: gateBasis,
     );
 
     final List<String> jointIds =
@@ -440,6 +450,11 @@ final class ReferenceCli {
         'clusterToleranceDeg': clusterToleranceDeg,
         'minVisibleShare': minVisibleShare,
         'cycleSegmentation': segmentCycles,
+        // M-O-56 fourth class: which joints the agreement gate medianed
+        // over, and the declared basis when narrowed. 'all' is the legacy
+        // meaning — every joint of the build votes.
+        'agreementGateJoints': gateJoints ?? 'all',
+        if (gateBasis != null) 'agreementGateBasis': gateBasis,
       },
       // L-139 / 0.8.0: whether takes were reduced to phase-aligned single
       // cycles before consensus. `notApplied` is a declaration, not a

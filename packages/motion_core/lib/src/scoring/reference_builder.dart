@@ -207,7 +207,21 @@ final class CanonicalReference {
     this.mirrorSearchDecisive = false,
     this.excludedOutlierIds = const <String>[],
     this.priorDisagreements = const <String>[],
+    this.gateJoints,
+    this.gateBasis,
   });
+
+  /// The joint names the M-F-47 agreement gate's per-take median was
+  /// computed over, or null when the gate ran over every joint (the legacy
+  /// meaning). See [ReferenceBuilder.build]'s `gateJoints` for why this
+  /// exists (M-O-56 fourth class: a gate medianing over joints the product
+  /// never scores rejects takes that agree perfectly on the scored metric).
+  final List<String>? gateJoints;
+
+  /// The declared, human-readable basis for narrowing [gateJoints] —
+  /// mandatory whenever the gate set is narrowed, so the narrowing can never
+  /// silently re-litigate a coached_only decision without naming it.
+  final String? gateBasis;
 
   /// M-F-46 rule 7 input: whether the orientation assignment was decisive.
   final bool mirrorConfident;
@@ -646,11 +660,37 @@ final class ReferenceBuilder {
   /// "in" — a reference distilled from that range sets a meaningless target).
   /// Outliers outside a still-sufficient cluster are excluded *and named*,
   /// never silently averaged.
+  /// **Gate joint set (M-O-56 fourth class):** by default the gate's
+  /// per-take median runs over EVERY joint of the build. On posture/hold
+  /// material where most joints are legitimately free (guitar arms play;
+  /// 8 of 9 joints are arms), that median is decided by joints the product
+  /// has already measured into `coached_only` — the gate then rejects takes
+  /// that agree perfectly on the scored metric (measured: a take with
+  /// trunk_tilt deviation 0.3° rejected at arm-median 42.9°), and a widened
+  /// bar quietly becomes "how much arm noise do we tolerate". [gateJoints]
+  /// narrows the gate to the joints that DEFINE the movement's identity for
+  /// this material — and the narrowing MUST carry [gateBasis], so a
+  /// coached_only decision is consumed once, declared, instead of being
+  /// re-litigated silently at every build.
   CanonicalReference build(
     List<ReferenceTake> rawTakes, {
     Map<String, bool>? leadSidePrior,
     double clusterToleranceDeg = 14,
+    List<String>? gateJoints,
+    String? gateBasis,
   }) {
+    if (gateJoints != null && (gateBasis == null || gateBasis.trim().isEmpty)) {
+      throw ArgumentError(
+        'narrowing the agreement gate to $gateJoints requires a declared '
+        'gateBasis — an undeclared narrowing silently re-litigates the '
+        'coached_only decision it encodes (M-O-56)',
+      );
+    }
+    if (gateJoints != null && gateJoints.isEmpty) {
+      throw ArgumentError(
+          'gateJoints must name at least one joint — an empty gate set '
+          'would wave every take through');
+    }
     // Structural impossibilities are refused up front, with the real reason
     // — never left to surface deep in consensus math as a crash or as a
     // convincing-but-wrong gate verdict (L-143 and its review):
@@ -706,8 +746,33 @@ final class ReferenceBuilder {
     final List<String> flipped = resolution.flippedIds;
 
     // ---- M-F-47 agreement gate --------------------------------------------
-    // Per-take mean angular deviation from the (provisional) consensus.
-    final Map<String, double> deviationDeg = _deviationsFromConsensus(takes);
+    // Per-take mean angular deviation from the (provisional) consensus,
+    // medianed over the declared gate joints (all joints when none declared).
+    final List<int>? gateIndices = gateJoints == null
+        ? null
+        : () {
+            final List<JointSpec> specs = takes.first.frames.first.specs;
+            final List<int> indices = <int>[];
+            final List<String> missing = <String>[];
+            for (final String name in gateJoints) {
+              final int i =
+                  specs.indexWhere((JointSpec s) => s.id == name);
+              if (i < 0) {
+                missing.add(name);
+              } else {
+                indices.add(i);
+              }
+            }
+            if (missing.isNotEmpty) {
+              throw ArgumentError(
+                  'gateJoints name joints absent from this build: '
+                  '${missing.join(', ')} — a gate over joints that are not '
+                  'measured here would be a silent no-op');
+            }
+            return indices;
+          }();
+    final Map<String, double> deviationDeg =
+        _deviationsFromConsensus(takes, jointFilter: gateIndices);
     final List<ReferenceTake> cluster = <ReferenceTake>[
       for (final ReferenceTake t in takes)
         if (deviationDeg[t.id]! <= clusterToleranceDeg) t,
@@ -782,6 +847,8 @@ final class ReferenceBuilder {
       mirrorSearchDecisive: resolution.searchDecisive,
       excludedOutlierIds: excluded,
       priorDisagreements: resolution.priorDisagreements,
+      gateJoints: gateJoints,
+      gateBasis: gateBasis,
     );
   }
 
@@ -790,7 +857,10 @@ final class ReferenceBuilder {
   /// Alignment-aware: each take is warped onto the medoid's time base first,
   /// so a slower demonstration of the same movement does not read as
   /// disagreement.
-  Map<String, double> _deviationsFromConsensus(List<ReferenceTake> takes) {
+  Map<String, double> _deviationsFromConsensus(
+    List<ReferenceTake> takes, {
+    List<int>? jointFilter,
+  }) {
     final int medoid = selectMedoid(takes);
     final List<JointAngleVector> base = takes[medoid].frames;
     final List<List<JointAngleVector>> aligned = <List<JointAngleVector>>[
@@ -811,6 +881,8 @@ final class ReferenceBuilder {
     ];
 
     final int jointCount = base.first.specs.length;
+    final List<int> jointIndices =
+        jointFilter ?? <int>[for (int j = 0; j < jointCount; j++) j];
     final Map<String, double> out = <String, double>{};
     for (int t = 0; t < takes.length; t++) {
       // Per-joint time-averaged deviation first, then the MEDIAN across
@@ -820,9 +892,10 @@ final class ReferenceBuilder {
       // joints — the variance the family turns into tolerance, never into
       // exclusion — cannot move the median. A grand mean would dilute the
       // first case (L-113's single-number trap); a high percentile would
-      // punish the second.
+      // punish the second. [jointFilter] narrows which joints vote (M-O-56
+      // fourth class) — the statistic itself is unchanged.
       final List<double> perJoint = <double>[];
-      for (int j = 0; j < jointCount; j++) {
+      for (final int j in jointIndices) {
         double sum = 0;
         int n = 0;
         for (int f = 0; f < base.length; f++) {

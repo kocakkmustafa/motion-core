@@ -29,6 +29,8 @@ void main(List<String> args) {
   bool allowUnattested = false;
   bool segmentCycles = true;
   String? leadSidePriorPath;
+  List<String>? gateJoints;
+  String? gateBasis;
   List<JointSpec> specs = StandardJoints.fullBody;
   final List<String> paths = <String>[];
 
@@ -49,6 +51,18 @@ void main(List<String> args) {
           allowUnattested = true;
         case '--lead-side-prior':
           leadSidePriorPath = args[++i];
+        // M-O-56 dördüncü sınıf: kapı-eklem-kümesi BEYAN EDİLEN parametredir.
+        // Daraltma --gate-basis olmadan çekirdek tarafından reddedilir —
+        // coached_only kararı bir kez, isimli tüketilir; her kurulumda
+        // sessizce yeniden litige edilmez.
+        case '--gate-joints':
+          gateJoints = args[++i]
+              .split(',')
+              .map((String s) => s.trim())
+              .where((String s) => s.isNotEmpty)
+              .toList();
+        case '--gate-basis':
+          gateBasis = args[++i];
         case '--no-cycle-segmentation':
           segmentCycles = false;
         case '--joints':
@@ -148,6 +162,8 @@ void main(List<String> args) {
     specs: specs,
     allowUnattested: allowUnattested,
     segmentCycles: segmentCycles,
+    gateJoints: gateJoints,
+    gateBasis: gateBasis,
   );
 
   try {

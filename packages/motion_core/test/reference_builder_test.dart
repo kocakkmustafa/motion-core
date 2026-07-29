@@ -545,4 +545,97 @@ void main() {
       );
     });
   });
+
+  group('declared gate joint set (M-O-56 fourth class)', () {
+    // The measured Ostinato scenario in miniature: one structural joint the
+    // product scores (trunk agrees to fractions of a degree) and one free
+    // joint it has already measured into coached_only (arms differ wildly).
+    const JointSpec trunk = JointSpec(
+        id: 'trunk_tilt', kind: AngleKind.trunkTilt, a: 11, b: 23);
+    const JointSpec arm = JointSpec(
+        id: 'left_elbow', kind: AngleKind.flexion, a: 11, b: 13, c: 15);
+
+    ReferenceTake postureTake(String id, double armRad) => ReferenceTake(
+          id: id,
+          source: 'synthetic:$id',
+          frames: <JointAngleVector>[
+            for (int f = 0; f < 8; f++)
+              JointAngleVector(
+                tUs: f * 33333,
+                values: <double>[0.10, armRad],
+                specs: const <JointSpec>[trunk, arm],
+              ),
+          ],
+        );
+
+    List<ReferenceTake> mixedPool() => <ReferenceTake>[
+          postureTake('a', 0.2),
+          postureTake('b', 1.2), // arms legitimately all over the place
+          postureTake('c', 2.4),
+        ];
+
+    test('a full-joint gate rejects takes that agree on the scored metric',
+        () {
+      // Documents the fourth class itself: with two joints the median is the
+      // ARM deviation, so a pool whose trunk agrees exactly is refused.
+      expect(
+        () => const ReferenceBuilder().build(mixedPool()),
+        throwsA(isA<ReferenceAgreementError>()),
+      );
+    });
+
+    test('a declared gate set admits the pool the product actually scores',
+        () {
+      final CanonicalReference ref = const ReferenceBuilder().build(
+        mixedPool(),
+        gateJoints: const <String>['trunk_tilt'],
+        gateBasis: 'arms are coached_only per measured M-O-47; trunk defines '
+            'the posture identity',
+      );
+      expect(ref.contributingTakes, 3);
+      expect(ref.gateJoints, const <String>['trunk_tilt']);
+      expect(ref.gateBasis, contains('M-O-47'));
+    });
+
+    test('narrowing without a declared basis is refused by name', () {
+      expect(
+        () => const ReferenceBuilder()
+            .build(mixedPool(), gateJoints: const <String>['trunk_tilt']),
+        throwsA(isA<ArgumentError>().having((ArgumentError e) => '${e.message}',
+            'message', contains('gateBasis'))),
+      );
+    });
+
+    test('an empty gate set is refused — it would wave everything through',
+        () {
+      expect(
+        () => const ReferenceBuilder().build(mixedPool(),
+            gateJoints: const <String>[], gateBasis: 'x'),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('gate joints absent from the build are refused by name', () {
+      expect(
+        () => const ReferenceBuilder().build(mixedPool(),
+            gateJoints: const <String>['right_knee'], gateBasis: 'x'),
+        throwsA(isA<ArgumentError>().having((ArgumentError e) => '${e.message}',
+            'message', contains('right_knee'))),
+      );
+    });
+
+    test('the default remains the full-joint gate, unchanged', () {
+      // Same pool with agreeing arms passes with NO gate declaration — the
+      // legacy path is untouched.
+      final CanonicalReference ref = const ReferenceBuilder().build(
+        <ReferenceTake>[
+          postureTake('a', 0.20),
+          postureTake('b', 0.21),
+          postureTake('c', 0.22),
+        ],
+      );
+      expect(ref.contributingTakes, 3);
+      expect(ref.gateJoints, isNull);
+    });
+  });
 }
