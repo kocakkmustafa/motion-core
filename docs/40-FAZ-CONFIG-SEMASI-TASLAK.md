@@ -1,10 +1,11 @@
-# Faz-Config Şeması — UZLAŞTIRMA TASLAĞI v3 (M-F-35/36/37)
+# Faz-Config Şeması — v3.0 MÜHÜRLÜ (M-F-40)
 
-**Tarih:** 2026-07-29 (gece, tur 8) · **Statü:** TASLAK v3 — MÜHÜR ADAYI.
-Onay turu işlendi: Gravita F1-F3 + değişmez #11 · JabLab M-J-05 (1)-(3) ·
-Ostinato M-O-07. İlk gerçek tüketici var: Ostinato `voice@0.1.0-draft`
-doğrudan bu şemaya yazıldı. **Mühür şartı: yalnız Lissom onayı** (şemanın
-omurgası zaten Lissom önerisi; itirazsız onayla MÜHÜRLENIR).
+**Tarih:** 2026-07-29 · **Statü:** 🔒 **MÜHÜRLÜ** — beş oturumun beşi onayladı
+(Lissom hükmü: "v3 MÜHÜRLENEBİLİR", `docs/talepler/LISSOM-v3-ONAY.md`).
+Bu şema artık aile sözleşmesidir: değişiklik = M-talebi + koordinatör kararı +
+sürüm artırımı. Çekirdek `PhaseConfig` yorumlayıcısı bu şemaya yazılır;
+yorumlayıcı ile şema ayrıştığında ŞEMA kazanır, yorumlayıcı düzeltilir.
+İlk gerçek tüketici: Ostinato `voice@0.1.0-draft`.
 
 **v2→v3:** hata kaydına `priority` (F1: safety>blocking>quality — aynı anda
 ateşlenen hatalarda GÜVENLİK önce söylenir) ve `perturbation` (F2: tespit
