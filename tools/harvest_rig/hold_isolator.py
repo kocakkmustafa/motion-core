@@ -137,6 +137,7 @@ SCOPES = {
 
 
 def _frame_visible(lm: list[list[float]], ids: list[int], *,
+                   required_ids: list[int] | None = None,
                    min_vis: float = 0.5,
                    torso_min_vis: float = 0.6,
                    min_share: float = 0.8) -> bool:
@@ -154,6 +155,16 @@ def _frame_visible(lm: list[list[float]], ids: list[int], *,
         x, y = lm[i][0], lm[i][1]
         vis = lm[i][3] if len(lm[i]) > 3 else 1.0
         if vis < torso_min_vis or not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            return False
+    # J-052-v2 (JabLab measured): the share criterion is PROPORTIONAL and
+    # guarantees no individual joint — a "fullBody" window carried 0/90
+    # ankle-visible frames while 80% of the set passed, and that source
+    # became the 40° outlier. Joints the downstream reference will SCORE
+    # can be demanded individually here.
+    for i in (required_ids or ()):
+        x, y = lm[i][0], lm[i][1]
+        vis = lm[i][3] if len(lm[i]) > 3 else 1.0
+        if vis < min_vis or not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
             return False
     ok = 0
     for i in ids:
@@ -176,6 +187,7 @@ def find_hold_windows(
     candidate_times_s: list[float] | None = None,
     max_windows: int = 5,
     scope: str = "fullBody",
+    required_ids: list[int] | None = None,
 ) -> list[HoldWindow]:
     """Finds windows where a present person holds a stable pose.
 
@@ -189,7 +201,8 @@ def find_hold_windows(
     ids = SCOPES[scope]
     # M-O-41: a poorly-visible frame counts as ABSENT — stillness measured
     # over half-seen bodies produces windows the downstream gate rejects.
-    frames = [f if f is not None and _frame_visible(f, ids) else None
+    frames = [f if f is not None
+              and _frame_visible(f, ids, required_ids=required_ids) else None
               for f in frames]
     series = normalized_series([f for f in frames if f is not None], ids)
     # Re-expand to align indices with the raw frame list for coverage math.
@@ -322,6 +335,10 @@ def self_test() -> int:
     run("bel-üstü çekim, scope=fullBody (haklı ret)", waist_up, 30, False)
     run("bel-üstü çekim, scope=upperBody (M-O-43 kabul)", waist_up, 30, True,
         scope="upperBody")
+    # J-052-v2: the proportional share passes while a REQUIRED joint (ankle,
+    # 27) is invisible — demanding it individually must reject.
+    run("oran geçiyor ama zorunlu eklem görünmez (J-052-v2 reddi)",
+        waist_up, 30, False, required_ids=[27])
 
     # Two-speed rule (doc 60 §1): the same physical hold at 60 fps must
     # read the SAME per-second energy class and still be found.
