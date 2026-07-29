@@ -57,7 +57,22 @@ MIN_GAP_MS = 150       # iki yumruk tepesi arası minimum gerçek süre
 # her hareketin timeout + iptal koşulu olmalı).
 MAX_EXT_MS = 400
 MAX_CYCLE_MS = 1200
-JUMP_THR_L = 0.55      # ardışık karede bilek sıçraması (kol uzunluğu birimi)
+# 2026-07-29 (M-F-72 #3, koordinatör sevki): JUMP_THR_L kare-cinsindendi —
+# doc 60 §1'in yasakladığı birim sınıfı. Mekanik: eşik glitch (tek-kare
+# teleport, dt-bağımsız bir tespit hatası) ile GERÇEK HAREKETİ ayırt etmeye
+# çalışıyor; glitch dt'yle ölçeklenmez ama gerçek hareket ölçeklenir — 30fps'te
+# hızlı bir yumruk ~0,45 kol-boyu/kare kalırken 24fps kaynakta AYNI fiziksel
+# hız ~0,56 kol-boyu/kare olur (kare aralığı uzadıkça kare-başına mesafe
+# artar) ve 0,55 eşiğini geçip GERÇEK yumruğu glitch sayar.
+# JUMP_THR_L kare-cinsinden BIRAKILDI (geriye-dönük rapor kıyaslaması için,
+# yalnız 30fps'te geçerli — bkz. report() uyarısı); JUMP_THR_SPEED_L aynı
+# ampirik eşiğin SANİYE-cinsinden (fps-değişmez) karşılığı. Yeni bir sayı
+# İCAT EDİLMEDİ — 0,55'in 30fps'teki fiziksel karşılığı cebirsel olarak
+# türetildi (0,55 × 30 = 16,5); mevcut D2 kapı kanıtıyla (gates/evidence)
+# tutarlılığı bu yüzden korunuyor. Fixture 24-25fps ise report() ikisini de
+# basar — ayrışma varsa GERÇEK sinyal, tesadüf değil.
+JUMP_THR_L = 0.55      # ardışık karede bilek sıçraması (kol uzunluğu birimi) — YALNIZ 30fps'te geçerli
+JUMP_THR_SPEED_L = 16.5  # kol-uzunluğu/SANİYE — fps-değişmez (JUMP_THR_L @ 30fps'ten türetildi)
 VIS_INFRAME_MIN = 0.50 # bölge "kadrajda" sayılması için gard tabanı eşiği
 MATCH_TOL_MS = 120     # desimasyonlar arası yumruk eşleme toleransı
 
@@ -434,13 +449,20 @@ def analyze(path: str, decimations: list[int], dims: int, label: str) -> dict:
             "rho_text_vs_drop": spearman(texts, drops),
         }
 
-    wr_jump = {}
+    wr_jump, wr_jump_fps_norm = {}, {}
     for side in ("left", "right"):
         L = per_side[side]["L_px"]
         wr = xyz[:, IDX[f"{side}_wrist"], :dims]
         d = np.linalg.norm(np.diff(wr, axis=0), axis=1) / L
         d = d[np.isfinite(d)]
         wr_jump[side] = float(np.mean(d > JUMP_THR_L)) if d.size else float("nan")
+        # fps-değişmez karşılık: kare-başına mesafe → saniye-başına mesafe.
+        # 30fps kaynakta wr_jump ile BİREBİR aynı frame'leri işaretler (aynı
+        # eşiğin aynı fps'teki karşılığı); başka fps'te AYRIŞABİLİR — asıl
+        # değeri burada.
+        speed = d * fps
+        wr_jump_fps_norm[side] = (float(np.mean(speed > JUMP_THR_SPEED_L))
+                                   if speed.size else float("nan"))
 
     t_ext_med = med([p["t_ext_ms"] for p in all_punches])
     result = {
@@ -464,6 +486,10 @@ def analyze(path: str, decimations: list[int], dims: int, label: str) -> dict:
             "median_n_ext_frames": med([p["n_ext_frames"] for p in all_punches]),
             "median_e_peak": med([p["e_peak"] for p in all_punches]),
             "jump_rate": wr_jump,
+            # M-F-72 #3: jump_rate YALNIZ 30fps'te geçerli (JUMP_THR_L kare-
+            # cinsinden); bu, doc 60 §1'in saniye-birimli karşılığı — fps'ten
+            # bağımsız, kaynak fps'i ne olursa olsun karşılaştırılabilir.
+            "jump_rate_fps_normalized": wr_jump_fps_norm,
             # t_ext ölçülünce n_ext@fps ARİTMETİK olarak türetilir (protokol §0/D2-A).
             "derived_n_ext_at_30fps": (t_ext_med * 30 / 1000.0) if math.isfinite(t_ext_med) else None,
             "derived_n_ext_at_60fps": (t_ext_med * 60 / 1000.0) if math.isfinite(t_ext_med) else None,
@@ -524,6 +550,13 @@ def report(r: dict, decimations: list[int]) -> None:
               f"ρ(t_ext,düşüş)={fmt(b['rho_text_vs_drop'],2)}")
     print(f"  bilek sıçrama oranı    : sol {fmt(r['summary']['jump_rate']['left'],3)} · "
           f"sağ {fmt(r['summary']['jump_rate']['right'],3)}")
+    if abs(m['fps'] - 30) > 1:
+        print(f"    ⚠️  JUMP_THR_L=0,55 30fps'te kalibre edildi; bu kaynak {m['fps']}fps —"
+              f" gerçek-hızlı hareket glitch'le KARIŞMIŞ olabilir (M-F-72 #3)."
+              f" jump_rate_fps_normalized'a bak.")
+    print(f"  bilek sıçrama (fps-değişmez): sol {fmt(r['summary']['jump_rate_fps_normalized']['left'],3)} · "
+          f"sağ {fmt(r['summary']['jump_rate_fps_normalized']['right'],3)}  "
+          f"(eşik {JUMP_THR_SPEED_L} kol-boyu/sn — her fps'te karşılaştırılabilir)")
     print(f"  --- H3 (eşleştirilmiş, n={r['h3']['n_matched_punches']} yumruk) ---")
     for k in decimations:
         lv = r["h3"]["levels"][k]

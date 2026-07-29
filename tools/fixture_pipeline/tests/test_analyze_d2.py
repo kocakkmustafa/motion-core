@@ -148,6 +148,58 @@ def build_mocore(path: str) -> None:
         f.write(fixture.to_json())
 
 
+def _fast_ramp_profile(t_ms: float, ramp_ms: float, peak: float) -> float:
+    """gard 0.55'ten `ramp_ms` sürede `peak`'e çıkan tek geçiş.
+
+    `peak` bilerek 1.0'ı (fiziksel tam uzanma) aşabilir — burada gerçek bir
+    yumruk MODELLENMİYOR, yalnız jump/glitch dedektörünün ham bilek
+    yer-değiştirme matematiği (JUMP_THR_L/JUMP_THR_SPEED_L) fps'e karşı
+    sınanıyor. `arm_length()` medyan aldığı için baseline karelerin (e=0.55)
+    çoğunluğu L'yi domine eder, tepe kareleri L tahminini bozmaz.
+    """
+    t_peak = 500.0
+    if t_ms < t_peak - ramp_ms or t_ms > t_peak + 200.0:
+        return 0.55
+    if t_ms <= t_peak:
+        u = (t_ms - (t_peak - ramp_ms)) / ramp_ms
+    else:
+        u = 1.0 - (t_ms - t_peak) / 200.0
+    return 0.55 + (peak - 0.55) * u
+
+
+def build_fast_punch(path: str, fps: float, ramp_ms: float, peak: float,
+                      n_frames: int) -> None:
+    """M-F-72 #3: AYNI fiziksel hareket (ramp_ms gerçek-zaman rampası),
+    yalnız fps FARKLI örneklenmiş. jump_rate/jump_rate_fps_normalized
+    karşılaştırması bu çift üstünde yapılır."""
+    frames = []
+    for i in range(n_frames):
+        t_ms = i * 1000.0 / fps
+        p = _skeleton(_fast_ramp_profile(t_ms, ramp_ms, peak))
+        lms = [
+            {"x": round(float(x), 6), "y": round(float(y), 6),
+             "z": round(float(z), 6), "vis": 0.9}
+            for x, y, z in p
+        ]
+        frames.append({"t": int(round(t_ms)), "landmarks": lms})
+    doc = {
+        "schemaVersion": 1,
+        "app": "jablab",
+        "technique": "jab",
+        "recordingMeta": {
+            "device": "synthetic", "fps": fps, "lighting": "bright",
+            "bodyProfile": "synthetic", "cameraSetup": "frontal",
+            "resolution": "1000x1000", "framesProcessed": n_frames,
+            "framesWithoutPose": 0,
+        },
+        "modelVersion": "synthetic",
+        "frames": frames,
+        "labels": [],
+    }
+    with open(path, "w") as f:
+        json.dump(doc, f)
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -195,6 +247,32 @@ def main() -> int:
         check(analyze_d2.arm_region("left") == ["left_elbow", "left_wrist",
                                                 "left_index"],
               "arm_region eski hatla birebir aynı olmalı")
+
+        print("[5] M-F-72 #3: JUMP_THR_L kare-cinsinden fps'e göre kayıyor,"
+              " fps_normalized kaymıyor")
+        # AYNI fiziksel geçiş (148ms rampa, e: 0.55→2.55 — bkz. _fast_ramp_
+        # profile docstring'i), yalnız fps FARKLI örneklendi. Kol-boyu/kare
+        # eşiği (JUMP_THR_L=0.55) 30fps'te net altında (hesap: ~0.45),
+        # 24fps'te aynı geçiş eşiği geçer (hesap: ~0.56) — coordinator'ın
+        # ölçtüğü desenle örtüşüyor. jump_rate_fps_normalized ikisinde de
+        # AYNI olmalı.
+        p30 = os.path.join(td, "fast30.json")
+        p24 = os.path.join(td, "fast24.json")
+        build_fast_punch(p30, fps=30.0, ramp_ms=148.0, peak=2.55, n_frames=45)
+        build_fast_punch(p24, fps=24.0, ramp_ms=148.0, peak=2.55, n_frames=36)
+        r30 = analyze_d2.analyze(p30, [1], 2, "fast30")
+        r24 = analyze_d2.analyze(p24, [1], 2, "fast24")
+        jr30 = r30["summary"]["jump_rate"]["left"]
+        jr24 = r24["summary"]["jump_rate"]["left"]
+        jrn30 = r30["summary"]["jump_rate_fps_normalized"]["left"]
+        jrn24 = r24["summary"]["jump_rate_fps_normalized"]["left"]
+        check(jr24 > jr30,
+              f"BUG kanıtı: 24fps'te jump_rate ({jr24:.3f}) 30fps'ten "
+              f"({jr30:.3f}) yüksek olmalı — aynı fiziksel hareket, kare-"
+              f"cinsinden eşik fps'e göre kayıyor")
+        check(abs(jrn30 - jrn24) < 0.05,
+              f"DÜZELTME kanıtı: jump_rate_fps_normalized fps'ten bağımsız "
+              f"olmalı (30fps {jrn30:.3f} vs 24fps {jrn24:.3f})")
 
     if failures:
         print(f"\n{len(failures)} HATA")
