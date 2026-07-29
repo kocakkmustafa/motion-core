@@ -250,6 +250,7 @@ final class CanonicalReference {
     required this.contributingTakes,
     required this.sources,
     required this.mirroredTakeIds,
+    this.medoidTakeId = '',
     this.mirrorConfident = true,
     this.mirrorGapMeasured = true,
     this.mirrorSearchDecisive = false,
@@ -271,6 +272,11 @@ final class CanonicalReference {
   /// mandatory whenever the gate set is narrowed, so the narrowing can never
   /// silently re-litigate a coached_only decision without naming it.
   final String? gateBasis;
+
+  /// The take whose timeline every other take was warped onto (G-082:
+  /// consumers were reverse-engineering this from frame-count equality —
+  /// the alignment base deserves a name, not an inference).
+  final String medoidTakeId;
 
   /// Per contributing take: how much MEASURED material stands behind its
   /// contribution (M-F-60 evidenceThickness, weak-take leg; M-F-68 HIGH-1).
@@ -928,6 +934,7 @@ final class ReferenceBuilder {
       contributingTakes: takes.length,
       sources: takes.map((ReferenceTake t) => t.source).toList(growable: false),
       mirroredTakeIds: flipped,
+      medoidTakeId: takes[medoid].id,
       mirrorConfident: resolution.confident,
       mirrorGapMeasured: resolution.gapMeasured,
       mirrorSearchDecisive: resolution.searchDecisive,

@@ -483,6 +483,7 @@ final class ReferenceCli {
         'sources': ref.sources,
         'distinctSources': ref.sources.toSet().length,
         'mirroredTakeIds': ref.mirroredTakeIds,
+        'medoidTakeId': ref.medoidTakeId,
         'mirrorConfident': ref.mirrorConfident,
         'mirrorGapMeasured': ref.mirrorGapMeasured,
         'mirrorSearchDecisive': ref.mirrorSearchDecisive,

@@ -3,6 +3,15 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.8 — 2026-07-30 — medoidTakeId
+
+- `CanonicalReference.medoidTakeId` + artefakta `result.medoidTakeId`
+  (G-082): tüketiciler medoidi kare-sayısı eşitliğinden geri-mühendislikle
+  buluyordu — hizalama tabanı isim taşır, çıkarım değil. G-082 ölçümü
+  0.8.7'nin kare-denominatör seçimini geriye dönük doğruladı: DTW KARE
+  hizalar, süre-tavanı 7 take'te aşılıyor (fps heterojenliği) yani tavan
+  değil; kare-tavanı yapısal olarak aşılAMAZ.
+
 ## 0.8.7 — 2026-07-30 — capFillShare: uzunluk-vekili ayrıştırması
 
 - İki bağımsız aile ölçümü (Ostinato hold-sınıfı §2d + Gravita
