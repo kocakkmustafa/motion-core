@@ -3,6 +3,54 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.0 — 2026-07-29 (yeni vardiya, tur 1)
+
+- **L-139 / ÇEVRİM-SEGMENTASYONU (kanonik CLI):** tam videolar arası DTW,
+  farklı tekrar-sayılı take'lerde çevrim sınırlarını ezerek büküyor (4
+  tekrarı 9'a) ve bükmeyi 34-43° "eğitmen anlaşmazlığı" diye raporluyordu.
+  Yeni hat: `CyclePeriodEstimator` (M-C-25 Dart'ta — ortalanmış ACF,
+  YALNIZ belirgin iç yerel tepe, global-max yasak; sınırlar SANİYE
+  cinsinden, kare çevrimi take'in ÖLÇÜLMÜŞ medyan dt'sinden) → periyodik
+  take'ler faz-hizalı TEK tekrara indirilir (take-içi çevrimler aynı fazda
+  ⇒ sabit uç doğru; take'ler ARASI faz `CycleAligner` aramasından).
+  Dürüst yollar: hiçbir take tekrarlamıyorsa `notApplied` beyanı
+  (bütün-take yolu değişmeden korunur — stance yeniden-koşumu eski
+  artefaktla BİT-BİT AYNI çıktı); periyodik havuzdaki aperiyodik take
+  İSİMLE dışlanır. Artefakt: `cycleSegmentation` bloğu + take başına
+  `periodFrames`/`periodicity`/`cycleCount` (artık GERÇEK sayı) /
+  `cycleStartFrame`/`phaseMargin`/`secondCycleCost` (raporlanır,
+  eşiklenmez — ölçülmemiş sınır kapı kurmaz). Araç: `--no-cycle-segmentation`.
+  Kabul (Lissom sınaması): aynı kaynaktan iki rep-segmenti temiz malzemede
+  <0,5° (3 karelik faz hatası ~11° okurdu).
+- **CycleAligner runner-up ayrımı düzeltildi (ölçülen sessiz-yanlış):**
+  eski `periyot/8` ayrımı, rakip fazı hizalayıcının KENDİ warp menzilinin
+  içinde bırakıyordu — band 8'de 9 kare uzaktaki aday 0,005'e geri
+  warplanıyor, "margin" faz netliğini değil warp kapasitesini ölçüyor,
+  TEMİZ periyodik malzeme "belirsiz" okunuyordu (yanlış-negatif). Yeni
+  ayrım: `max(periyot/8, band+minBand+1)`; kalıntı 4 karede margin 0,086
+  ölçüldü. Ayrım yükselmesi runner-up maliyetini yalnız yükseltir — önceden
+  çözülen çözülü kalır. Periyot < 2·ayrım ise dürüst yeni sebep: "warp
+  menzili dışında aday yok" (eski kod aynı malzemeye zaten yanıltıcı
+  sebeple 'ambiguous' diyordu).
+- **0.7.3 adversarial inceleme bulguları (Opus, 3 HIGH):** (HIGH-2) CLI
+  ön-kapısı hiçbir dışlama yokken de ateşlenip builder'ın gerekçeli
+  mesajlarını (M-F-38 + tek-öğretmen kaçış kapısı) gölgeliyordu → yalnız
+  gerçek dışlama varken konuşur. (HIGH-3) tek-take havuzu yapısal olarak
+  imkânsızken "no measurable overlap with peers" diye anlaşma-kapısı reddi
+  gibi raporlanıyordu — L-143'ün hâlâ açık bir yüzü → build n=0/n=1'i
+  gerçek sebeple reddeder. (MEDIUM-2) `--min-takes 0` + boş havuz çöküşü
+  kapandı. (MEDIUM-3) araçta argüman/girdi hataları isimli yüzey aldı
+  (ARGÜMAN HATASI 64 / GİRDİ HATASI 65), yükleme try-dışı tuzağına yorum.
+  (MEDIUM-1) araç çıkış kodları + "no measurable overlap" metni + RangeError⊂
+  ArgumentError öncülü artık testli. (LOW-3) `resolveMirroring` n<2'de
+  `gapMeasured: false` (M-O-25 disiplini komşusuna uygulandı). ⚠️ AÇIK:
+  (HIGH-1) 1-karelik take bütün-take yolunda sahte "variance" toleransı
+  üretebiliyor — periyodik malzemede segmentasyon isimle kapatıyor
+  (testli); statik yol için ölçümlü tasarım işi DEFTER'de.
+- Test: 191/191 (+14). Gerçek-veri: boxing_stance 3 fixture yeniden koşuldu
+  — segmentasyonsuz bit-bit aynı; varsayılanla 3/3 take dürüstçe
+  "moving but not repeating" + `notApplied` beyanı.
+
 ## 0.7.3 — 2026-07-29 (yeni vardiya, tur 1)
 
 - **L-143 P0 düzeltmesi (Lissom buldu):** her karesi tespitsiz/kapı-düşen

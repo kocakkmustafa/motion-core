@@ -3,6 +3,8 @@ import '../geometry/joint_angles.dart';
 import '../geometry/normalization.dart';
 import '../pose/confidence_gate.dart';
 import '../pose/pose_frame.dart';
+import '../scoring/cycle_aligner.dart';
+import '../scoring/cycle_segmentation.dart';
 import '../scoring/reference_builder.dart';
 
 /// The canonical fixture→reference pipeline behind `tool/build_reference.dart`.
@@ -18,7 +20,11 @@ import '../scoring/reference_builder.dart';
 ///     (a fixture without one is accepted but the artifact says so).
 ///  2. Confidence gate per frame (visibility + in-frame with aspect-aware
 ///     bounds) — dropped frames are counted per take.
-///  3. minTakes / minSources / M-F-47 agreement — inside [ReferenceBuilder].
+///  3. Cycle segmentation (L-139 / 0.8.0) — periodic takes are reduced to
+///     one phase-aligned repetition each, so consensus compares rep against
+///     rep instead of bending different rep counts onto each other; static
+///     material is declared `notApplied` and passes through whole.
+///  4. minTakes / minSources / M-F-47 agreement — inside [ReferenceBuilder].
 ///
 /// The artifact reports tolerance per joint WITH its source (G-050): a
 /// consumer may only claim "variance-derived" where the label says variance.
@@ -54,7 +60,29 @@ final class ReferenceCli {
     this.specs = StandardJoints.fullBody,
     this.minVisibleShare = 0.6,
     this.allowUnattested = false,
+    this.segmentCycles = true,
+    this.periodEstimator = const CyclePeriodEstimator(),
+    this.cycleAligner = const CycleAligner(),
   });
+
+  /// Cycle segmentation (L-139 / 0.8.0): reduce each periodic take to one
+  /// phase-aligned repetition before consensus, instead of whole-video DTW —
+  /// which, on takes with different rep counts, bends cycle boundaries to
+  /// make the lengths meet (4 reps warped onto 9) and reports the bending
+  /// as 34-43° of instructor "disagreement".
+  ///
+  /// Honest fallbacks, in order: material where no take repeats (a static
+  /// stance) is declared `notApplied` and flows through the whole-take path
+  /// unchanged; an aperiodic take inside a periodic pool is excluded BY
+  /// NAME with its reason; a take whose phase cannot be resolved likewise.
+  final bool segmentCycles;
+
+  final CyclePeriodEstimator periodEstimator;
+
+  /// Cross-take phase search. Cycles cut from the SAME take share a phase by
+  /// construction, so intra-take comparisons use fixed endpoints; across
+  /// takes, phase comes from this aligner — never from file order.
+  final CycleAligner cycleAligner;
 
   /// Admit harvested takes whose eligibility was never attested (M-F-43
   /// fail-closed override). The artifact then declares itself PROVISIONAL —
@@ -182,16 +210,160 @@ final class ReferenceCli {
       takeReports.add(p.report);
     }
 
-    // Refuse BEFORE the builder when exclusions thinned the pool below the
+    // ---- Cycle segmentation (L-139 / 0.8.0) -------------------------------
+    final Map<String, String> excludedUnalignable = <String, String>{};
+    String segmentationState = 'notApplied';
+    String segmentationReason =
+        segmentCycles ? 'fewer than two usable takes' : 'disabled by caller';
+    List<ReferenceTake> usable = takes;
+    if (segmentCycles && takes.length >= 2) {
+      final Map<String, Map<String, dynamic>> reportById =
+          <String, Map<String, dynamic>>{
+        for (final Map<String, dynamic> r in takeReports) r['id'] as String: r,
+      };
+      final Map<String, CyclePeriodEstimate> periods =
+          <String, CyclePeriodEstimate>{
+        for (final ReferenceTake t in takes)
+          t.id: periodEstimator.estimate(t.frames),
+      };
+      for (final ReferenceTake t in takes) {
+        final CyclePeriodEstimate p = periods[t.id]!;
+        final Map<String, dynamic> rep = reportById[t.id]!;
+        if (p.measured) {
+          rep['periodFrames'] = p.periodFrames;
+          rep['periodicity'] =
+              double.parse(p.periodicity.toStringAsFixed(4));
+          // A real count at last — until now this field was honestly null
+          // (Choreia's thinEvidence lesson).
+          rep['cycleCount'] = t.frames.length ~/ p.periodFrames;
+        } else {
+          rep['periodUnmeasured'] = p.reason;
+        }
+      }
+      final List<ReferenceTake> periodic = <ReferenceTake>[
+        for (final ReferenceTake t in takes)
+          if (periods[t.id]!.measured) t,
+      ];
+      if (periodic.isEmpty) {
+        segmentationReason = 'no take shows periodic structure — material '
+            'treated as non-cyclic (a static hold is the expected case)';
+      } else if (periodic.length * 2 <= takes.length) {
+        segmentationReason = 'periodic takes are a minority '
+            '(${periodic.length}/${takes.length}) — material treated as '
+            'non-cyclic; the periodic minority is left to the agreement gate';
+      } else {
+        // Majority periodic: the aperiodic minority cannot be phase-aligned
+        // against repeating material — excluded by name, never averaged in.
+        for (final ReferenceTake t in takes) {
+          if (!periods[t.id]!.measured) {
+            excludedUnalignable[t.id] =
+                'aperiodic in a periodic pool: ${periods[t.id]!.reason}';
+            reportById[t.id]!['excluded'] = 'unalignable';
+          }
+        }
+        // Anchor: the medoid take among the periodic ones; its representative
+        // cycle is its own cycle-medoid. Cycles cut from one take at its own
+        // period share a phase by construction, so fixed endpoints are
+        // correct for the intra-take comparison.
+        final ReferenceTake anchor =
+            periodic[builder.selectMedoid(periodic)];
+        final int anchorP = periods[anchor.id]!.periodFrames;
+        final int anchorCycles = anchor.frames.length ~/ anchorP;
+        int bestCycle = 0;
+        double bestCost = double.infinity;
+        for (int k = 0; k < anchorCycles; k++) {
+          final List<JointAngleVector> a =
+              anchor.frames.sublist(k * anchorP, (k + 1) * anchorP);
+          double total = 0;
+          for (int m = 0; m < anchorCycles; m++) {
+            if (m == k) continue;
+            final List<JointAngleVector> b =
+                anchor.frames.sublist(m * anchorP, (m + 1) * anchorP);
+            total += cycleAligner.dtw
+                .align(
+                    a.length,
+                    b.length,
+                    (int i, int j) =>
+                        builder.similarity.distance(a[i], b[j]))
+                .normalizedCost;
+          }
+          if (total < bestCost) {
+            bestCost = total;
+            bestCycle = k;
+          }
+        }
+        final int anchorStart = bestCycle * anchorP;
+
+        final List<ReferenceTake> reduced = <ReferenceTake>[];
+        for (final ReferenceTake t in periodic) {
+          final Map<String, dynamic> rep = reportById[t.id]!;
+          if (identical(t, anchor)) {
+            rep['cycleAnchor'] = true;
+            rep['cycleStartFrame'] = anchorStart;
+            reduced.add(ReferenceTake(
+              id: t.id,
+              source: t.source,
+              frames: anchor.frames.sublist(anchorStart, anchorStart + anchorP),
+            ));
+            continue;
+          }
+          final int p = periods[t.id]!.periodFrames;
+          final CycleAlignment al = cycleAligner.align(
+            refStart: anchorStart,
+            refPeriod: anchorP,
+            learnerLen: t.frames.length,
+            learnerPeriod: p,
+            cost: (int i, int j) =>
+                builder.similarity.distance(anchor.frames[i], t.frames[j]),
+          );
+          if (!al.resolved) {
+            excludedUnalignable[t.id] = al.reason;
+            rep['excluded'] = 'unalignable';
+            continue;
+          }
+          rep['cycleStartFrame'] = al.phaseOffset;
+          rep['phaseMargin'] =
+              double.parse(al.phaseMargin.toStringAsFixed(4));
+          rep['cycleAlignCost'] =
+              double.parse(al.normalizedCost.toStringAsFixed(4));
+          if (al.secondCycleCost != null) {
+            // Reported, not gated: a divergence threshold here would be an
+            // unmeasured limit, and unmeasured limits do not gate (M-F-63).
+            rep['secondCycleCost'] =
+                double.parse(al.secondCycleCost!.toStringAsFixed(4));
+          }
+          reduced.add(ReferenceTake(
+            id: t.id,
+            source: t.source,
+            frames: t.frames.sublist(al.phaseOffset, al.phaseOffset + p),
+          ));
+        }
+        usable = reduced;
+        segmentationState = 'applied';
+        segmentationReason = 'ok';
+      }
+    }
+
+    // Refuse BEFORE the builder when EXCLUSIONS thinned the pool below the
     // gates: the builder's generic count message cannot say WHY the pool
     // shrank — this layer knows, so this layer names it (L-143 discipline:
     // a refusal carries names and reasons, a crash is never a refusal).
+    // Only when something was actually excluded, though: with nothing
+    // excluded, "pool thinned" would be false and this message would shadow
+    // the builder's more specific ones (the M-F-38 rationale and its
+    // single-teacher escape hatch live there — review finding HIGH-2).
+    final bool anyExcluded = excludedIneligible.isNotEmpty ||
+        excludedUnattested.isNotEmpty ||
+        excludedNoFrames.isNotEmpty ||
+        excludedUnalignable.isNotEmpty;
     final int distinctSources =
-        takes.map((ReferenceTake t) => t.source).toSet().length;
-    if (takes.length < builder.minTakes || distinctSources < builder.minSources) {
+        usable.map((ReferenceTake t) => t.source).toSet().length;
+    if (anyExcluded &&
+        (usable.length < builder.minTakes ||
+            distinctSources < builder.minSources)) {
       throw ArgumentError(
         'pool thinned below gates: ${fixturesById.length} fixture(s) → '
-        '${takes.length} usable take(s) from $distinctSources source(s) '
+        '${usable.length} usable take(s) from $distinctSources source(s) '
         '(need ${builder.minTakes} takes / ${builder.minSources} sources). '
         'Excluded — ineligible: '
         '${excludedIneligible.isEmpty ? 'none' : excludedIneligible.join(', ')}'
@@ -199,12 +371,14 @@ final class ReferenceCli {
         '${excludedUnattested.isEmpty ? 'none' : excludedUnattested.join(', ')}'
         '${excludedUnattested.isNotEmpty && !allowUnattested ? ' (--allow-unattested admits them, artifact becomes PROVISIONAL)' : ''}'
         '; no measurable frames: '
-        '${excludedNoFrames.isEmpty ? 'none' : excludedNoFrames.join(', ')}',
+        '${excludedNoFrames.isEmpty ? 'none' : excludedNoFrames.join(', ')}'
+        '; unalignable: '
+        '${excludedUnalignable.isEmpty ? 'none' : excludedUnalignable.entries.map((MapEntry<String, String> e) => '${e.key} (${e.value})').join(', ')}',
       );
     }
 
     final CanonicalReference ref = builder.build(
-      takes,
+      usable,
       leadSidePrior: leadSidePrior,
       clusterToleranceDeg: clusterToleranceDeg,
     );
@@ -240,6 +414,16 @@ final class ReferenceCli {
         'minSources': builder.minSources,
         'clusterToleranceDeg': clusterToleranceDeg,
         'minVisibleShare': minVisibleShare,
+        'cycleSegmentation': segmentCycles,
+      },
+      // L-139 / 0.8.0: whether takes were reduced to phase-aligned single
+      // cycles before consensus. `notApplied` is a declaration, not a
+      // failure — static material has no cycles to segment, and pretending
+      // otherwise would be the thinEvidence failure inverted.
+      'cycleSegmentation': <String, dynamic>{
+        'state': segmentationState,
+        'reason': segmentationReason,
+        'excludedUnalignable': excludedUnalignable,
       },
       'takes': takeReports,
       'result': <String, dynamic>{

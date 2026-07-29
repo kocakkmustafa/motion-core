@@ -38,6 +38,7 @@ export 'src/rhythm/cue_gate.dart';
 export 'src/rhythm/latency_calibration.dart';
 export 'src/rhythm/timing.dart';
 export 'src/scoring/cycle_aligner.dart';
+export 'src/scoring/cycle_segmentation.dart';
 export 'src/scoring/dtw.dart';
 export 'src/scoring/reference_builder.dart';
 export 'src/scoring/sequence_comparator.dart';

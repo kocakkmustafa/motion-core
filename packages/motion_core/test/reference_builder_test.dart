@@ -440,6 +440,44 @@ void main() {
     });
   });
 
+  group('refusal surfaces (L-143 review)', () {
+    test('an infinite deviation prints as a structural gap, not a number',
+        () {
+      final ReferenceAgreementError e = ReferenceAgreementError(
+          <String, double>{'x': double.infinity}, 14);
+      expect('$e', contains('no measurable overlap'));
+      expect('$e', isNot(contains('Infinity')));
+    });
+
+    test('RangeError is an ArgumentError — the premise the tool handler '
+        'ordering stands on', () {
+      // tool/build_reference.dart catches RangeError BEFORE ArgumentError so
+      // a code defect cannot print as a policy refusal. That only works
+      // while this subtype relation holds in the SDK.
+      expect(RangeError.index(0, const <int>[]), isA<ArgumentError>());
+    });
+
+    test('an empty pool and a single take are refused with the real reason',
+        () {
+      expect(
+        () => const ReferenceBuilder().build(<ReferenceTake>[]),
+        throwsA(isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}', 'message',
+            contains('zero takes'))),
+      );
+      expect(
+        () => const ReferenceBuilder(minTakes: 1, minSources: 1)
+            .build(<ReferenceTake>[takeOf('solo', fourCountPhrase())]),
+        throwsA(isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}', 'message',
+            contains('no peers'))),
+        reason: 'n=1 used to die at the agreement gate as "no measurable '
+            'overlap with peers" — a structural impossibility wearing a '
+            'measurement finding\'s clothes (review HIGH-3)',
+      );
+    });
+  });
+
   group('frameless takes (L-143)', () {
     test('a take with zero frames is refused by name before any counting',
         () {

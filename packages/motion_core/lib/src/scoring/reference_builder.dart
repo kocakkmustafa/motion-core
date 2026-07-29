@@ -424,12 +424,16 @@ final class ReferenceBuilder {
     Map<String, bool>? prior,
   }) {
     if (takes.length < 2) {
+      // One take has no rival assignment to lose to — "confident" is
+      // vacuously true, but the gap was never MEASURED, and saying otherwise
+      // is the exact M-O-25 shape (an unknowable reported as a number).
       return MirrorResolution(
         takes: takes,
         flippedIds: const <String>[],
         confident: true,
         runnerUpGap: double.infinity,
         priorDisagreements: const <String>[],
+        gapMeasured: false,
       );
     }
 
@@ -612,6 +616,23 @@ final class ReferenceBuilder {
     Map<String, bool>? leadSidePrior,
     double clusterToleranceDeg = 14,
   }) {
+    // Structural impossibilities are refused up front, with the real reason
+    // — never left to surface deep in consensus math as a crash or as a
+    // convincing-but-wrong gate verdict (L-143 and its review):
+    //  - an empty pool has no medoid to select;
+    //  - a single take has no peers, so leave-one-out deviation is +∞ for
+    //    every input and the M-F-47 gate reports "no measurable overlap with
+    //    peers", which reads like a measurement finding and gets believed.
+    if (rawTakes.isEmpty) {
+      throw ArgumentError('cannot build a reference from zero takes');
+    }
+    if (rawTakes.length == 1) {
+      throw ArgumentError(
+        'a single take has no peers — consensus and dispersion cannot be '
+        'measured, for any gate setting; even a single-teacher prototype '
+        'needs at least 2 takes from that teacher',
+      );
+    }
     // A take with zero frames cannot participate in alignment at all — DTW
     // against it yields an empty warp path and the crash surfaces frames
     // deep inside consensus math, where it reads as a gate refusal (L-143).

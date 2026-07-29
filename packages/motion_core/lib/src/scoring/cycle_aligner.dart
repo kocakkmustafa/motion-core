@@ -146,9 +146,19 @@ final class CycleAligner {
           'no candidate phase produced a finite alignment');
     }
 
-    // Runner-up must be a genuinely different phase, not the winner's
-    // neighbour.
-    final int separation = math.max(1, learnerPeriod ~/ 8);
+    // Runner-up must be a genuinely different phase — beyond the winner's
+    // neighbourhood AND beyond the aligner's own warp reach. Measured
+    // (0.8.0, clean tiled reps, period 75, band 8): a candidate 9 frames
+    // off — the old `period/8` separation — is warped back to within 0.005
+    // of the winner's cost, so the "margin" measured warp capacity, not
+    // phase clarity, and clean periodic material read as ambiguous. With
+    // the residual offset past the band at least the aligner's own minimum
+    // corridor (+1), the same material separates by 0.086. Raising the
+    // separation can only raise the runner-up's cost, so material that
+    // resolved before still resolves — the change removes false ambiguity,
+    // it cannot add any.
+    final int separation = math.max(math.max(1, learnerPeriod ~/ 8),
+        dtw.bandRadius + dtw.minBandRadius + 1);
     double runnerUp = double.infinity;
     for (int s = 0; s < learnerPeriod; s += phaseStep) {
       final int dist = math.min(
@@ -156,8 +166,22 @@ final class CycleAligner {
       if (dist < separation) continue;
       if (costs[s] < runnerUp) runnerUp = costs[s];
     }
-    final double margin =
-        runnerUp.isInfinite ? 0.0 : (runnerUp - bestCost);
+    if (runnerUp.isInfinite) {
+      // Not "ambiguous" — unverifiable: every candidate phase sits inside
+      // the warp corridor, so no measurement can distinguish them.
+      return CycleAlignment(
+        resolved: false,
+        phaseOffset: bestPhase,
+        phaseMargin: 0,
+        normalizedCost: bestCost,
+        dtw: bestDtw,
+        secondCycleCost: null,
+        reason: 'no candidate phase outside the aligner\'s warp reach — '
+            'period ($learnerPeriod frames) too short relative to the '
+            'alignment band (radius ${dtw.bandRadius}) to verify phase',
+      );
+    }
+    final double margin = runnerUp - bestCost;
 
     // Stability probe: the same phase, one cycle later. Disagreement here
     // means the asserted period does not describe the material.
