@@ -11,6 +11,7 @@ Eşikler ÖLÇÜMDEN ÖNCE yazıldı; bu betik onları yalnız OKUR, değiştirm
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import statistics
 from dataclasses import dataclass
@@ -24,6 +25,10 @@ from mocore import geometry as geo
 from mocore import measures as mz
 from mocore import phases as ph
 from mocore import synth
+
+#: M-F-53 şart (b): kapı hem eski (dünya ekseni) hem yeni (anatomik) izdüşümle
+#: koşulabilmeli ki göçün kalibre eşiklere etkisi ÖLÇÜLEBİLSİN.
+ANATOMICAL = os.environ.get("MOCORE_ANATOMICAL") == "1"
 
 #: Sentetik iskeletin varsayılan ölçüleri — analitik beklentiler bunlara dayanır.
 _B = synth.BodyProportions()
@@ -232,7 +237,7 @@ def measure_a11(mset) -> dict:
             continue
         checked += 1
         declared = float(md.baseline)
-        actual = mz.evaluate(md, neutral).value
+        actual = mz.evaluate(md, neutral, anatomical=ANATOMICAL).value
         scale = max(abs(declared), 0.01)
         if abs(actual - declared) / scale > 0.01:
             bad.append(f"{mid}: beyan {declared:.4f} · ölçüm {actual:.4f}")
@@ -263,7 +268,7 @@ def _sweep(mset: mz.MetricSet, *, sigma: float = 0.0, seed: int = 0,
             if sigma:
                 frame = synth.add_noise(frame, sigma, seed=seed + int(v))
             for mid, metric in mset.metrics.items():
-                res = mz.evaluate(metric, frame)
+                res = mz.evaluate(metric, frame, anatomical=ANATOMICAL)
                 if not np.isfinite(res.value):
                     continue
                 # L-016: beklenen-değer formülü olmayan metrikler de taranır.
@@ -379,7 +384,7 @@ def main() -> int:
                 if name not in metric.points:
                     continue
                 checked += 1
-                res = mz.evaluate(metric, frame)
+                res = mz.evaluate(metric, frame, anatomical=ANATOMICAL)
                 if res.valid:  # düşük güvende skor ÜRETMEMELİYDİ
                     leaks += 1
                     print(f"    ❌ SIZINTI: {mid} · {name}@{level} · "
@@ -410,7 +415,7 @@ def main() -> int:
     for mid, metric in mset.metrics.items():
         if mid not in EXPECTED:
             uncovered.append(mid)
-        vals = [mz.evaluate(metric, f).value for f in probes]
+        vals = [mz.evaluate(metric, f, anatomical=ANATOMICAL).value for f in probes]
         finite = [v for v in vals if np.isfinite(v)]
         if len(finite) < 2 or (max(finite) - min(finite)) < 1e-6:
             dead.append(mid)

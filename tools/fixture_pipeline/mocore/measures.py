@@ -59,6 +59,13 @@ class MetricDef:
     #: (tam bükülü diz ~30-40°, 0° baldırın uyluğa katlanması demek) ve
     #: trunk_lateral_tilt 180° verdi (L-107). None = beyansız, süzme YOK.
     value_range: tuple[float, float] | None = None
+    #: M-F-53: metrik hangi çerçevede ölçülür. `anatomical` (varsayılan) =
+    #: düzlemler iskeletten türetilir, kamera yönelimine bağımsız.
+    #: `camera` = DÜNYA ekseni korunur; kameraya göre yönelimi ÖLÇEN metrikler
+    #: için zorunludur. `shoulder_line_foreshortening` tam bu sınıf: anatomik
+    #: çerçeve yaw bağımlılığını tanım gereği kaldırdığı için metrik orada
+    #: SABİTLEŞİR — göç kapısı bunu ölü metrik olarak yakaladı (A9).
+    frame_ref: str = "anatomical"
 
     def __post_init__(self) -> None:
         # L-011: transverse düzlem, dikey ekseni sıfırlar; dikeye göre açı bu
@@ -105,6 +112,7 @@ class MetricDef:
             description=self.description,
             baseline=self.baseline,
             value_range=self.value_range,
+            frame_ref=self.frame_ref,
         )
 
     @classmethod
@@ -130,6 +138,7 @@ class MetricDef:
             baseline=(float(d["baseline"]) if "baseline" in d else None),
             value_range=(tuple(float(x) for x in d["range"])  # type: ignore[arg-type]
                          if "range" in d else None),
+            frame_ref=d.get("frameRef", "anatomical"),
         )
 
 
@@ -153,20 +162,26 @@ class Measurement:
     unit: str = "deg"
 
 
-def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
+def evaluate(metric: MetricDef, frame: geo.Frame, *,
+             anatomical: bool = False) -> Measurement:
     """Bir metriği tek karede hesapla — güven kapısı DAHİL.
 
     Güven eşiğin altındaysa değer hesaplanır ama `valid=False` döner ve
     çağıran taraf bunu skora KATMAMALIDIR.
     """
+    # M-F-53: `anatomical=True` düzlemleri iskeletten türetir; kamera
+    # yönelimine bağımsızdır. Varsayılan False — göç sırasında eski davranış
+    # korunuyor ve fark ÖLÇÜLEREK raporlanıyor (şart c: sessiz değişim yok).
+    axes = (geo.body_axes(frame.xyz)
+            if anatomical and metric.frame_ref == "anatomical" else None)
     conf = frame.confidence(metric.indices)
     # Sanal noktalar bileşenlerinin ortalamasıdır; gerçek noktalar kendileridir.
     pts = [frame.xyz[list(lm.resolve(p))].mean(axis=0) for p in metric.points]
 
     if metric.kind == "angle3":
-        value = geo.angle_3pt_projected(pts[0], pts[1], pts[2], metric.plane)
+        value = geo.angle_3pt_projected(pts[0], pts[1], pts[2], metric.plane, axes=axes)
     elif metric.kind == "angle_vertical":
-        value = geo.angle_to_vertical(pts[0], pts[1], metric.plane)
+        value = geo.angle_to_vertical(pts[0], pts[1], metric.plane, axes=axes)
     elif metric.kind == "height_diff_norm":
         # İki nokta arasındaki DİKEY fark / gövde uzunluğu. İşaretli: pozitif =
         # ilk nokta ikincisinden yukarıda. Lunge'da arka dizin yere yaklaşması,
@@ -181,7 +196,7 @@ def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
         # Nokta–doğru uzaklığı / gövde uzunluğu. Plank'ta kalçanın omuz–ayak
         # bileği hattından sapması gibi "hizada mı?" ölçüleri.
         t = geo.torso_length(frame.xyz)
-        d = geo.line_deviation(pts[0], pts[1], pts[2], metric.plane)
+        d = geo.line_deviation(pts[0], pts[1], pts[2], metric.plane, axes=axes)
         value = d / t if t > 1e-9 else float("nan")
     elif metric.kind == "distance_norm":
         a, b = pts[0], pts[1]
@@ -189,7 +204,7 @@ def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
             # Düzleme izdüşürülmüş mesafe = foreshortening ölçümü. Gövde
             # kameraya göre döndükçe omuz hattının frontal izdüşümü kısalır;
             # transverse rotasyonun 2D'de ölçülebilen tek dolaylı işareti budur.
-            a, b = geo.project(a, metric.plane), geo.project(b, metric.plane)
+            a, b = geo.project(a, metric.plane, axes), geo.project(b, metric.plane, axes)
         value = geo.normalized_distance_pts(frame.xyz, a, b)
     else:  # pragma: no cover - MetricDef doğrulaması engeller
         raise ValueError(f"Bilinmeyen metrik tipi: {metric.kind}")
