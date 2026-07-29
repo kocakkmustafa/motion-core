@@ -121,13 +121,21 @@ def hamming(sig_a: str, sig_b: str) -> int:
 
 
 def check_duplicate(
-    signature: str, library_index: Path, threshold: int = 64
+    signature: str, library_index: Path, threshold: int = 64,
+    *, self_id: str | None = None,
 ) -> str | None:
-    """Kütüphanede yakın imza varsa video_id'sini döner."""
+    """Kütüphanede yakın imza varsa video_id'sini döner.
+
+    `self_id` DIŞLANIR: indekste kayıtlı bir videoyu yeniden koşmak
+    "kopya: X ile eşleşti" derdi — X'in kendisi. Yeniden hasadı imkânsız
+    kılıyor ve mesaj yanıltıcıydı (L-106).
+    """
     if not library_index.exists():
         return None
     index = json.loads(library_index.read_text(encoding="utf-8"))
     for vid, sig in index.items():
+        if vid == self_id:
+            continue
         if hamming(signature, sig) <= threshold:
             return vid
     return None
@@ -181,6 +189,12 @@ def transcribe(m: HarvestManifest, out_dir: Path) -> Path | None:
         m.record("transcribe", "skipped", reason="faster-whisper kurulu değil")
         return None
     assert m.local_path
+    # Dizin yoksa yazım FileNotFoundError ile ÇÖKER ve boru hattı, fixture
+    # üretildikten SONRA patlar: klip diske yazılmış ama imza indeksine
+    # kaydedilmemiş olur (yeniden koşumda "kopya" sanılır). Gece boyunca
+    # --no-transcribe koşulduğu için bu yol hiç çalışmamıştı; transkript
+    # zorunlu hale gelir gelmez BAŞARILI her aday burada çöküyordu.
+    out_dir.mkdir(parents=True, exist_ok=True)
     model = WhisperModel("small", compute_type="int8")
     segments, _info = model.transcribe(m.local_path, vad_filter=True)
     out_path = out_dir / f"{m.video_id}.transcript.json"
@@ -315,7 +329,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         sig = perceptual_signature(m.local_path)
         m.dedup_signature = sig
-        dup = check_duplicate(sig, library / "signature-index.json")
+        dup = check_duplicate(sig, library / "signature-index.json",
+                              self_id=m.video_id)
         if dup:
             m.record("dedup", "rejected", duplicateOf=dup)
             print(f"⛔ kopya: {dup} ile eşleşti")

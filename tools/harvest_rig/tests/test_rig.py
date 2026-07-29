@@ -272,6 +272,26 @@ def check_rom_mode() -> None:
           "romMode provenance bloğuna akıyor (fixture onu görebilir)")
 
 
+def check_dedup_self() -> None:
+    """L-106: video kendisiyle kopya sayılmamalı; başkasıyla sayılmalı."""
+    import json as _json
+    import tempfile
+    from pathlib import Path
+
+    from harvest import check_duplicate
+
+    sig_a = "aa" * 64
+    with tempfile.TemporaryDirectory() as d:
+        idx = Path(d) / "index.json"
+        idx.write_text(_json.dumps({"vid_a": sig_a}), encoding="utf-8")
+        check(check_duplicate(sig_a, idx, self_id="vid_a") is None,
+              "kendi kaydı kopya SAYILMAZ (yeniden hasat mümkün)")
+        check(check_duplicate(sig_a, idx, self_id="vid_b") == "vid_a",
+              "başka videonun aynı imzası kopya SAYILIR")
+        check(check_duplicate(sig_a, idx) == "vid_a",
+              "self_id verilmezse eski davranış korunur")
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -365,6 +385,9 @@ def main() -> int:
 
     print("[7] kaynak-uygunluk / romMode (M-F-43)")
     check_rom_mode()
+
+    print("[8] dedup kendi-eşleşmesi (L-106)")
+    check_dedup_self()
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
