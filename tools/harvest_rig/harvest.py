@@ -36,6 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 from manifest import HarvestManifest  # noqa: E402
+from context_tags import from_rom_mode as ctx_from_rom
 from rom_mode import classify as classify_rom
 from triage import TriageThresholds, triage  # noqa: E402
 
@@ -348,7 +349,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                            passive_execution_possible=pep)
         m.rom_mode = rom.mode
         m.reference_eligible = rom.reference_eligible
-        m.record("romMode", rom.mode, **rom.to_detail())
+        ctx = ctx_from_rom(rom.mode, source="title")
+        if ctx:
+            m.context_tags, m.context_source = ctx.tags, ctx.source
+        m.record("romMode", rom.mode, **rom.to_detail(),
+                 **(ctx.to_detail() if ctx else {}))
         if not rom.reference_eligible:
             print(f"⚠️  referansa UYGUN DEĞİL ({rom.mode}): {rom.reason}")
 
@@ -389,7 +394,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                 print(f"↻ romMode transkriptle güncellendi: "
                       f"{m.rom_mode} → {rom2.mode} ({rom2.reason})")
             m.rom_mode, m.reference_eligible = rom2.mode, rom2.reference_eligible
-            m.record("romMode", rom2.mode, source="transcript", **rom2.to_detail())
+            ctx2 = ctx_from_rom(rom2.mode, source="transcript")
+            m.context_tags = ctx2.tags if ctx2 else []
+            m.context_source = ctx2.source if ctx2 else None
+            m.record("romMode", rom2.mode, source="transcript", **rom2.to_detail(),
+                     **(ctx2.to_detail() if ctx2 else {}))
             doc = json.loads(fx_path.read_text(encoding="utf-8"))
             doc["provenance"] = {**doc.get("provenance", {}), **m.provenance_block()}
             fx_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")

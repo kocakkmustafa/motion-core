@@ -81,6 +81,10 @@ class HarvestManifest:
     description: str | None = None
     rom_mode: str | None = None
     reference_eligible: bool | None = None
+    #: M-F-51 eki: dışlamanın NEDENİ. Aykırı raporlanırken sebebi de taşınır;
+    #: "dışlandı" tek başına kaynak-kötü ile tanım-dar'ı ayırt ettirmiyor.
+    context_tags: list[str] = field(default_factory=list)
+    context_source: str | None = None
     stages: list[StageRecord] = field(default_factory=list)
 
     @classmethod
@@ -135,6 +139,8 @@ class HarvestManifest:
             # ReferenceBuilder onu göremez ve kural sessizce uygulanmaz.
             "romMode": self.rom_mode,
             "referenceEligible": self.reference_eligible,
+            "contextTags": self.context_tags,
+            "contextSource": self.context_source,
         }
 
     def save(self, path: str | Path) -> None:
