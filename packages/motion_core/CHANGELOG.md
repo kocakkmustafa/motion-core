@@ -3,6 +3,29 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.6.0 — 2026-07-29 (tur 22)
+
+- **Fixture şema-v2 köprüsü (referans-CLI ön şartı):** Dart okuyucu ile Python
+  hasat hattı (mocore SCHEMA_VERSION=2) iki lehçeye ayrışmıştı — Dart v2
+  dosyayı REDDEDİYORDU. Algoritmayı Python'da yeniden yazmak M-F-21 sınıfı
+  çifte-üretim olurdu; köprü tek sınırda kuruldu:
+  * `readableSchemaVersions = {1,2}` (yazıcı v1'de kalır — Python'la aynı
+    desen: okuyucu ileride, yazıcı güncel-yazdığında).
+  * Kompakt kare lehçesi: `t` ms→µs · `lm[[x,y,z,vis,presence]]` →
+    `PoseLandmark` (presence BİLİNÇLİ düşülür — tüm kapı eşikleri visibility
+    ile kalibre; katlamak hepsini sessizce kaydırırdı).
+  * Tespitsiz kare 33 sahte-sıfır landmark'la DOLDURULMAZ — düşülür ve
+    `undetectedFrameCount` ile sayılır (boşluk zaman sıçraması + sayaçtan
+    görünür; kapsam matematiği şişmez).
+  * `ProvenanceInfo` (sourceUrl/license/channel/extractor + ham blok) —
+    `sourceIdentity` = minSources kapısının "bir eğitmen" kimliği.
+  * `RecordingMeta`: snake_case anahtar kabulü + `technique` + `resolution`
+    → `frameSize` (J-028 izotropik düzeltme girdisi).
+- Doğrulama: 166/166 test (6 yeni köprü testi) + 3 GERÇEK hasat fixture'ı
+  (~/motion-harvest, 7.6k-11.7k kare) uçtan uca çözüldü; source alanı gerçek
+  kanal kimliklerine bağlandı. Not: hasat dosyalarında technique=unknown —
+  hareket kimliği manifest'tedir, CLI tekniği argümandan alacak.
+
 ## 0.5.1 — 2026-07-29 (tur 21)
 
 - **`ReferenceBuilder.minSources` kapısı (M-F-53(2), Gravita'nın bulduğu sayım

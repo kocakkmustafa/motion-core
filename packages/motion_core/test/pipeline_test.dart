@@ -158,7 +158,11 @@ void main() {
 
     test('refuses a fixture from a newer schema', () {
       final Map<String, dynamic> json = sample().toJson();
-      json['schemaVersion'] = Fixture.currentSchemaVersion + 1;
+      // One past the newest READABLE version — currentSchemaVersion is what
+      // the writer emits, which lags the reader on purpose (v2 is read-only
+      // bridge territory for the Python harvest dialect).
+      json['schemaVersion'] =
+          Fixture.readableSchemaVersions.reduce((int a, int b) => a > b ? a : b) + 1;
       expect(() => Fixture.fromJson(json), throwsFormatException);
     });
   });
