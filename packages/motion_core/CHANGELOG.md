@@ -3,6 +3,21 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.5.1 — 2026-07-29 (tur 21)
+
+- **`ReferenceBuilder.minSources` kapısı (M-F-53(2), Gravita'nın bulduğu sayım
+  boşluğu):** `minTakes` TEKRAR sayar, M-F-38 EĞİTMEN sayar — tek eğitmenin 12
+  tekrarı sayı-kapısını geçer ama eğitmenler-arası varyans (dispersiyon-türevli
+  toleransın TEK kaynağı) hakkında sıfır bilgi taşır. İki kontrol noktası:
+  * ham girişte distinct `source` < `minSources` (varsayılan 3) → `ArgumentError`
+    (fail-closed; `minSources: 1` yalnız BEYAN EDİLMİŞ tek-eğitmen prototipi
+    için — toleransı "stil" olarak okumayı üstlenerek).
+  * M-F-47 anlaşma-kapısı SONRASI küme içinde de sayılır: aykırı-dışlama bir
+    take değil bir İNSANI düşürdüyse (take sayısı hâlâ yeterli görünürken)
+    `ReferenceAgreementError` — sayı-kapısının yapısal olarak göremediği durum.
+- Test: 160/160 (3 yeni — aynı-kaynak reddi, prototip kaçış kapısı,
+  küme-kaynak-çöküşü; süit sonucu sürüm notundan ÖNCE koşuldu ve görüldü).
+
 ## 0.5.0 — 2026-07-29 (tur 18)
 
 - **ReferenceBuilder büyük yükseltme (M-F-47/48 + M-J-06):**

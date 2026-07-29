@@ -255,6 +255,7 @@ final class ReferenceBuilder {
     this.similarity = const AngularSimilarity(),
     this.dtw = const Dtw(),
     this.minTakes = 3,
+    this.minSources = 3,
     this.mirrorMargin = 0.02,
   });
 
@@ -267,6 +268,18 @@ final class ReferenceBuilder {
   /// tolerance built on two samples would be a confident number with nothing
   /// behind it.
   final int minTakes;
+
+  /// Fewest *distinct sources* (instructors) that may produce a reference.
+  ///
+  /// [minTakes] counts repetitions; this counts people — and they answer
+  /// different questions. Twelve takes from one instructor sail past the
+  /// take gate yet carry zero information about *inter-instructor* variance,
+  /// which is the only thing a dispersion-derived tolerance is made of
+  /// (M-F-38): agreement across independent teachers is what separates "the
+  /// technique" from "this teacher's habit". Both gates run. Set to 1 only
+  /// for explicitly single-teacher prototypes, where the tolerance must be
+  /// read as style, not consensus.
+  final int minSources;
 
   /// How much better the flipped orientation must score before a take is
   /// mirrored. Near-ties are left alone rather than coin-flipped.
@@ -494,6 +507,16 @@ final class ReferenceBuilder {
         'got ${rawTakes.length}',
       );
     }
+    final Set<String> rawSources =
+        rawTakes.map((ReferenceTake t) => t.source).toSet();
+    if (rawSources.length < minSources) {
+      throw ArgumentError(
+        'need takes from at least $minSources distinct sources — tolerance '
+        'derives from inter-instructor variance, and ${rawTakes.length} takes '
+        'from ${rawSources.length} source(s) cannot measure it (M-F-38); '
+        'pass minSources: 1 only for an explicit single-teacher prototype',
+      );
+    }
 
     final MirrorResolution resolution =
         resolveMirroring(rawTakes, prior: leadSidePrior);
@@ -508,6 +531,14 @@ final class ReferenceBuilder {
         if (deviationDeg[t.id]! <= clusterToleranceDeg) t,
     ];
     if (cluster.length < minTakes) {
+      throw ReferenceAgreementError(deviationDeg, clusterToleranceDeg);
+    }
+    // The agreement gate can silently cost a *person*, not just a take: if
+    // every take an instructor contributed fell outside the cluster, the
+    // survivors may still satisfy the take count while the consensus has
+    // narrowed to fewer teachers than [minSources] demands.
+    if (cluster.map((ReferenceTake t) => t.source).toSet().length <
+        minSources) {
       throw ReferenceAgreementError(deviationDeg, clusterToleranceDeg);
     }
     final List<String> excluded = <String>[

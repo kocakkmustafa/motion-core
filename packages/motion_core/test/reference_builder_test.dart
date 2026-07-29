@@ -210,6 +210,68 @@ void main() {
       );
     });
 
+    test('twelve takes from one teacher are not a consensus (M-F-38)', () {
+      // Passes the take gate with room to spare — and must still refuse:
+      // tolerance is distilled from INTER-instructor variance, and repetition
+      // by one person measures habit, not technique.
+      final List<ReferenceTake> oneTeacher = instructorTakes()
+          .map((ReferenceTake t) => ReferenceTake(
+              id: t.id, source: 'synthetic:one-teacher', frames: t.frames))
+          .toList(growable: false);
+
+      expect(
+        () => const ReferenceBuilder().build(oneTeacher),
+        throwsArgumentError,
+      );
+      // The escape hatch is explicit, never accidental: a declared
+      // single-teacher prototype may build, owning that its tolerance
+      // reads as style.
+      final CanonicalReference proto =
+          const ReferenceBuilder(minSources: 1).build(oneTeacher);
+      expect(proto.contributingTakes, oneTeacher.length);
+    });
+
+    test('an agreement gate that drops a person drops the reference too', () {
+      // Raw input spans three sources, so the raw source gate passes. The
+      // only take from the third source is a different movement — the
+      // cluster keeps three TAKES (count gate satisfied) but only two
+      // PEOPLE. The take count cannot see this; the source gate must.
+      final SyntheticSequence seq = fourCountPhrase();
+      final SyntheticSequence other = SyntheticSequence(
+        seq.keyframes
+            .map((SyntheticKeyframe k) => SyntheticKeyframe(
+                  k.tUs,
+                  k.pose.copyWith(
+                    leftUpperArm: k.pose.leftUpperArm + 0.9,
+                    rightUpperArm: k.pose.rightUpperArm - 0.9,
+                    leftThigh: k.pose.leftThigh - 0.6,
+                    rightThigh: k.pose.rightThigh + 0.6,
+                  ),
+                ))
+            .toList(growable: false),
+      );
+      final List<ReferenceTake> base = instructorTakes();
+      ReferenceTake as(ReferenceTake t, String source) =>
+          ReferenceTake(id: t.id, source: source, frames: t.frames);
+      final List<ReferenceTake> takes = <ReferenceTake>[
+        as(base[0], 'synthetic:teacherA'),
+        as(base[1], 'synthetic:teacherA'),
+        as(base[2], 'synthetic:teacherB'),
+        takeOf('teacherC', other, jitterSeed: 11),
+      ];
+
+      expect(
+        () => const ReferenceBuilder().build(takes),
+        throwsA(isA<ReferenceAgreementError>()),
+      );
+      // Sanity: with the source bar lowered the same input builds, proving
+      // the refusal above came from source diversity, not take agreement.
+      final CanonicalReference loose =
+          const ReferenceBuilder(minSources: 2).build(takes);
+      expect(loose.excludedOutlierIds, contains('teacherC'));
+      expect(loose.contributingTakes, 3);
+    });
+
     test('a lead-side prior outranks consensus and disagreement is reported '
         '(M-J-06)', () {
       final List<ReferenceTake> takes = instructorTakes();
