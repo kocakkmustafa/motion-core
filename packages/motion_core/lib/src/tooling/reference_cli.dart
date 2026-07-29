@@ -22,13 +22,55 @@ import '../scoring/reference_builder.dart';
 ///
 /// The artifact reports tolerance per joint WITH its source (G-050): a
 /// consumer may only claim "variance-derived" where the label says variance.
+/// M-F-43 standing of one fixture as a reference source (M-O-29 / M-F-62).
+///
+/// The harvest rig classifies every clip and writes `referenceEligible` into
+/// its provenance — and for one whole night NOTHING asked: not the app pilot
+/// that found the hole, not this CLI. A gate no consumer reads is a gate
+/// that does not exist ("bu kapıya soran var mı?" — the fifth liveness
+/// question). This enum is the reader.
+enum TakeEligibility {
+  /// Harvested and classified eligible by the rig.
+  attested,
+
+  /// No harvest provenance — a first-party recording (shot list, studio),
+  /// whose eligibility is established outside the rig.
+  firstParty,
+
+  /// Harvested (has a source URL) but carries no eligibility attestation —
+  /// e.g. classification ran without its evidence source. Fail-closed by
+  /// default; admissible only under an explicit flag that stamps the whole
+  /// artifact PROVISIONAL.
+  unattested,
+
+  /// Classified NOT eligible — never admitted, always named.
+  ineligible,
+}
+
 final class ReferenceCli {
   const ReferenceCli({
     this.builder = const ReferenceBuilder(),
     this.clusterToleranceDeg = 14,
     this.specs = StandardJoints.fullBody,
     this.minVisibleShare = 0.6,
+    this.allowUnattested = false,
   });
+
+  /// Admit harvested takes whose eligibility was never attested (M-F-43
+  /// fail-closed override). The artifact then declares itself PROVISIONAL —
+  /// numbers exist but may not close tolerance claims (M-C-01 discipline).
+  final bool allowUnattested;
+
+  static TakeEligibility eligibilityOf(Fixture fixture) {
+    final ProvenanceInfo? p = fixture.provenance;
+    if (p == null) return TakeEligibility.firstParty;
+    final Object? v = p.raw['referenceEligible'];
+    if (v == true) return TakeEligibility.attested;
+    if (v == false) return TakeEligibility.ineligible;
+    return p.sourceUrl != null
+        ? TakeEligibility.unattested
+        : TakeEligibility.firstParty;
+  }
 
   final ReferenceBuilder builder;
   final double clusterToleranceDeg;
@@ -106,9 +148,23 @@ final class ReferenceCli {
   }) {
     final List<ReferenceTake> takes = <ReferenceTake>[];
     final List<Map<String, dynamic>> takeReports = <Map<String, dynamic>>[];
+    final List<String> excludedIneligible = <String>[];
+    final List<String> excludedUnattested = <String>[];
+    bool provisional = false;
     for (final MapEntry<String, Fixture> e in fixturesById.entries) {
+      final TakeEligibility elig = eligibilityOf(e.value);
+      if (elig == TakeEligibility.ineligible) {
+        excludedIneligible.add(e.key);
+        continue;
+      }
+      if (elig == TakeEligibility.unattested && !allowUnattested) {
+        excludedUnattested.add(e.key);
+        continue;
+      }
+      if (elig == TakeEligibility.unattested) provisional = true;
       final ({ReferenceTake take, Map<String, dynamic> report}) p =
           prepareTake(e.key, e.value);
+      p.report['eligibility'] = elig.name;
       takes.add(p.take);
       takeReports.add(p.report);
     }
@@ -140,6 +196,10 @@ final class ReferenceCli {
     return <String, dynamic>{
       'schema': 'motion-core/reference@1',
       'technique': technique,
+      // A number's standing, not just its value (M-O-29): PROVISIONAL means
+      // unattested sources were admitted under an explicit flag — the
+      // tolerances exist but may not close variance-derived claims.
+      'measurementProvenance': provisional ? 'PROVISIONAL' : 'ATTESTED',
       'generatedAt': DateTime.now().toUtc().toIso8601String(),
       'gates': <String, dynamic>{
         'minTakes': builder.minTakes,
@@ -156,6 +216,8 @@ final class ReferenceCli {
         'mirrorConfident': ref.mirrorConfident,
         'mirrorGapMeasured': ref.mirrorGapMeasured,
         'excludedOutlierIds': ref.excludedOutlierIds,
+        'excludedIneligibleIds': excludedIneligible,
+        'excludedUnattestedIds': excludedUnattested,
         'priorDisagreements': ref.priorDisagreements,
         'length': ref.length,
         'meanAgreement': meanAgreement,

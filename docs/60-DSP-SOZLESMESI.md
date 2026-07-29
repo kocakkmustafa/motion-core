@@ -66,6 +66,17 @@ kaskadı göremez (O-019: perde motoru kusursuz, onset dedektörü çelloyu
 zincirinden geçirilir; beklenen değerler motorun ölçtüğünden yazılır,
 elle uydurulmaz — ve üretici kapısı oran-bazlıdır (`judged > 0` değil).
 
+## 7b. Beşinci canlılık sorusu: "bu kapıya SORAN var mı?" (M-O-29)
+
+Üretici tarafta kusursuz çalışan bir kapı, tüketici tarafta hiç okunmuyorsa
+yok hükmündedir. Ölçülen vaka: rig her fixture'a `referenceEligible` yazdı
+ve bir gece boyunca HİÇBİR tüketici sormadı — app pilotu da, kanonik CLI'nin
+ilk sürümü de (0.7.2'de düzeltildi: fail-closed + `--allow-unattested`
+istisnası artefaktı PROVISIONAL damgalar). M-O-25 ile ikiz sınıf: orada var
+olan bayrağın DAYANAĞI sorulmamıştı; burada var olan kapıya HİÇ sorulmadı.
+Denetim yönü: her üretilen bayrak/kapı için "kim okuyor?" listesi — okuyanı
+olmayan bayrak ya bağlanır ya kaldırılır.
+
 ## 7a. Kapı raporundaki sayılar ölçümden TÜRETİLİR, yazılmaz (M-O-28)
 
 Elle yazılmış "16/16" bir vaka düşse de "16/16" der — kendini doğrulayan

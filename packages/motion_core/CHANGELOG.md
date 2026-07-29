@@ -3,6 +3,19 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.7.2 — 2026-07-29 (tur 26-ek2)
+
+- **M-O-29 / beşinci canlılık sorusu ("bu kapıya soran var mı?"):** rig
+  M-F-43 gereği her hasat fixture'ına `referenceEligible` yazıyordu ve HİÇBİR
+  tüketici okumuyordu — bu CLI'nin ilk sürümü dahil. `TakeEligibility`
+  (attested/firstParty/unattested/ineligible) + fail-closed kabul:
+  ineligible DAİMA dışarı (isimle) · hasat-ama-beyansız varsayılan dışarı,
+  `--allow-unattested` ile girebilir ama artefakt `measurementProvenance:
+  PROVISIONAL` damgalanır (Ostinato'nun M-C-01 disiplini şemaya alındı) ·
+  ilk-parti kayıtlar rig sınıflandırması dışında, serbest. Artefakta
+  `excludedIneligibleIds` + `excludedUnattestedIds` + take-başına
+  `eligibility`. Test: 173/173 (karma-uygunluk + PROVISIONAL + açlık-reddi).
+
 ## 0.7.1 — 2026-07-29 (tur 25-ek2)
 
 - **M-O-25 P0 düzeltmesi (Ostinato buldu):** n>12 fallback yolunda

@@ -81,6 +81,67 @@ void main() {
           (a['frames'] as Map<String, dynamic>)['meanRad']);
     });
 
+    test('the eligibility gate is actually ASKED (M-O-29, fifth question)',
+        () {
+      // The rig wrote referenceEligible all night and no consumer read it —
+      // including this CLI's first release. A gate nobody asks is a gate
+      // that does not exist.
+      Fixture harvested(String id, {Object? eligible}) => Fixture(
+            app: 'lissom',
+            technique: 'deep_squat',
+            frames: SyntheticNoise.jitter(
+                fourCountPhrase().sample(fps: 30), seed: id.hashCode & 0xff,
+                sigma: 0.004),
+            provenance: ProvenanceInfo(
+              channel: 'ch-$id',
+              sourceUrl: 'https://youtu.be/$id',
+              raw: <String, dynamic>{
+                'sourceUrl': 'https://youtu.be/$id',
+                'channel': 'ch-$id',
+                if (eligible != null) 'referenceEligible': eligible,
+              },
+            ),
+          );
+
+      final Map<String, Fixture> mixed = <String, Fixture>{
+        for (int i = 0; i < 3; i++) 'ok$i': harvested('ok$i', eligible: true),
+        'bad': harvested('bad', eligible: false),
+        'unk': harvested('unk'),
+      };
+
+      final Map<String, dynamic> artifact = const ReferenceCli()
+          .buildArtifact(technique: 'deep_squat', fixturesById: mixed);
+      final Map<String, dynamic> r = artifact['result'] as Map<String, dynamic>;
+      expect(r['excludedIneligibleIds'], <String>['bad'],
+          reason: 'classified-ineligible is never admitted, always named');
+      expect(r['excludedUnattestedIds'], <String>['unk'],
+          reason: 'harvested without attestation is fail-closed by default');
+      expect(r['contributingTakes'], 3);
+      expect(artifact['measurementProvenance'], 'ATTESTED');
+
+      // The explicit override admits the unattested take but the artifact
+      // must say what its numbers now are.
+      final Map<String, dynamic> loose =
+          const ReferenceCli(allowUnattested: true)
+              .buildArtifact(technique: 'deep_squat', fixturesById: mixed);
+      expect(loose['measurementProvenance'], 'PROVISIONAL');
+      expect((loose['result'] as Map<String, dynamic>)['contributingTakes'],
+          4);
+
+      // Eligibility exclusions can starve the build — that refusal must
+      // surface as the count/source gate, not be papered over.
+      final Map<String, Fixture> starved = <String, Fixture>{
+        'a': harvested('a', eligible: true),
+        'b': harvested('b', eligible: false),
+        'c': harvested('c', eligible: false),
+      };
+      expect(
+        () => const ReferenceCli()
+            .buildArtifact(technique: 'deep_squat', fixturesById: starved),
+        throwsArgumentError,
+      );
+    });
+
     test('one teacher pretending to be six is refused end to end', () {
       final Map<String, Fixture> fixtures = <String, Fixture>{
         for (int i = 0; i < 6; i++) 'take$i': Fixture(

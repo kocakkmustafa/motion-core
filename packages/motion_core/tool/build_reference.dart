@@ -18,6 +18,7 @@ void main(List<String> args) {
   int minTakes = 3;
   int minSources = 3;
   double clusterToleranceDeg = 14;
+  bool allowUnattested = false;
   List<JointSpec> specs = StandardJoints.fullBody;
   final List<String> paths = <String>[];
 
@@ -33,6 +34,8 @@ void main(List<String> args) {
         minSources = int.parse(args[++i]);
       case '--cluster-tolerance-deg':
         clusterToleranceDeg = double.parse(args[++i]);
+      case '--allow-unattested':
+        allowUnattested = true;
       case '--joints':
         specs = switch (args[++i]) {
           'lowerBody' => StandardJoints.lowerBody,
@@ -62,6 +65,7 @@ void main(List<String> args) {
     builder: ReferenceBuilder(minTakes: minTakes, minSources: minSources),
     clusterToleranceDeg: clusterToleranceDeg,
     specs: specs,
+    allowUnattested: allowUnattested,
   );
 
   try {
