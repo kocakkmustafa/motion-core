@@ -48,6 +48,9 @@ class MetricDef:
     min_confidence: float = DEFAULT_MIN_CONFIDENCE
     unit: str = "deg"
     description: str = ""
+    #: M-F-34: kusursuz-durum taban değeri. Tolerans TABAN-göreli yorumlanır;
+    #: tabanı sıfır sanmak sessiz hata üretir (L-072). None = beyan edilmemiş.
+    baseline: float | None = None
 
     def __post_init__(self) -> None:
         # L-011: transverse düzlem, dikey ekseni sıfırlar; dikeye göre açı bu
@@ -92,6 +95,7 @@ class MetricDef:
             min_confidence=self.min_confidence,
             unit=self.unit,
             description=self.description,
+            baseline=self.baseline,
         )
 
     @classmethod
@@ -114,6 +118,7 @@ class MetricDef:
             min_confidence=float(d.get("minConfidence", DEFAULT_MIN_CONFIDENCE)),
             unit=d.get("unit", "deg"),
             description=d.get("description", ""),
+            baseline=(float(d["baseline"]) if "baseline" in d else None),
         )
 
 

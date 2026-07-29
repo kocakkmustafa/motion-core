@@ -199,7 +199,9 @@ def transcribe(m: HarvestManifest, out_dir: Path) -> Path | None:
 # CLI
 # --------------------------------------------------------------------------
 
-def load_triage_profile(path: str | None) -> TriageThresholds:
+def load_triage_profile(
+    path: str | None, movement: str | None = None
+) -> TriageThresholds:
     """App-özel triyaj eşiklerini yükle. Bilinmeyen anahtar SESSİZCE YUTULMAZ.
 
     Sessiz yutma, "eşiği verdim ama etkisi yok" hatasının en sinsi biçimidir:
@@ -210,7 +212,7 @@ def load_triage_profile(path: str | None) -> TriageThresholds:
     from dataclasses import fields as _dc_fields  # noqa: PLC0415
 
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
-    raw = doc.get("thresholds", doc)
+    raw = dict(doc.get("thresholds", doc))
     known = {f.name for f in _dc_fields(TriageThresholds)}
     unknown = set(raw) - known
     if unknown:
@@ -218,6 +220,25 @@ def load_triage_profile(path: str | None) -> TriageThresholds:
             f"{path}: bilinmeyen triyaj eşiği: {', '.join(sorted(unknown))}\n"
             f"Geçerli anahtarlar: {', '.join(sorted(known))}"
         )
+
+    # Hangi landmark'ların kadrajda olacağı HAREKETE göre değişir. Sabit bir
+    # "tam gövde" şartı, ölçümü ayak bileğine hiç bakmayan testlerin adaylarını
+    # reddediyordu — gerçek veride ölçüldü (L-080): üç `overhead_reach` klibi
+    # ayak-bileği şartıyla 0.00 alıp reddedilirken, testin GERÇEKTEN istediği
+    # kalça kümesiyle 0.75-1.00 alıyor.
+    per = doc.get("perMovement")
+    if per:
+        if movement is None:
+            raise SystemExit(
+                f"{path}: profil perMovement taşıyor ama --movement verilmedi. "
+                "Harekete özel landmark şartı sessizce atlanamaz."
+            )
+        if movement not in per:
+            raise SystemExit(
+                f"{path}: perMovement'ta '{movement}' yok. "
+                f"Tanımlı: {', '.join(sorted(per))}"
+            )
+        raw["lower_body_ids"] = tuple(per[movement])
     return TriageThresholds(**raw)
 
 
@@ -245,7 +266,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         model = DEFAULT_POSE_MODEL if DEFAULT_POSE_MODEL.exists() else None
         r = triage(m.local_path,
-                   thresholds=load_triage_profile(getattr(args, "triage_profile", None)),
+                   thresholds=load_triage_profile(
+                       getattr(args, "triage_profile", None),
+                       getattr(args, "movement", None)),
                    pose_model=model)
         m.record("triage", "ok" if r.accepted else "rejected",
                  **r.to_detail())
@@ -299,6 +322,13 @@ def main() -> int:
         help="App-özel triyaj eşikleri (JSON). Örn. lissom app/config/harvest/"
              "triage-profile.v1.json — alt-vücut testli app'ler min_full_body_ratio "
              "verir. Verilmezse rig varsayılanları kullanılır.",
+    )
+    r.add_argument(
+        "--movement",
+        help="Adayın hangi test/hareket için toplandığı. Profil `perMovement` "
+             "taşıyorsa ZORUNLU: kadrajda aranan landmark'lar harekete göre "
+             "değişir ve sabit bir 'tam gövde' şartı, ayak bileğine hiç "
+             "bakmayan testlerin adaylarını reddeder (L-080).",
     )
     r.set_defaults(fn=cmd_run)
 
