@@ -93,6 +93,55 @@ final class ReferenceTake {
   return (mean: mean, dispersion: dispersion, count: n);
 }
 
+/// Outcome of the global orientation assignment (M-F-48).
+final class MirrorResolution {
+  const MirrorResolution({
+    required this.takes,
+    required this.flippedIds,
+    required this.confident,
+    required this.runnerUpGap,
+    required this.priorDisagreements,
+  });
+
+  final List<ReferenceTake> takes;
+  final List<String> flippedIds;
+
+  /// False when the best assignment beat its nearest distinct rival by less
+  /// than the mirror margin. Consumers apply M-F-46 rule 7 (no side-dependent
+  /// verdicts from an uncertain resolution) — after checking for degeneracy:
+  /// a near-tie whose rival produces the *same* reference is not uncertainty.
+  final bool confident;
+
+  /// Mean-per-pair cost gap between the best and runner-up assignments.
+  final double runnerUpGap;
+
+  /// Takes where a caller-supplied lead-side prior contradicted consensus.
+  /// The prior wins (it is a direct measurement); the contradiction is
+  /// reported because at small n it is the only visible symptom of a
+  /// consensus that would have resolved wrongly.
+  final List<String> priorDisagreements;
+}
+
+/// Thrown when the sources do not agree enough to distil a reference
+/// (M-F-47): a count gate alone cannot see that 23° and 112° are both "in".
+final class ReferenceAgreementError implements Exception {
+  ReferenceAgreementError(this.deviationsDegById, this.toleranceDeg);
+
+  /// Per-take mean angular deviation from the consensus, in degrees.
+  final Map<String, double> deviationsDegById;
+  final double toleranceDeg;
+
+  @override
+  String toString() {
+    final String detail = deviationsDegById.entries
+        .map((MapEntry<String, double> e) =>
+            '${e.key}: ${e.value.toStringAsFixed(1)}°')
+        .join(', ');
+    return 'ReferenceAgreementError(cluster within $toleranceDeg° too small '
+        '— $detail)';
+  }
+}
+
 /// A reference distilled from several real performances.
 final class CanonicalReference {
   const CanonicalReference({
@@ -101,7 +150,20 @@ final class CanonicalReference {
     required this.contributingTakes,
     required this.sources,
     required this.mirroredTakeIds,
+    this.mirrorConfident = true,
+    this.excludedOutlierIds = const <String>[],
+    this.priorDisagreements = const <String>[],
   });
+
+  /// M-F-46 rule 7 input: whether the orientation assignment was decisive.
+  final bool mirrorConfident;
+
+  /// Sources measured, named and *excluded* by the agreement gate (M-F-47) —
+  /// reported rather than silently averaged into the consensus.
+  final List<String> excludedOutlierIds;
+
+  /// See [MirrorResolution.priorDisagreements].
+  final List<String> priorDisagreements;
 
   /// Per-frame circular mean of the contributing takes.
   final List<JointAngleVector> frames;
@@ -235,35 +297,184 @@ final class ReferenceBuilder {
     return best;
   }
 
-  /// Decides, per take, whether it must be flipped to agree with the group.
+  /// Decides, per take, whether it must be flipped to agree with the group —
+  /// as a **global assignment problem**, not a sequence of local choices.
   ///
-  /// No outside knowledge of handedness is needed or available: the question is
-  /// resolved by consensus, by asking which assignment makes the group agree
-  /// with itself most. Two passes, because the first pass' anchor may itself
-  /// have been the mirrored one.
-  List<ReferenceTake> resolveMirroring(List<ReferenceTake> takes) {
-    if (takes.length < 2) return takes;
-    List<ReferenceTake> current = List<ReferenceTake>.of(takes);
-
-    for (int pass = 0; pass < 2; pass++) {
-      final int anchor = selectMedoid(current);
-      final List<JointAngleVector> ref = current[anchor].frames;
-      current = List<ReferenceTake>.generate(current.length, (int i) {
-        if (i == anchor) return current[i];
-        final ReferenceTake asIs = current[i];
-        final ReferenceTake flipped = asIs.mirrored();
-        final double costAsIs = _distance(ref, asIs.frames);
-        final double costFlipped = _distance(ref, flipped.frames);
-        return (costAsIs - costFlipped) > mirrorMargin ? flipped : asIs;
-      }, growable: false);
+  /// The earlier version anchored every decision to a single medoid take.
+  /// Choreia measured the failure mode of anchor/greedy schemes on real dance
+  /// takes (M-F-48): with near-tie margins, per-take decisions accumulate an
+  /// early coin-flip into the rest of the set, and the outcome depends on
+  /// which take happens to lead — *"a consensus that depends on file order
+  /// is not a consensus."* Here every relative-flip combination is scored by
+  /// total pairwise disagreement and the best one wins; take 0 is pinned
+  /// upright to break the global mirror symmetry (flipping everything is the
+  /// same reference).
+  ///
+  /// A [prior] (M-J-06) short-circuits the search: when the caller measured
+  /// handedness directly (lead foot, lead hand — geometric, per take), that
+  /// measurement outranks consensus, because at small n a consensus that
+  /// resolves wrongly is *silent* — arms disperse, legs stay coherent, and
+  /// the result reads exactly like style variance. Consensus still runs and
+  /// disagreements are reported, never hidden.
+  MirrorResolution resolveMirroring(
+    List<ReferenceTake> takes, {
+    Map<String, bool>? prior,
+  }) {
+    if (takes.length < 2) {
+      return MirrorResolution(
+        takes: takes,
+        flippedIds: const <String>[],
+        confident: true,
+        runnerUpGap: double.infinity,
+        priorDisagreements: const <String>[],
+      );
     }
-    return current;
+
+    final int n = takes.length;
+    final List<ReferenceTake> mirroredTakes =
+        takes.map((ReferenceTake t) => t.mirrored()).toList(growable: false);
+
+    // Pair cost depends only on the RELATIVE flip: mirroring both takes is an
+    // isometry of the angle representation. Two DTW runs per pair.
+    final List<List<double>> costSame =
+        List<List<double>>.generate(n, (_) => List<double>.filled(n, 0));
+    final List<List<double>> costDiff =
+        List<List<double>>.generate(n, (_) => List<double>.filled(n, 0));
+    for (int i = 0; i < n; i++) {
+      for (int j = i + 1; j < n; j++) {
+        costSame[i][j] = _distance(takes[i].frames, takes[j].frames);
+        costDiff[i][j] =
+            _distance(takes[i].frames, mirroredTakes[j].frames);
+      }
+    }
+    final int pairs = n * (n - 1) ~/ 2;
+
+    double totalFor(int mask) {
+      double total = 0;
+      for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+          final bool same = ((mask >> i) & 1) == ((mask >> j) & 1);
+          total += same ? costSame[i][j] : costDiff[i][j];
+        }
+      }
+      return total;
+    }
+
+    int bestMask = 0;
+    double bestTotal = double.infinity;
+    double runnerUpTotal = double.infinity;
+
+    if (n <= 12) {
+      // Exhaustive over 2^(n-1) with bit 0 pinned to 0.
+      for (int mask = 0; mask < (1 << n); mask += 2) {
+        final double total = totalFor(mask);
+        if (total < bestTotal) {
+          runnerUpTotal = bestTotal;
+          bestTotal = total;
+          bestMask = mask;
+        } else if (total < runnerUpTotal) {
+          runnerUpTotal = total;
+        }
+      }
+    } else {
+      // Beyond exhaustive reach: anchor-based two-pass as a fallback, with
+      // the limitation stated rather than hidden.
+      List<ReferenceTake> current = List<ReferenceTake>.of(takes);
+      for (int pass = 0; pass < 2; pass++) {
+        final int anchor = selectMedoid(current);
+        final List<JointAngleVector> ref = current[anchor].frames;
+        current = List<ReferenceTake>.generate(current.length, (int i) {
+          if (i == anchor) return current[i];
+          final double asIs = _distance(ref, current[i].frames);
+          final double flippedCost =
+              _distance(ref, current[i].mirrored().frames);
+          return (asIs - flippedCost) > mirrorMargin
+              ? current[i].mirrored()
+              : current[i];
+        }, growable: false);
+      }
+      for (int i = 0; i < n; i++) {
+        if (!identical(current[i], takes[i])) bestMask |= 1 << i;
+      }
+      bestTotal = totalFor(bestMask);
+      runnerUpTotal = bestTotal + mirrorMargin * pairs * 2; // unknown gap
+    }
+
+    // Mean-per-pair gap between best and best-distinct-runner-up. Below the
+    // mirror margin the assignment is not trusted (M-F-46 rule 7) — though a
+    // tiny gap can also mean *degeneracy* (two assignments producing the same
+    // reference, Choreia's measured distinction); consumers decide with a
+    // sensitivity probe, we report honestly.
+    final double runnerUpGap =
+        pairs == 0 ? double.infinity : (runnerUpTotal - bestTotal) / pairs;
+
+    // The search fixes only the RELATIVE assignment; the absolute convention
+    // is ours to pick (Choreia's lesson: the whole set mirrored together is
+    // the same reference). Two policies, both deliberate:
+    //  * decisive result → flip the MINORITY: fewer transformed takes, and
+    //    the reference keeps the handedness most instructors actually showed;
+    //  * near-tie (gap ≤ margin) → flip NOTHING: an ambiguous resolution must
+    //    not transform anyone's take on the strength of a coin flip — the
+    //    old guard behavior, now also reported via [MirrorResolution.confident].
+    int chosenMask;
+    if (runnerUpGap <= mirrorMargin) {
+      chosenMask = 0;
+    } else {
+      int popcount = 0;
+      for (int i = 0; i < n; i++) {
+        popcount += (bestMask >> i) & 1;
+      }
+      chosenMask =
+          popcount * 2 > n ? (~bestMask & ((1 << n) - 1)) : bestMask;
+    }
+    final List<String> priorDisagreements = <String>[];
+    if (prior != null && prior.isNotEmpty) {
+      int priorMask = 0;
+      for (int i = 0; i < n; i++) {
+        if (prior[takes[i].id] ?? false) priorMask |= 1 << i;
+      }
+      // The prior is absolute; consensus is relative (bit 0 pinned). Compare
+      // in the frame where they agree on take 0.
+      final int consensusAbs =
+          ((priorMask & 1) == 1) ? (~bestMask & ((1 << n) - 1)) : bestMask;
+      for (int i = 0; i < n; i++) {
+        if (((priorMask >> i) & 1) != ((consensusAbs >> i) & 1)) {
+          priorDisagreements.add(takes[i].id);
+        }
+      }
+      chosenMask = priorMask;
+    }
+
+    final List<ReferenceTake> resolved = List<ReferenceTake>.generate(
+      n,
+      (int i) => ((chosenMask >> i) & 1) == 1 ? mirroredTakes[i] : takes[i],
+      growable: false,
+    );
+    return MirrorResolution(
+      takes: resolved,
+      flippedIds: <String>[
+        for (int i = 0; i < n; i++)
+          if (((chosenMask >> i) & 1) == 1) takes[i].id,
+      ],
+      confident: prior != null || runnerUpGap > mirrorMargin,
+      runnerUpGap: runnerUpGap,
+      priorDisagreements: priorDisagreements,
+    );
   }
 
   /// Merges takes into a canonical reference.
   ///
-  /// Throws [ArgumentError] when given fewer than [minTakes].
-  CanonicalReference build(List<ReferenceTake> rawTakes) {
+  /// Throws [ArgumentError] below [minTakes] and [ReferenceAgreementError]
+  /// when fewer than [minTakes] sources agree within [clusterToleranceDeg]
+  /// (M-F-47: the count gate alone cannot see that 23° and 112° are both
+  /// "in" — a reference distilled from that range sets a meaningless target).
+  /// Outliers outside a still-sufficient cluster are excluded *and named*,
+  /// never silently averaged.
+  CanonicalReference build(
+    List<ReferenceTake> rawTakes, {
+    Map<String, bool>? leadSidePrior,
+    double clusterToleranceDeg = 14,
+  }) {
     if (rawTakes.length < minTakes) {
       throw ArgumentError(
         'need at least $minTakes takes to estimate dispersion, '
@@ -271,11 +482,26 @@ final class ReferenceBuilder {
       );
     }
 
-    final List<ReferenceTake> takes = resolveMirroring(rawTakes);
-    final List<String> flipped = <String>[
-      for (int i = 0; i < takes.length; i++)
-        if (!identical(takes[i], rawTakes[i])) takes[i].id,
+    final MirrorResolution resolution =
+        resolveMirroring(rawTakes, prior: leadSidePrior);
+    List<ReferenceTake> takes = resolution.takes;
+    final List<String> flipped = resolution.flippedIds;
+
+    // ---- M-F-47 agreement gate --------------------------------------------
+    // Per-take mean angular deviation from the (provisional) consensus.
+    final Map<String, double> deviationDeg = _deviationsFromConsensus(takes);
+    final List<ReferenceTake> cluster = <ReferenceTake>[
+      for (final ReferenceTake t in takes)
+        if (deviationDeg[t.id]! <= clusterToleranceDeg) t,
     ];
+    if (cluster.length < minTakes) {
+      throw ReferenceAgreementError(deviationDeg, clusterToleranceDeg);
+    }
+    final List<String> excluded = <String>[
+      for (final ReferenceTake t in takes)
+        if (deviationDeg[t.id]! > clusterToleranceDeg) t.id,
+    ];
+    takes = cluster;
 
     final int medoid = selectMedoid(takes);
     final List<JointAngleVector> base = takes[medoid].frames;
@@ -324,6 +550,75 @@ final class ReferenceBuilder {
       contributingTakes: takes.length,
       sources: takes.map((ReferenceTake t) => t.source).toList(growable: false),
       mirroredTakeIds: flipped,
+      mirrorConfident: resolution.confident,
+      excludedOutlierIds: excluded,
+      priorDisagreements: resolution.priorDisagreements,
     );
+  }
+
+  /// Mean per-take angular deviation from the group consensus, in degrees.
+  ///
+  /// Alignment-aware: each take is warped onto the medoid's time base first,
+  /// so a slower demonstration of the same movement does not read as
+  /// disagreement.
+  Map<String, double> _deviationsFromConsensus(List<ReferenceTake> takes) {
+    final int medoid = selectMedoid(takes);
+    final List<JointAngleVector> base = takes[medoid].frames;
+    final List<List<JointAngleVector>> aligned = <List<JointAngleVector>>[
+      for (int t = 0; t < takes.length; t++)
+        t == medoid
+            ? base
+            : (() {
+                final DtwResult r = dtw.align(
+                    base.length,
+                    takes[t].frames.length,
+                    (int i, int j) =>
+                        similarity.distance(base[i], takes[t].frames[j]));
+                return List<JointAngleVector>.generate(base.length,
+                    (int i) => takes[t].frames[r.refToLearner[i]],
+                    growable: false);
+              })(),
+    ];
+
+    final int jointCount = base.first.specs.length;
+    final Map<String, double> out = <String, double>{};
+    for (int t = 0; t < takes.length; t++) {
+      // Per-joint time-averaged deviation first, then the MEDIAN across
+      // joints. The choice of robust statistic carries the rule's meaning:
+      // a take performing a *different movement* deviates on most joints
+      // (median high → excluded), while a take *styling* a minority of
+      // joints — the variance the family turns into tolerance, never into
+      // exclusion — cannot move the median. A grand mean would dilute the
+      // first case (L-113's single-number trap); a high percentile would
+      // punish the second.
+      final List<double> perJoint = <double>[];
+      for (int j = 0; j < jointCount; j++) {
+        double sum = 0;
+        int n = 0;
+        for (int f = 0; f < base.length; f++) {
+          // Consensus per cell, excluding the take under test so its own
+          // outlierhood cannot drag the consensus toward itself.
+          final List<double> others = <double>[
+            for (int u = 0; u < takes.length; u++)
+              if (u != t) aligned[u][f][j],
+          ];
+          final ({double mean, double dispersion, int count}) stats =
+              circularStats(others);
+          final double own = aligned[t][f][j];
+          if (own.isNaN || stats.count == 0) continue;
+          sum += wrapPi(own - stats.mean).abs();
+          n++;
+        }
+        if (n > 0) perJoint.add(sum / n);
+      }
+      if (perJoint.isEmpty) {
+        out[takes[t].id] = double.infinity;
+        continue;
+      }
+      perJoint.sort();
+      final double median = perJoint[perJoint.length ~/ 2];
+      out[takes[t].id] = median * radToDeg;
+    }
+    return out;
   }
 }

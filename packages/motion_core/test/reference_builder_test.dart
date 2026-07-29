@@ -137,21 +137,94 @@ void main() {
     });
 
     test('an unresolved mirror would wreck the reference — this is the guard', () {
-      // Same input, but merged blind. Agreement must be visibly worse, which is
-      // what justifies the consensus step existing at all.
+      // Same input, but merged blind. Before the agreement gate (M-F-47) the
+      // damage showed as visibly worse agreement; now the gate catches the
+      // mirrored takes as named outliers instead — the blind reference loses
+      // TWO SOURCES it should have had, and says so. Resolving the mirror is
+      // what keeps all six teachers in the consensus.
       final List<ReferenceTake> takes = instructorTakes(flipCount: 2);
       final CanonicalReference resolved =
           const ReferenceBuilder().build(takes);
       final CanonicalReference blind =
           const ReferenceBuilder(mirrorMargin: 1e9).build(takes);
 
-      double mean(CanonicalReference r) =>
-          List<double>.generate(r.length, r.agreementAt)
-              .reduce((double a, double b) => a + b) /
-          r.length;
-
       expect(blind.mirroredTakeIds, isEmpty);
-      expect(mean(resolved), greaterThan(mean(blind) + 0.05));
+      expect(blind.excludedOutlierIds, hasLength(2),
+          reason: 'unresolved mirrored takes read as outliers and are '
+              'excluded by name, never silently averaged in');
+      expect(blind.contributingTakes, takes.length - 2);
+
+      expect(resolved.excludedOutlierIds, isEmpty);
+      expect(resolved.contributingTakes, takes.length,
+          reason: 'resolving the mirror keeps every teacher in the consensus');
+    });
+
+    test('assignment is order-independent — a consensus that depends on file '
+        'order is not a consensus (M-F-48)', () {
+      final List<ReferenceTake> takes = instructorTakes(flipCount: 2);
+      final CanonicalReference a = const ReferenceBuilder().build(takes);
+      final CanonicalReference b = const ReferenceBuilder()
+          .build(takes.reversed.toList(growable: false));
+      expect(a.mirroredTakeIds.toSet(), b.mirroredTakeIds.toSet(),
+          reason: 'same takes, any order, same resolution');
+      expect(a.contributingTakes, b.contributingTakes);
+    });
+
+    test('too few agreeing sources refuse to become a reference (M-F-47)', () {
+      // Two coherent takes + two whose BODY-WIDE posture is something else
+      // entirely (large offsets on arms and legs both sides — a different
+      // movement, not a styling choice). The count gate (>=3) is satisfied;
+      // the agreement gate must not be — 23 and 112 are not both "in".
+      final SyntheticSequence seq = fourCountPhrase();
+      ReferenceTake different(String id, double offset, int seed) {
+        final SyntheticSequence other = SyntheticSequence(
+          seq.keyframes
+              .map((SyntheticKeyframe k) => SyntheticKeyframe(
+                    k.tUs,
+                    k.pose.copyWith(
+                      leftUpperArm: k.pose.leftUpperArm + offset,
+                      rightUpperArm: k.pose.rightUpperArm - offset,
+                      leftForearm: k.pose.leftForearm + offset,
+                      rightForearm: k.pose.rightForearm - offset,
+                      leftThigh: k.pose.leftThigh + offset * 0.7,
+                      rightThigh: k.pose.rightThigh - offset * 0.7,
+                      leftShin: k.pose.leftShin + offset * 0.7,
+                      rightShin: k.pose.rightShin - offset * 0.7,
+                    ),
+                  ))
+              .toList(growable: false),
+        );
+        return takeOf(id, other, jitterSeed: seed);
+      }
+
+      final List<ReferenceTake> base = instructorTakes();
+      final List<ReferenceTake> takes = <ReferenceTake>[
+        base[0],
+        base[1],
+        different('weird1', 0.9, 7),
+        different('weird2', -0.8, 8),
+      ];
+      expect(
+        () => const ReferenceBuilder().build(takes),
+        throwsA(isA<ReferenceAgreementError>()),
+      );
+    });
+
+    test('a lead-side prior outranks consensus and disagreement is reported '
+        '(M-J-06)', () {
+      final List<ReferenceTake> takes = instructorTakes();
+      // Measured prior says takes[1] was mirrored — consensus disagrees.
+      final Map<String, bool> prior = <String, bool>{
+        for (final ReferenceTake t in takes) t.id: false,
+      }..[takes[1].id] = true;
+
+      final MirrorResolution r =
+          const ReferenceBuilder().resolveMirroring(takes, prior: prior);
+      expect(r.flippedIds, <String>[takes[1].id],
+          reason: 'the prior is a direct measurement; it wins');
+      expect(r.priorDisagreements, contains(takes[1].id),
+          reason: 'the contradiction is reported, never hidden — at small n '
+              'it is the only symptom of a consensus that resolves wrongly');
     });
 
     test('teacher disagreement becomes the tolerance', () {

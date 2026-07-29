@@ -3,6 +3,24 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.5.0 — 2026-07-29 (tur 18)
+
+- **ReferenceBuilder büyük yükseltme (M-F-47/48 + M-J-06):**
+  * `resolveMirroring` GLOBAL atama problemi olarak çözülür (tam tarama n≤12,
+    take-0 sabit; çift pair-cost tablosu) — "dosya sırasına bağlı uzlaşma
+    uzlaşma değildir" (Choreia ölçümü). Mutlak konvansiyon: AZINLIK çevrilir;
+    yakın-beraberede HİÇ çevrilmez + `confident:false` raporlanır.
+  * `build(..., leadSidePrior:)` — ölçülmüş öncü-taraf önseli konsensüsü
+    ezer, uyuşmazlık RAPORLANIR (n küçükken yanlış-çözülen konsensüs sessiz).
+  * **M-F-47 anlaşma kapısı:** sayı kapısı anlaşmayı ölçmez — take-başına
+    medyan-eklem sapması ≤14° kümesi ister; aykırı ADLA dışlanır
+    (`excludedOutlierIds`), küme<minTakes → `ReferenceAgreementError`.
+    İstatistik seçimi kuralın anlamını taşır: farklı-hareket çoğu eklemde
+    sapar (medyan yüksek → dışla), stil azınlık eklemde (tolerans olur,
+    dışlanmaz).
+  * `CanonicalReference` yeni alanlar: mirrorConfident/excludedOutlierIds/
+    priorDisagreements. 158/158.
+
 ## 0.4.3 — 2026-07-29 (tur 15)
 
 - **G-038 (P1) bileşim kusuru:** `ConfidenceGate.evaluate` artık `xExtent`
