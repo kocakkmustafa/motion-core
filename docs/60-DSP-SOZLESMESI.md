@@ -17,6 +17,16 @@ cinsine mühürlenmesinin nedeni buydu (L-069).
 - Bant/bin hedefleri: **Hz**.
 - Kare-pencereleri: **saniye** (koşumda kare sayısına çevrilir: `n = fps * s`).
 
+### 1a. Kural motoru YAPILANDIRAN her düzlemde denetlenir (M-O-27)
+
+Birim kuralını yalnız motorda düzeltmek yetmez: motoru yapılandıran config,
+şema ve linter da aynı kuralı zorlamalıdır. Ölçülen vaka: motor düzeltildi
+ama config `onsetFrameSize:1024` taşımaya devam etti — O-019 hayalet-onset
+kusuruna sebep olan değerin ta kendisi; o config'i okuyan kod kusuru geri
+getirirdi. Birim kaçağı aynı zamanda bir **regresyon mayınıdır**. Linter
+kuralı: `signalConditioning` içinde `sampleRate` ya da `*Samples` /
+`*FrameSize` / `*HopSize` biten anahtar = ihlal.
+
 ## 2. İki-hız zorunluluğu
 
 Sinyal-analiz fixture'ları **en az iki örnekleme hızında** (44,1 + 48 kHz;
@@ -55,6 +65,14 @@ kaskadı göremez (O-019: perde motoru kusursuz, onset dedektörü çelloyu
 63 pencerede 1 kullanılabilire düşürdü). Fixture'lar GERÇEK motor
 zincirinden geçirilir; beklenen değerler motorun ölçtüğünden yazılır,
 elle uydurulmaz — ve üretici kapısı oran-bazlıdır (`judged > 0` değil).
+
+## 7a. Kapı raporundaki sayılar ölçümden TÜRETİLİR, yazılmaz (M-O-28)
+
+Elle yazılmış "16/16" bir vaka düşse de "16/16" der — kendini doğrulayan
+boş rapor, denetimin engellemek için var olduğu şeyin ta kendisi. Sayılar
+her zaman vaka listesinden/koşum sonucundan türetilir (`len(cases)`).
+Koordinatör düzlemindeki eşdeğeri de yaşandı: süit sonucu GÖRÜLMEDEN sürüm
+notuna yazılan "155/155" (0.4.3 dersi) — aynı sınıf, iki düzlem.
 
 ## 7. Dördüncü canlılık sorusu: "bu kapı hiç kırmızı yanabilir mi?"
 
