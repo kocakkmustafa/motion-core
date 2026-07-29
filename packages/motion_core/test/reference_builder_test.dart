@@ -440,6 +440,47 @@ void main() {
     });
   });
 
+  group('mirror flags carry their basis (M-J-09)', () {
+    test('a prior makes confident true but cannot make the SEARCH decisive',
+        () {
+      // Near-symmetric material: mirroring barely changes anything, so the
+      // assignment search ends in a near-tie. JabLab measured the trap on
+      // real stance data: with a prior, `confident` read true while the
+      // search gap sat at 0.0038 << margin — a consumer had no way to see
+      // that the DATA had not resolved anything.
+      final List<ReferenceTake> takes = <ReferenceTake>[
+        for (int i = 0; i < 3; i++)
+          takeOf('s$i', armsOverhead(), jitterSeed: 70 + i),
+      ];
+      const ReferenceBuilder b = ReferenceBuilder();
+
+      final MirrorResolution noPrior = b.resolveMirroring(takes);
+      expect(noPrior.searchDecisive, isFalse);
+
+      final MirrorResolution withPrior = b.resolveMirroring(takes,
+          prior: <String, bool>{for (final ReferenceTake t in takes) t.id: false});
+      expect(withPrior.confident, isTrue,
+          reason: 'the prior is a direct measurement — trusting it is right');
+      expect(withPrior.searchDecisive, isFalse,
+          reason: 'but the search itself stayed a near-tie, and the flag '
+              'must say so independently of the prior');
+      expect(withPrior.runnerUpGap, noPrior.runnerUpGap,
+          reason: 'the prior must not change what the search measured');
+    });
+
+    test('asymmetric material makes the search decisive on its own', () {
+      final SyntheticSequence seq = fourCountPhrase();
+      final MirrorResolution r = const ReferenceBuilder()
+          .resolveMirroring(<ReferenceTake>[
+        takeOf('a', seq, jitterSeed: 80),
+        takeOf('b', seq, jitterSeed: 81, flip: true),
+        takeOf('c', seq, jitterSeed: 82),
+      ]);
+      expect(r.searchDecisive, isTrue);
+      expect(r.confident, isTrue);
+    });
+  });
+
   group('refusal surfaces (L-143 review)', () {
     test('an infinite deviation prints as a structural gap, not a number',
         () {

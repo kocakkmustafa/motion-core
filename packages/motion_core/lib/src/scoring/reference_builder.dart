@@ -102,6 +102,7 @@ final class MirrorResolution {
     required this.runnerUpGap,
     required this.priorDisagreements,
     this.gapMeasured = true,
+    this.searchDecisive = false,
   });
 
   final List<ReferenceTake> takes;
@@ -131,6 +132,15 @@ final class MirrorResolution {
   /// assignment came from the heuristic fallback whose rival cost is unknown
   /// (false). Honesty flags carry their basis, not just their verdict.
   final bool gapMeasured;
+
+  /// Whether the mirror SEARCH itself was decisive — a measured runner-up
+  /// gap above the margin, independent of any prior (M-J-09). [confident]
+  /// conflates two bases: "a prior was trusted" and "the search separated
+  /// the candidates". JabLab measured the confusion on real stance data:
+  /// with a prior, `confident` is true while the underlying search sat at
+  /// gap 0.0038 << margin 0.02 — a consumer reading `confident` as "the
+  /// data resolved this" would be wrong. A flag carries its basis.
+  final bool searchDecisive;
 
   /// Takes where a caller-supplied lead-side prior contradicted consensus.
   /// The prior wins (it is a direct measurement); the contradiction is
@@ -191,6 +201,7 @@ final class CanonicalReference {
     required this.mirroredTakeIds,
     this.mirrorConfident = true,
     this.mirrorGapMeasured = true,
+    this.mirrorSearchDecisive = false,
     this.excludedOutlierIds = const <String>[],
     this.priorDisagreements = const <String>[],
   });
@@ -200,6 +211,10 @@ final class CanonicalReference {
 
   /// Basis of [mirrorConfident] — see [MirrorResolution.gapMeasured].
   final bool mirrorGapMeasured;
+
+  /// Prior-independent search decisiveness — see
+  /// [MirrorResolution.searchDecisive] (M-J-09).
+  final bool mirrorSearchDecisive;
 
   /// Sources measured, named and *excluded* by the agreement gate (M-F-47) —
   /// reported rather than silently averaged into the consensus.
@@ -440,6 +455,7 @@ final class ReferenceBuilder {
         runnerUpGap: double.infinity,
         priorDisagreements: const <String>[],
         gapMeasured: false,
+        searchDecisive: false,
       );
     }
 
@@ -590,6 +606,7 @@ final class ReferenceBuilder {
       ],
       confident:
           prior != null || (gapMeasured && runnerUpGap > mirrorMargin),
+      searchDecisive: gapMeasured && runnerUpGap > mirrorMargin,
       runnerUpGap: runnerUpGap,
       gapMeasured: gapMeasured,
       priorDisagreements: priorDisagreements,
@@ -750,6 +767,7 @@ final class ReferenceBuilder {
       mirroredTakeIds: flipped,
       mirrorConfident: resolution.confident,
       mirrorGapMeasured: resolution.gapMeasured,
+      mirrorSearchDecisive: resolution.searchDecisive,
       excludedOutlierIds: excluded,
       priorDisagreements: resolution.priorDisagreements,
     );

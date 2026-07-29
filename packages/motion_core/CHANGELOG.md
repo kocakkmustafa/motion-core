@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.2 — 2026-07-29 (yeni vardiya, tur 2)
+
+- **M-J-09 (JabLab ölçtü, J-046 kapanışı): `searchDecisive` /
+  `mirrorSearchDecisive`** — `confident` iki dayanağı karıştırıyordu:
+  "prior'a güvenildi" ve "arama adayları ayırdı". Gerçek stance verisinde
+  ölçüldü: prior'la `confident=true` iken arama gap'i 0,0038 << marj 0,02
+  — tüketici "veri çözdü" diye okurdu. Yeni alan prior'dan BAĞIMSIZ arama
+  kararlılığını taşır (`gapMeasured && runnerUpGap > mirrorMargin`);
+  `confident` semantiği değişmedi (geriye uyumlu). CLI artefaktına
+  `mirrorSearchDecisive` eklendi. Bayrak dayanağını taşır (M-O-25
+  doktrininin ayna-katmanı tamamlaması). Test: 196/196.
+
 ## 0.8.1 — 2026-07-29 (yeni vardiya, tur 1 devamı)
 
 - **`Dtw` koridoru ZAMANSAL oldu (wf_dfb1dcd3 doğrulanmış çekirdek bulgu /

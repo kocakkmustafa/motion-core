@@ -438,6 +438,7 @@ final class ReferenceCli {
         'mirroredTakeIds': ref.mirroredTakeIds,
         'mirrorConfident': ref.mirrorConfident,
         'mirrorGapMeasured': ref.mirrorGapMeasured,
+        'mirrorSearchDecisive': ref.mirrorSearchDecisive,
         'excludedOutlierIds': ref.excludedOutlierIds,
         'excludedIneligibleIds': excludedIneligible,
         'excludedUnattestedIds': excludedUnattested,
