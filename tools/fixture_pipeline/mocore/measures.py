@@ -33,6 +33,7 @@ MetricKind = Literal[
 
 #: Ölçüm neden üretilemedi — kullanıcıya gösterilecek gerekçenin makine hali.
 #: "Ölçemedim" demek, yanlış ölçmekten daima üstündür (00-AILE-MIMARISI §7).
+INVALID_OUT_OF_RANGE = "INVALID_OUT_OF_PHYSICAL_RANGE"
 INVALID_LOW_CONFIDENCE = "INVALID_LOW_CONFIDENCE"
 INVALID_DEGENERATE = "INVALID_DEGENERATE_GEOMETRY"
 
@@ -51,6 +52,13 @@ class MetricDef:
     #: M-F-34: kusursuz-durum taban değeri. Tolerans TABAN-göreli yorumlanır;
     #: tabanı sıfır sanmak sessiz hata üretir (L-072). None = beyan edilmemiş.
     baseline: float | None = None
+    #: D5/v3: metriğin FİZİKSEL olarak mümkün aralığı. İki ayrı işi vardır ve
+    #: ikisi de gerekli: (a) config yazım anında saçma eşiği reddeder (206°
+    #: diz sınıfı), (b) ÖLÇÜLEN veriyi süzer. İkincisi olmadan izleme
+    #: artefaktları referansa sızar — Lissom'da diz fleksiyonu 0-3° ölçüldü
+    #: (tam bükülü diz ~30-40°, 0° baldırın uyluğa katlanması demek) ve
+    #: trunk_lateral_tilt 180° verdi (L-107). None = beyansız, süzme YOK.
+    value_range: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
         # L-011: transverse düzlem, dikey ekseni sıfırlar; dikeye göre açı bu
@@ -96,6 +104,7 @@ class MetricDef:
             unit=self.unit,
             description=self.description,
             baseline=self.baseline,
+            value_range=self.value_range,
         )
 
     @classmethod
@@ -119,6 +128,8 @@ class MetricDef:
             unit=d.get("unit", "deg"),
             description=d.get("description", ""),
             baseline=(float(d["baseline"]) if "baseline" in d else None),
+            value_range=(tuple(float(x) for x in d["range"])  # type: ignore[arg-type]
+                         if "range" in d else None),
         )
 
 
@@ -189,6 +200,15 @@ def evaluate(metric: MetricDef, frame: geo.Frame) -> Measurement:
         return Measurement(
             metric.id, value, conf, False, INVALID_LOW_CONFIDENCE, metric.unit
         )
+    # Fiziksel olarak imkânsız değer = izleme artefaktı. Güven kapısı bunu
+    # YAKALAMIYOR: landmark'lar yüksek görünürlükle ama yanlış yerde
+    # kestirilebiliyor ve sonuç anatomik olarak mümkün olmayan bir açı oluyor.
+    if metric.value_range is not None:
+        lo, hi = metric.value_range
+        if not (lo <= value <= hi):
+            return Measurement(
+                metric.id, value, conf, False, INVALID_OUT_OF_RANGE, metric.unit
+            )
     return Measurement(metric.id, value, conf, True, None, metric.unit)
 
 
