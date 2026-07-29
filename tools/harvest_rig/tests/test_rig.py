@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -112,6 +113,44 @@ def check_rig_version_gate() -> None:
         check(v.get("vendored") is True and v.get("sha") is None,
               "BAŞKA depoya kopyalanmış rig, o deponun SHA'sını KENDİ "
               "sürümü gibi damgalamıyor (inandırıcı-ama-yanlış damga kapalı)")
+
+
+
+def check_second_person_probe() -> None:
+    """İkinci-kişi sondasının SÖZLEŞMESİ (M-F-141 koruma 1(i)).
+
+    mediapipe gerektirmez: burada sınanan şey çıkarım değil, RAPORUN
+    matematiği ve dürüstlük sözleşmesi — ham oranın doğru bölünmesi, ikinci
+    pozun birinciyle KIYASLANABİLİR olması (kıyas tabanı olmadan "ikinci
+    kişi oranı" olduğundan yüksek okunur) ve örneksiz klipte çökmemesi.
+
+    Sonda SALT RAPOR: eşik yok, klip reddetmez. Bu test bunu da sabitler —
+    ileride biri sondaya sessizce eşik koyarsa görünür olsun.
+    """
+    import second_person as sp  # noqa: PLC0415
+
+    r = sp.SecondPersonReport(
+        videoId="x", sampledFrames=24, framesWithAnyPose=20,
+        framesWithTwoPoses=5,
+        secondPoseCoreVisibility=[0.2, 0.25, 0.18, 0.9, 0.3],
+        firstPoseCoreVisibility=[0.95] * 20)
+    s = r.summary()
+    check(abs(s["twoPoseShare"] - 0.25) < 1e-9,
+          "ham oran POZLU kare sayısına bölünür (5/20), örneklenen kareye değil")
+    check(s["secondPoseCoreVisibility"]["median"]
+          < s["firstPoseCoreVisibility"]["median"],
+          "ikinci poz birinciyle KIYASLANABİLİR raporlanıyor (kıyas tabanı var)")
+
+    z = sp.SecondPersonReport(videoId="y").summary()
+    check(z["twoPoseShare"] == 0.0 and z["secondPoseCoreVisibility"] is None,
+          "hiç poz bulunamayan klipte sonda çökmez, sıfır/None döner")
+
+    src = (Path(__file__).resolve().parent.parent / "second_person.py").read_text(
+        encoding="utf-8")
+    check("num_poses=2" in src,
+          "sonda num_poses=2 kullanır (üretim 1 kullanıyor — kör nokta budur)")
+    check("SALT RAPOR" in src and "EŞİK YOK" in src.upper(),
+          "sonda salt-rapor olduğunu BEYAN eder (eşik icadına karşı nöbetçi)")
 
 
 def check_triage_profile() -> None:
@@ -616,6 +655,7 @@ def main() -> int:
               "damga ya gerçek SHA verir ya vendored der — arada sessiz "
               "üçüncü hâl YOK")
         check_rig_version_gate()
+        check_second_person_probe()
 
     print("[4] triyaj profili (CLI yolu)")
     check_triage_profile()
