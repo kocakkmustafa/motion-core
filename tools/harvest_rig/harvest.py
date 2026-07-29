@@ -281,12 +281,60 @@ def load_triage_profile(
         # tek bir global bant ikisine birden hizmet edemez. Bandı thresholds'a
         # koyup perMovement'ta unutmak, L-080'in yeni bir yerde tekrarı olurdu.
         if isinstance(entry, dict):
-            unknown_pm = set(entry) - {"lower_body_ids", "trunk_angle_band_deg"}
+            unknown_pm = set(entry) - {
+                "lower_body_ids", "trunk_angle_band_deg", "identity",
+            }
             if unknown_pm:
                 raise SystemExit(
                     f"{path}: perMovement['{movement}'] bilinmeyen anahtar: "
                     f"{', '.join(sorted(unknown_pm))}"
                 )
+            # M-F-60: hareket-kimliği sözlüğü TEK yerde yaşar — bu blok.
+            # App'ler (movementPresence, eligibility) sinyal tanımını buradan
+            # TÜKETİR, kendi sözlüğünü kurmaz. Rig şimdilik zorlamaz; şekil
+            # yine de doğrulanır ki "identity" bir dilek defterine dönmesin.
+            # Her sinyal: {"metric": ..., "status": measured|provisional|
+            # pending, "basis": nereden türedi, opsiyonel min/max}. `pending`
+            # sayı TAŞIYAMAZ (ölçülmemiş eşik yazılmaz — G-043 dersi);
+            # `pending` dışındakiler basis + en az bir sınır ister.
+            if "identity" in entry:
+                ident = entry["identity"]
+                if not isinstance(ident, dict) or not ident:
+                    raise SystemExit(
+                        f"{path}: perMovement['{movement}'].identity boş "
+                        "olmayan bir nesne olmalı"
+                    )
+                for sig, spec in ident.items():
+                    if not isinstance(spec, dict):
+                        raise SystemExit(
+                            f"{path}: identity['{sig}'] nesne olmalı")
+                    unknown_sig = set(spec) - {
+                        "metric", "status", "basis", "min", "max",
+                    }
+                    if unknown_sig:
+                        raise SystemExit(
+                            f"{path}: identity['{sig}'] bilinmeyen anahtar: "
+                            f"{', '.join(sorted(unknown_sig))}"
+                        )
+                    status = spec.get("status")
+                    if "metric" not in spec or status not in (
+                            "measured", "provisional", "pending"):
+                        raise SystemExit(
+                            f"{path}: identity['{sig}'] 'metric' ve "
+                            "'status' (measured|provisional|pending) ister"
+                        )
+                    has_bound = "min" in spec or "max" in spec
+                    if status == "pending" and has_bound:
+                        raise SystemExit(
+                            f"{path}: identity['{sig}'] pending iken sınır "
+                            "taşıyamaz — ölçülmemiş eşik yazılmaz"
+                        )
+                    if status != "pending" and (
+                            not has_bound or "basis" not in spec):
+                        raise SystemExit(
+                            f"{path}: identity['{sig}'] {status} iken "
+                            "'basis' + en az bir sınır (min/max) ister"
+                        )
             if "lower_body_ids" in entry:
                 raw["lower_body_ids"] = tuple(entry["lower_body_ids"])
             if "trunk_angle_band_deg" in entry:

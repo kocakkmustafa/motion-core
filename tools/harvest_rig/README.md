@@ -87,3 +87,31 @@ ekleminin salınımını sayar, hareketi değil; konuşurken el hareketi de dirs
   kimlik ölçmez — ayakta-konuşma videosunda da kusursuz pencere bulunur.
 * Bant verilmezse kapı **kapalıdır** (geriye uyumlu). `perMovement` girdisi hem
   çıplak liste (eski) hem nesne biçimini kabul eder.
+
+### Hareket-kimliği sözlüğü — `perMovement.identity` (M-F-60)
+
+Kimlik sinyalleri TEK yerde tanımlanır; app kapıları (movementPresence,
+eligibility) buradan tüketir. Squat örneği (iki sinyal BİRLİKTE — tek sinyal
+yetmez: diz-simetrisi yürüme/lunge'ı yakalar ama yüzüstü diz bükmeyi
+yakalamaz, bağlaşım tam tersini):
+
+```json
+"bodyweight_squat": {
+  "lower_body_ids": [23,24,27,28],
+  "trunk_angle_band_deg": [0, 45],
+  "identity": {
+    "hipKneeCoupling": {
+      "metric": "pearson(hip_flexion, knee_flexion)",
+      "min": 0.20, "status": "provisional",
+      "basis": "Lissom n=4 (+0.45..+0.57 sağlıklı, -0.46 sahte; işaret döner)"
+    },
+    "kneeSymmetry": {
+      "metric": "kneeAngleAsymmetry",
+      "status": "pending"
+    }
+  }
+}
+```
+
+`pending` sinyal SINIR taşıyamaz (ölçülmemiş eşik yazılmaz); ölçüm gelince
+`status` + `basis` + sınır birlikte güncellenir.
