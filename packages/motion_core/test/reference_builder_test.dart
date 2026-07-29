@@ -466,6 +466,11 @@ void main() {
               'must say so independently of the prior');
       expect(withPrior.runnerUpGap, noPrior.runnerUpGap,
           reason: 'the prior must not change what the search measured');
+      expect(withPrior.priorDisagreements, isEmpty,
+          reason: 'a near-tie bestMask is a discarded coin flip — a conflict '
+              'against it is not a disagreement, the prior filled a void '
+              '(J-063: an all-false prior here showed 11 "disagreements" '
+              'while agreeing with everything the builder actually did)');
     });
 
     test('asymmetric material makes the search decisive on its own', () {

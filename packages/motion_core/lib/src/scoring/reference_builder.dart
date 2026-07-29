@@ -142,10 +142,13 @@ final class MirrorResolution {
   /// data resolved this" would be wrong. A flag carries its basis.
   final bool searchDecisive;
 
-  /// Takes where a caller-supplied lead-side prior contradicted consensus.
-  /// The prior wins (it is a direct measurement); the contradiction is
-  /// reported because at small n it is the only visible symptom of a
-  /// consensus that would have resolved wrongly.
+  /// Takes where a caller-supplied lead-side prior contradicted a DECISIVE
+  /// search ([searchDecisive] true). The prior wins (it is a direct
+  /// measurement); the contradiction is reported because at small n it is
+  /// the only visible symptom of a consensus that would have resolved
+  /// wrongly. Always empty when the search was indecisive: a near-tie's
+  /// bestMask is a discarded coin flip, and a conflict against it is not a
+  /// disagreement — the prior filled a void (J-063).
   final List<String> priorDisagreements;
 }
 
@@ -581,13 +584,22 @@ final class ReferenceBuilder {
       for (int i = 0; i < n; i++) {
         if (prior[takes[i].id] ?? false) priorMask |= 1 << i;
       }
-      // The prior is absolute; consensus is relative (bit 0 pinned). Compare
-      // in the frame where they agree on take 0.
-      final int consensusAbs =
-          ((priorMask & 1) == 1) ? (~bestMask & ((1 << n) - 1)) : bestMask;
-      for (int i = 0; i < n; i++) {
-        if (((priorMask >> i) & 1) != ((consensusAbs >> i) & 1)) {
-          priorDisagreements.add(takes[i].id);
+      // Disagreement is only meaningful against a search that ASSERTED
+      // something. At a near-tie the builder itself discarded bestMask as a
+      // coin flip (chosenMask = 0 above) — counting conflicts against a
+      // discarded coin flip would read as "prior overrode consensus" when
+      // there was no consensus to override; the prior filled a void (J-063,
+      // measured: an all-false prior at a near-tie showed 11 "disagreements"
+      // while agreeing exactly with what the builder actually did).
+      if (gapMeasured && runnerUpGap > mirrorMargin) {
+        // The prior is absolute; consensus is relative (bit 0 pinned).
+        // Compare in the frame where they agree on take 0.
+        final int consensusAbs =
+            ((priorMask & 1) == 1) ? (~bestMask & ((1 << n) - 1)) : bestMask;
+        for (int i = 0; i < n; i++) {
+          if (((priorMask >> i) & 1) != ((consensusAbs >> i) & 1)) {
+            priorDisagreements.add(takes[i].id);
+          }
         }
       }
       chosenMask = priorMask;
