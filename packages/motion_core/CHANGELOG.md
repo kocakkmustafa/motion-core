@@ -3,6 +3,25 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.3 — 2026-07-29 (yeni vardiya) — ÇÖP-ÖLÇÜM-GİBİ P0
+
+- **J-056 (JabLab kanıtladı): `prepareTake` görünürlük-kapısını HİÇ
+  çağırmıyordu.** `JointAngleExtractor.extract()` saf geometridir ve
+  görünürlüğe bakmaz; NaN'lama ayrı `gate()` metodundadır. Canlı ürün
+  yolları (replay, sequence_comparator) gate'i hep çağırıyordu — YALNIZ
+  kanonik referans-üretme hattı atlamıştı. Sonuç: MediaPipe'ın görünmez
+  eklem için ürettiği düşük-güvenli-ama-sıfır-olmayan tahmini pozisyonlar
+  numerik açıya dönüşüp konsensüse GERÇEK ÖLÇÜM gibi giriyordu
+  (mcleodscott'un "en kötü outlier" bacakları buydu: ±π çevresinde
+  instabil, 2802/2802 numerik, 0 NaN — ampirik kanıt J-056'da).
+  Kısmi-görünür kaynaklı HER artefakt bu riski taşıyordu. Düzeltme:
+  prepareTake artık canlı yollarla AYNI gate'i çağırır
+  (landmarkThreshold). Regresyon testi: görünmez-ayak karesinde shin NaN,
+  upper_arm numerik (kapı eklem-başına). ⚠️ ETKİ: kanonik CLI'yle
+  üretilmiş TÜM artefaktlar 0.8.3'le yeniden üretilmeli — düşük-görünürlük
+  eklemleri artık dürüstçe NaN olur ve per-cell count guard'a düşer.
+  Test: 197/197.
+
 ## 0.8.2 — 2026-07-29 (yeni vardiya, tur 2)
 
 - **M-J-09 (JabLab ölçtü, J-046 kapanışı): `searchDecisive` /

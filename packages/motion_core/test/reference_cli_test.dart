@@ -157,6 +157,58 @@ void main() {
       );
     });
 
+    // J-056 (core P0, JabLab proved it): extract() ignores visibility, and
+    // prepareTake never called gate() — invisible ankles' guessed positions
+    // became numeric shin/knee angles that read as instructor disagreement.
+    test('a joint whose landmarks are invisible is NaN, not a guessed number',
+        () {
+      final List<PoseFrame> frames = fourCountPhrase()
+          .sample(fps: 30)
+          .map((PoseFrame f) => PoseFrame(
+                tUs: f.tUs,
+                landmarks: <PoseLandmark>[
+                  for (int i = 0; i < f.landmarks.length; i++)
+                    // Ankles (27/28) effectively invisible with IN-FRAME
+                    // garbage coordinates — the MediaPipe shape (guessed
+                    // positions, low confidence). In-frame on purpose: the
+                    // frame-level gate must NOT save us here, the per-joint
+                    // gate must.
+                    (i == 27 || i == 28)
+                        ? PoseLandmark(0.3 + 0.01 * i, 0.95, 0, 0.05)
+                        : f.landmarks[i],
+                ],
+                modelVersion: f.modelVersion,
+              ))
+          .toList(growable: false);
+      final Fixture fx = Fixture(
+        app: 'jablab',
+        technique: 'stance',
+        frames: frames,
+        provenance: ProvenanceInfo(channel: 'ch-lowvis'),
+      );
+      final ({ReferenceTake take, Map<String, dynamic> report}) p =
+          const ReferenceCli().prepareTake('lowvis', fx);
+      expect(p.take.frames, isNotEmpty,
+          reason: 'upper body is fine; frames must survive the frame gate');
+      int shinNaN = 0, shinNum = 0, armNum = 0;
+      for (final JointAngleVector v in p.take.frames) {
+        final double? shin = v.byId('left_shin');
+        final double? arm = v.byId('left_upper_arm');
+        if (shin == null) {
+          shinNaN++;
+        } else {
+          shinNum++;
+        }
+        if (arm != null) armNum++;
+      }
+      expect(shinNum, 0,
+          reason: 'an invisible ankle must never yield a numeric shin angle '
+              '— that number would enter consensus as a real measurement');
+      expect(shinNaN, p.take.frames.length);
+      expect(armNum, greaterThan(0),
+          reason: 'gating is per-joint, not per-frame');
+    });
+
     // L-143: a harvest clip whose every frame was undetected decodes into a
     // frameless take. That used to crash deep in consensus math — and the
     // crash printed as a count/source gate refusal, a code defect wearing a

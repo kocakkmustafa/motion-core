@@ -143,7 +143,22 @@ final class ReferenceCli {
         gateDropped++;
         continue;
       }
-      frames.add(extractor.extract(normalizer.normalize(frame)));
+      // J-056 (JabLab proved it P0): extract() computes pure geometry and
+      // IGNORES visibility — MediaPipe emits low-confidence non-zero
+      // coordinates for invisible joints, and without gate() those guessed
+      // positions become numeric angles that read as real measurements
+      // (mcleodscott's "worst outlier" legs were this, ±π-unstable). The
+      // live product paths (replay, sequence comparator) always gated;
+      // ONLY this reference pipeline skipped it.
+      final JointAngleVector raw =
+          extractor.extract(normalizer.normalize(frame));
+      frames.add(extractor.gate(
+        raw,
+        frame.landmarks
+            .map((PoseLandmark l) => l.visibility)
+            .toList(growable: false),
+        minVisibility: gate.landmarkThreshold,
+      ));
     }
 
     final String source = fixture.provenance?.sourceIdentity ??
