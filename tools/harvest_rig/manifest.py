@@ -27,9 +27,62 @@ def _tool_version(cmd: list[str]) -> str:
         return "unavailable"
 
 
-def tool_versions() -> dict[str, str]:
+def rig_version() -> dict[str, Any]:
+    """Rig'in KENDİ sürüm damgası — bayat-kopya sınıfının panzehiri (M-F-135).
+
+    Neden gerekli: Gravita'nın squat hasadı, M-F-45'in sınıf-düzeyi muafiyet
+    mekanizmasını TAŞIMAYAN bayat bir rig kopyasıyla koşmuştu. Çıktı tamamen
+    geçerli görünüyordu (provenance düzgün, `referenceEligible` dürüstçe
+    yazılmış) — yalnız uygulanan KURAL bir sürüm gerisindeydi ve bunu hiçbir
+    alan söylemiyordu. M-F-07 köken alanlarının araç-sürümü karşılığı: hangi
+    ARAÇ ürettiğini de damgala, yoksa "hangi kural uygulandı" sorusu
+    cevaplanamaz.
+
+    Kopya tespiti SHA'ya güvenmez ve İKİ kademeli:
+      1. Dosya o depoda gerçekten TAKİP EDİLİYOR mu (`ls-files`)? Edilmiyorsa
+         kopya/vendored — damga sessizce SHA uydurmaz, gürültü yapar.
+      2. Depo GERÇEKTEN motion-core mu? Rig başka bir git deposuna kopyalanıp
+         orada commit edilirse 1. kademe GEÇER ve `rev-parse HEAD` o deponun
+         SHA'sını döndürür: damga İNANDIRICI AMA YANLIŞ olur (ölçüldü). Bu
+         yüzden deponun kimliği İÇERİKTEN doğrulanır — motion-core'un kendi
+         `packages/motion_core/pubspec.yaml`ı o commit'te var mı. Uzak URL'e
+         bakmak kırılgan olurdu (fork, SSH/HTTPS, remote'suz klon).
+    """
+    here = Path(__file__).resolve().parent
+
+    def git(*args: str) -> str | None:
+        try:
+            out = subprocess.run(["git", "-C", str(here), *args],
+                                 capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    tracked = git("ls-files", "--error-unmatch", str(Path(__file__).resolve()))
+    sha = git("rev-parse", "HEAD") if tracked is not None else None
+    # Kimlik: motion-core'un kendi dosyası bu commit'te var mı?
+    is_core = (git("cat-file", "-e", "HEAD:packages/motion_core/pubspec.yaml")
+               is not None) if sha else False
+    if not sha or not is_core:
+        return {
+            "sha": None,
+            "vendored": True,
+            "note": ("rig kaynağı motion-core deposunda TAKİP EDİLMİYOR "
+                     "(takipsiz kopya ya da BAŞKA bir depoya kopyalanmış) — "
+                     "hangi kuralları uyguladığı doğrulanamaz "
+                     "(M-F-135 bayat-kopya sınıfı)"),
+            "observedSha": sha,
+        }
+    return {
+        "sha": sha,
+        "dirty": bool(git("status", "--porcelain", "--", str(here))),
+        "vendored": False,
+    }
+
+
+def tool_versions() -> dict[str, Any]:
     """Boru hattındaki araçların sürüm damgaları."""
-    versions: dict[str, str] = {
+    versions: dict[str, Any] = {
         "ytDlp": _tool_version(["yt-dlp", "--version"]),
         "ffmpeg": _tool_version(["ffmpeg", "-version"]),
     }
@@ -45,6 +98,9 @@ def tool_versions() -> dict[str, str]:
         versions["mediapipe"] = mediapipe.__version__
     except ImportError:
         versions["mediapipe"] = "unavailable"
+    # Rig'in KENDİSİ de bir araçtır: hangi sürümün hangi kuralı uyguladığı
+    # ancak bu damgayla sorgulanabilir (M-F-135).
+    versions["harvestRig"] = rig_version()
     return versions
 
 
@@ -71,7 +127,7 @@ class HarvestManifest:
     license: str | None  # info-json 'license' — yoksa "standard-youtube"
     upload_date: str | None  # YYYYMMDD (info-json)
     retrieved_at: str
-    tool_versions: dict[str, str]
+    tool_versions: dict[str, Any]
     local_path: str | None = None
     dedup_signature: str | None = None
     #: M-F-43: gösterim modu sınıflandırması kaynağın kendi ANLATISINDAN
