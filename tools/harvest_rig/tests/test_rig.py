@@ -247,6 +247,27 @@ def check_rom_mode() -> None:
     check(spoken.mode == PASSIVE,
           "transkript başlıkta görünmeyen pasif ifadeyi yakalıyor")
 
+    # L-122: ZAYIF işaret tek başına pasif SAYILMAZ. Bu ayrım olmadan
+    # deep_squat'ın 4 kaynağından 2'si yanlışlıkla elenmişti.
+    for txt, why in (
+        ("level one is the deep squat with an assist using something",
+         "kendi tutunuyor"),
+        ("with more resistance or with more body weight", "yük"),
+        ("mobilization and soft-tissue pliability techniques", "öğretilen konu"),
+    ):
+        v = classify(title="Squat", transcript=txt,
+                     passive_execution_possible=False)
+        check(v.mode != PASSIVE and v.reference_eligible,
+              f"zayıf işaret tek başına elemez ({why})")
+    # Güçlü işaret aynen eler — ayrım hiçbir doğru tespiti kaybetmemeli.
+    for txt in ("okay just relax your arm, let me move it",
+                "this is passive range of motion",
+                "the therapist applies over pressure"):
+        v = classify(title="Squat", transcript=txt,
+                     passive_execution_possible=False)
+        check(v.mode == PASSIVE and not v.reference_eligible,
+              f"güçlü işaret aynen eliyor ({txt[:28]}...)")
+
     # M-F-45: pasif icra imkânsızsa unknown referansa GİREBİLİR.
     squat = classify(title="Deep Squat Assessment",
                      passive_execution_possible=False)
