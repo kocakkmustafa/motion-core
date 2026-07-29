@@ -3,6 +3,23 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.7.1 — 2026-07-29 (tur 25-ek2)
+
+- **M-O-25 P0 düzeltmesi (Ostinato buldu):** n>12 fallback yolunda
+  `runnerUpGap` 2×marj SENTİNEL'iyle kodlanıyordu → `confident` tam da
+  ölçülemediği yerde DAİMA true (kanıt: iki bağımsız havuzda birebir aynı
+  yuvarlak 0,04000; tükenmeli yoldan geçen tek havuz dürüst `false` verdi).
+  Düzeltme: bilinmeyen bilinmeyen olarak okunur — fallback'te
+  `runnerUpGap = NaN`, yeni `gapMeasured` alanı (bayrağın DAYANAĞI),
+  `confident` yalnız ölçülmüş gap ya da prior ile true; per-take marjı
+  geçen flip'ler uygulanmaya devam eder (güven iddiası ayrı, atama ayrı).
+  `CanonicalReference.mirrorGapMeasured` + CLI artefaktına eklendi.
+- **M-O-26 eşik-çakışması:** aile kalite hedefi (havuz başına ≥12 kabul)
+  tükenmeli-arama sınırıyla (n≤12) çakışıyordu — kalite barını TUTTURAN her
+  havuz ölçülmüş gap'ini kaybediyordu. Sınır 12→18 (ölçüldü: n=18 uçtan uca
+  777 ms, build-zamanı işi). n>18 hâlâ fallback = artık dürüstçe unmeasured.
+- Test: 172/172 (2 yeni: unmeasured-gap dürüstlüğü n=19 + ölçülmüş-yol n=13).
+
 ## 0.7.0 — 2026-07-29 (tur 25)
 
 - **KANONİK REFERANS-CLI (M-F-46 üretim yanı):** `tool/build_reference.dart` +

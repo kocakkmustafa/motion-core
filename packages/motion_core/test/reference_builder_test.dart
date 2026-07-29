@@ -272,6 +272,65 @@ void main() {
       expect(loose.contributingTakes, 3);
     });
 
+    test('an unmeasured mirror gap must not read as confidence (M-O-25)', () {
+      // 19 takes — one past exhaustive reach, onto the heuristic fallback.
+      // The old code encoded the UNKNOWN runner-up gap as 2×margin, which
+      // made `confident` unconditionally true exactly where it was
+      // unknowable; two real instrument pools returned the identical round
+      // 0.04000 before anyone noticed. The flag now carries its basis.
+      final SyntheticSequence seq = fourCountPhrase();
+      final List<ReferenceTake> takes =
+          List<ReferenceTake>.generate(19, (int i) {
+        return takeOf('t$i', seq,
+            tempoRatio: 0.9 + (i % 7) * 0.03,
+            flip: i < 4,
+            jitterSeed: 500 + i);
+      });
+
+      final MirrorResolution r =
+          const ReferenceBuilder().resolveMirroring(takes);
+      expect(r.gapMeasured, isFalse);
+      expect(r.runnerUpGap.isNaN, isTrue,
+          reason: 'an unknown must read as unknown — the sentinel-above-'
+              'margin encoding is the defect itself');
+      expect(r.confident, isFalse,
+          reason: 'no measurement, no prior → no confidence claim');
+      expect(r.flippedIds.toSet(), <String>{'t0', 't1', 't2', 't3'},
+          reason: 'withholding the confidence claim must not stop the '
+              'per-take-margin flips from being applied');
+
+      // A direct measurement (prior) may still ground confidence out there.
+      final Map<String, bool> prior = <String, bool>{
+        for (final ReferenceTake t in takes) t.id: false,
+      };
+      for (int i = 0; i < 4; i++) {
+        prior['t$i'] = true;
+      }
+      final MirrorResolution withPrior =
+          const ReferenceBuilder().resolveMirroring(takes, prior: prior);
+      expect(withPrior.confident, isTrue);
+      expect(withPrior.gapMeasured, isFalse,
+          reason: 'the basis still says the gap itself was never measured');
+    });
+
+    test('pools up to 18 takes get a real measured gap (M-O-26)', () {
+      // The family quality target (>=12 accepted takes per pool) sat exactly
+      // on the old exhaustive switch point — every pool that met the bar
+      // lost its measured gap. 13..18 must now stay on the measured path.
+      final List<ReferenceTake> takes =
+          List<ReferenceTake>.generate(13, (int i) {
+        return takeOf('t$i', fourCountPhrase(),
+            tempoRatio: 0.92 + (i % 5) * 0.04,
+            flip: i < 3,
+            jitterSeed: 700 + i);
+      });
+      final MirrorResolution r =
+          const ReferenceBuilder().resolveMirroring(takes);
+      expect(r.gapMeasured, isTrue);
+      expect(r.runnerUpGap.isNaN, isFalse);
+      expect(r.flippedIds.toSet(), <String>{'t0', 't1', 't2'});
+    });
+
     test('a lead-side prior outranks consensus and disagreement is reported '
         '(M-J-06)', () {
       final List<ReferenceTake> takes = instructorTakes();

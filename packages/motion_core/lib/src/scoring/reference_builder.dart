@@ -101,6 +101,7 @@ final class MirrorResolution {
     required this.confident,
     required this.runnerUpGap,
     required this.priorDisagreements,
+    this.gapMeasured = true,
   });
 
   final List<ReferenceTake> takes;
@@ -110,10 +111,26 @@ final class MirrorResolution {
   /// than the mirror margin. Consumers apply M-F-46 rule 7 (no side-dependent
   /// verdicts from an uncertain resolution) — after checking for degeneracy:
   /// a near-tie whose rival produces the *same* reference is not uncertainty.
+  ///
+  /// Only ever true on a *measured* basis: a real runner-up gap above the
+  /// margin, or a caller-supplied direct measurement (prior). An earlier
+  /// version encoded the fallback path's UNKNOWN gap as `2 × margin`, which
+  /// made this flag unconditionally true exactly where it was unknowable —
+  /// three instruments proved it (M-O-25: two pools returned the identical
+  /// round 0.04000; the one pool small enough to be measured said false).
   final bool confident;
 
   /// Mean-per-pair cost gap between the best and runner-up assignments.
+  ///
+  /// NaN when [gapMeasured] is false — an unknown must read as unknown, not
+  /// as a plausible number (the sentinel-above-margin encoding is how M-O-25
+  /// happened).
   final double runnerUpGap;
+
+  /// Whether [runnerUpGap] came from an exhaustive search (true) or the
+  /// assignment came from the heuristic fallback whose rival cost is unknown
+  /// (false). Honesty flags carry their basis, not just their verdict.
+  final bool gapMeasured;
 
   /// Takes where a caller-supplied lead-side prior contradicted consensus.
   /// The prior wins (it is a direct measurement); the contradiction is
@@ -169,12 +186,16 @@ final class CanonicalReference {
     required this.sources,
     required this.mirroredTakeIds,
     this.mirrorConfident = true,
+    this.mirrorGapMeasured = true,
     this.excludedOutlierIds = const <String>[],
     this.priorDisagreements = const <String>[],
   });
 
   /// M-F-46 rule 7 input: whether the orientation assignment was decisive.
   final bool mirrorConfident;
+
+  /// Basis of [mirrorConfident] — see [MirrorResolution.gapMeasured].
+  final bool mirrorGapMeasured;
 
   /// Sources measured, named and *excluded* by the agreement gate (M-F-47) —
   /// reported rather than silently averaged into the consensus.
@@ -442,7 +463,16 @@ final class ReferenceBuilder {
     double bestTotal = double.infinity;
     double runnerUpTotal = double.infinity;
 
-    if (n <= 12) {
+    // 18 takes = 2^17 masks × 153 pairs ≈ 20M cost adds — measured 777 ms
+    // end-to-end (incl. pair-table DTW) on an M-class laptop, and this runs
+    // at reference-build time, never in a frame loop. Raised from 12 after
+    // M-O-26: the family's own per-pool quality target (≥12 accepted takes)
+    // sat exactly on the old switch point, so every pool that MET the
+    // quality bar simultaneously lost its measured mirror gap. Two
+    // thresholds owned by different components collided without either
+    // knowing.
+    bool gapMeasured = true;
+    if (n <= 18) {
       // Exhaustive over 2^(n-1) with bit 0 pinned to 0.
       for (int mask = 0; mask < (1 << n); mask += 2) {
         final double total = totalFor(mask);
@@ -455,8 +485,10 @@ final class ReferenceBuilder {
         }
       }
     } else {
-      // Beyond exhaustive reach: anchor-based two-pass as a fallback, with
-      // the limitation stated rather than hidden.
+      // Beyond exhaustive reach: anchor-based two-pass fallback. Each flip
+      // clears a per-take margin, so applying the assignment is defensible —
+      // but the GLOBAL runner-up cost is unknown, and it stays unknown in
+      // the output (M-O-25): no sentinel, no plausible stand-in.
       List<ReferenceTake> current = List<ReferenceTake>.of(takes);
       for (int pass = 0; pass < 2; pass++) {
         final int anchor = selectMedoid(current);
@@ -475,7 +507,8 @@ final class ReferenceBuilder {
         if (!identical(current[i], takes[i])) bestMask |= 1 << i;
       }
       bestTotal = totalFor(bestMask);
-      runnerUpTotal = bestTotal + mirrorMargin * pairs * 2; // unknown gap
+      runnerUpTotal = double.nan;
+      gapMeasured = false;
     }
 
     // Mean-per-pair gap between best and best-distinct-runner-up. Below the
@@ -483,8 +516,11 @@ final class ReferenceBuilder {
     // tiny gap can also mean *degeneracy* (two assignments producing the same
     // reference, Choreia's measured distinction); consumers decide with a
     // sensitivity probe, we report honestly.
-    final double runnerUpGap =
-        pairs == 0 ? double.infinity : (runnerUpTotal - bestTotal) / pairs;
+    final double runnerUpGap = !gapMeasured
+        ? double.nan
+        : pairs == 0
+            ? double.infinity
+            : (runnerUpTotal - bestTotal) / pairs;
 
     // The search fixes only the RELATIVE assignment; the absolute convention
     // is ours to pick (Choreia's lesson: the whole set mirrored together is
@@ -494,8 +530,12 @@ final class ReferenceBuilder {
     //  * near-tie (gap ≤ margin) → flip NOTHING: an ambiguous resolution must
     //    not transform anyone's take on the strength of a coin flip — the
     //    old guard behavior, now also reported via [MirrorResolution.confident].
+    // NaN-aware on purpose: an UNMEASURED gap is not a near-tie — the
+    // fallback's per-take flips each cleared their own margin, so they are
+    // applied; only the *confidence claim* is withheld. A measured near-tie
+    // still flips nothing (a coin flip must not transform anyone's take).
     int chosenMask;
-    if (runnerUpGap <= mirrorMargin) {
+    if (gapMeasured && runnerUpGap <= mirrorMargin) {
       chosenMask = 0;
     } else {
       int popcount = 0;
@@ -534,8 +574,10 @@ final class ReferenceBuilder {
         for (int i = 0; i < n; i++)
           if (((chosenMask >> i) & 1) == 1) takes[i].id,
       ],
-      confident: prior != null || runnerUpGap > mirrorMargin,
+      confident:
+          prior != null || (gapMeasured && runnerUpGap > mirrorMargin),
       runnerUpGap: runnerUpGap,
+      gapMeasured: gapMeasured,
       priorDisagreements: priorDisagreements,
     );
   }
@@ -660,6 +702,7 @@ final class ReferenceBuilder {
       sources: takes.map((ReferenceTake t) => t.source).toList(growable: false),
       mirroredTakeIds: flipped,
       mirrorConfident: resolution.confident,
+      mirrorGapMeasured: resolution.gapMeasured,
       excludedOutlierIds: excluded,
       priorDisagreements: resolution.priorDisagreements,
     );

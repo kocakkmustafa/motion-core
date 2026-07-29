@@ -154,6 +154,7 @@ final class ReferenceCli {
         'distinctSources': ref.sources.toSet().length,
         'mirroredTakeIds': ref.mirroredTakeIds,
         'mirrorConfident': ref.mirrorConfident,
+        'mirrorGapMeasured': ref.mirrorGapMeasured,
         'excludedOutlierIds': ref.excludedOutlierIds,
         'priorDisagreements': ref.priorDisagreements,
         'length': ref.length,
