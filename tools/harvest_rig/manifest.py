@@ -85,6 +85,11 @@ class HarvestManifest:
     #: "dışlandı" tek başına kaynak-kötü ile tanım-dar'ı ayırt ettirmiyor.
     context_tags: list[str] = field(default_factory=list)
     context_source: str | None = None
+    #: G-057: hangi HAREKET için hasat edildiği. Kaydedilmezse çok-hareketli
+    #: bir kütüphanede her fixture her hareketin havuzuna girebilir ve
+    #: nitelenme oranlarının paydasını sessizce kirletir (32 squat videosu
+    #: push_up'a "0 tekrar veren eğitmen" olarak sayılırdı).
+    movement: str | None = None
     stages: list[StageRecord] = field(default_factory=list)
 
     @classmethod
@@ -141,6 +146,7 @@ class HarvestManifest:
             "referenceEligible": self.reference_eligible,
             "contextTags": self.context_tags,
             "contextSource": self.context_source,
+            "movement": self.movement,
         }
 
     def save(self, path: str | Path) -> None:

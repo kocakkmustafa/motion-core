@@ -319,6 +319,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     manifest_dir.mkdir(parents=True, exist_ok=True)
 
     m = pull(args.url, raw_dir, app=args.app)
+    m.movement = getattr(args, "movement", None)
     manifest_path = manifest_dir / f"{m.video_id}.json"
     try:
         if not m.local_path:
