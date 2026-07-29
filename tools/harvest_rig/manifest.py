@@ -74,6 +74,13 @@ class HarvestManifest:
     tool_versions: dict[str, str]
     local_path: str | None = None
     dedup_signature: str | None = None
+    #: M-F-43: gösterim modu sınıflandırması kaynağın kendi ANLATISINDAN
+    #: yapılır (başlık/açıklama/transkript), landmark'tan DEĞİL — klinisyen
+    #: kolu kaldırdığında iz aktif hareketle birebir aynıdır.
+    title: str | None = None
+    description: str | None = None
+    rom_mode: str | None = None
+    reference_eligible: bool | None = None
     stages: list[StageRecord] = field(default_factory=list)
 
     @classmethod
@@ -97,6 +104,8 @@ class HarvestManifest:
         self.uploader = info.get("uploader")
         self.license = info.get("license") or "standard-youtube"
         self.upload_date = info.get("upload_date")
+        self.title = info.get("title")
+        self.description = info.get("description")
 
     def record(self, stage: str, status: str, **detail: Any) -> None:
         self.stages.append(
@@ -121,6 +130,11 @@ class HarvestManifest:
             "uploadDate": self.upload_date,
             "retrievedAt": self.retrieved_at,
             "toolVersions": self.tool_versions,
+            # M-F-43: fixture'ın KENDİSİ referansa uygun olup olmadığını
+            # taşımalı. Sınıflandırma yalnız manifestte kalırsa aşağı akan
+            # ReferenceBuilder onu göremez ve kural sessizce uygulanmaz.
+            "romMode": self.rom_mode,
+            "referenceEligible": self.reference_eligible,
         }
 
     def save(self, path: str | Path) -> None:

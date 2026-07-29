@@ -36,6 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 from manifest import HarvestManifest  # noqa: E402
+from rom_mode import classify as classify_rom
 from triage import TriageThresholds, triage  # noqa: E402
 
 FIXTURE_PIPELINE = Path(__file__).parent.parent / "fixture_pipeline"
@@ -276,6 +277,18 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"⛔ triyaj reddi: {'; '.join(r.rejects)}")
             return 1
 
+        # M-F-43 kaynak-uygunluk: gösterilen hareket AKTİF mi? Pasif ROM'da
+        # aralık klinisyen tarafından üretilir ve aktiften geniştir; böyle bir
+        # kaynaktan türetilen referans ULAŞILAMAZ hedef koyar. Ayrım kamerada
+        # GÖRÜNMEZ, yalnız kaynağın anlatısında vardır. Klip REDDEDİLMEZ —
+        # taksonomi/yöntem kaynağı olarak değerli — ama referansa giremez.
+        rom = classify_rom(title=m.title or "", description=m.description or "")
+        m.rom_mode = rom.mode
+        m.reference_eligible = rom.reference_eligible
+        m.record("romMode", rom.mode, **rom.to_detail())
+        if not rom.reference_eligible:
+            print(f"⚠️  referansa UYGUN DEĞİL ({rom.mode}): {rom.reason}")
+
         sig = perceptual_signature(m.local_path)
         m.dedup_signature = sig
         dup = check_duplicate(sig, library / "signature-index.json")
@@ -289,8 +302,28 @@ def cmd_run(args: argparse.Namespace) -> int:
         fx_path = extract(m, fx_dir, variant=args.variant)
         m.record("extract", "ok", fixture=fx_path.name)
 
-        transcribe(m, library / "transcripts") if not args.no_transcribe \
-            else m.record("transcribe", "skipped", reason="--no-transcribe")
+        tr_path = (transcribe(m, library / "transcripts")
+                   if not args.no_transcribe
+                   else m.record("transcribe", "skipped",
+                                 reason="--no-transcribe"))
+        # Transkript en güçlü kanıt: "I'll move your arm", "just relax" gibi
+        # ifadeler başlıkta görünmez. Erken sınıflandırma fail-closed olduğu
+        # için yalnız DAHA İZİNLİ yöne dönebilir; bu yüzden yeniden koşulur.
+        if isinstance(tr_path, Path) and tr_path.exists():
+            spoken = " ".join(
+                seg.get("text", "")
+                for seg in json.loads(tr_path.read_text(encoding="utf-8"))
+            )
+            rom2 = classify_rom(title=m.title or "", description=m.description or "",
+                                transcript=spoken)
+            if rom2.mode != m.rom_mode:
+                print(f"↻ romMode transkriptle güncellendi: "
+                      f"{m.rom_mode} → {rom2.mode} ({rom2.reason})")
+            m.rom_mode, m.reference_eligible = rom2.mode, rom2.reference_eligible
+            m.record("romMode", rom2.mode, source="transcript", **rom2.to_detail())
+            doc = json.loads(fx_path.read_text(encoding="utf-8"))
+            doc["provenance"] = {**doc.get("provenance", {}), **m.provenance_block()}
+            fx_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
         register_signature(sig, m.video_id, library / "signature-index.json")
         print(f"✅ {m.video_id}: fixture={fx_path.name}")

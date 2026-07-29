@@ -222,6 +222,39 @@ def check_usable_window() -> None:
         triage_mod._body_presence, triage_mod._usable_window = real_body, real_win
 
 
+def check_rom_mode() -> None:
+    """M-F-43: kaynak-uygunluk sınıflandırması ve FAIL-CLOSED davranışı."""
+    from manifest import HarvestManifest
+    from rom_mode import ACTIVE, PASSIVE, UNKNOWN, classify
+
+    check(classify(title="Active Range of Motion: Shoulder").mode == ACTIVE,
+          "yalnız aktif işaret -> active")
+    check(classify(title="Manual Resistance- Shoulder flexion").mode == PASSIVE,
+          "pasif işaret -> passive")
+    # Karışık kaynak: hangi tekrarın hangi modda olduğu metinden bilinemez.
+    mixed = classify(title="Shoulder ROM: Active, Passive and Resisted")
+    check(mixed.mode == PASSIVE and not mixed.reference_eligible,
+          "karışık kaynak (aktif VE pasif işaret) -> passive, referansa GİREMEZ")
+    # Fail-closed: işaretsiz kaynak sessizce aktif sayılamaz.
+    bland = classify(title="Full Shoulder Objective Examination")
+    check(bland.mode == UNKNOWN and not bland.reference_eligible,
+          "işaretsiz kaynak -> unknown ve referansa GİREMEZ (fail-closed)")
+    check("TRANSKRİPT YOK" in bland.reason,
+          "transkript kullanılmadıysa kanıtın zayıflığı gerekçede yazıyor")
+    # Transkript başlığın göremediğini yakalar.
+    spoken = classify(title="Shoulder Assessment",
+                      transcript="okay just relax your arm, I'll move it for you")
+    check(spoken.mode == PASSIVE,
+          "transkript başlıkta görünmeyen pasif ifadeyi yakalıyor")
+
+    # Sınıflandırma FIXTURE'a akıyor mu — manifestte kalırsa kural uygulanmaz.
+    m = HarvestManifest.start(app="lissom", video_id="x", source_url="u")
+    m.rom_mode, m.reference_eligible = PASSIVE, False
+    blk = m.provenance_block()
+    check(blk.get("romMode") == PASSIVE and blk.get("referenceEligible") is False,
+          "romMode provenance bloğuna akıyor (fixture onu görebilir)")
+
+
 def main() -> int:
     fast = TriageThresholds(min_duration_s=4.0)
     with tempfile.TemporaryDirectory() as td:
@@ -312,6 +345,9 @@ def main() -> int:
 
     print("[6] kullanılabilir pencere (L-085)")
     check_usable_window()
+
+    print("[7] kaynak-uygunluk / romMode (M-F-43)")
+    check_rom_mode()
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
