@@ -51,6 +51,57 @@ WEAK_PASSIVE_MARKERS = (
     r"\bmobiliz",
 )
 
+#: DURUŞ-YÖNERGESİ sınıfı (M-O-54/M-F-125): öğrenciye verilen, KENDİ
+#: gövdesini konumlandırmasını isteyen ikinci-şahıs emir kipi. Ayrı bir
+#: demet olarak durur ki tek başına açılıp kapatılabilsin (aynı-kod izole
+#: süpürmesi bu ayrımı gerektirir).
+#:
+#: NEDEN EKLENDİ — ölçüldü, varsayılmadı (M-O-54): çalgı-duruşu öğreten
+#: kaynaklarda mevcut `ACTIVE_MARKERS` sözlüğü YAPISAL olarak sıfır isabet
+#: veriyor. Rpalo0sbpj4: 11.698 karakter, "posture"×18 / "sitting"×12 /
+#: "shoulder"×11 → ACTIVE isabet 0. SGsYZAqIwi4: 10.818 karakter,
+#: "sitting"×14 → ACTIVE isabet 0. Uygun ÇIKAN kaynaklar ise duruşa özgü
+#: hiçbir işaretle değil, GENEL fiillerle geçmişti ("bring your...",
+#: "lift your...") — yani havuz bir eleme değil, büyük ölçüde bir rastlantı
+#: sonucuydu. Sözlük rehab/ROM için yazılmış ("follow along", "AROM");
+#: duruş öğretmeni "benimle birlikte yap" demez, "dik otur" der.
+#:
+#: SINIR — pasif taraf EZİLMEZ: `classify` pasifi ÖNCE kontrol eder ve
+#: pasif kazanır (bu dosyanın karar sırası), yani buraya eklenen hiçbir
+#: kalıp "let me adjust"/"I'll move your" sınıfını geçersizleştiremez.
+#: `relax your shoulder` KASTEN BURAYA ALINMADI: aynı ifade PASSIVE
+#: demetinde zaten var (terapist uzvu hareket ettirebilsin diye gevşetme)
+#: ve duruş bağlamındaki anlamı ters olsa da, çakışan bir kalıbı iki tarafa
+#: birden yazmak sınıflandırmayı belirsizleştirir — yanlış tarafta hata
+#: yapmak referansı kirletir (bu dosyanın kendi ilkesi).
+#: İKİNCİ-ŞAHIS ŞARTI — ÖLÇÜLDÜ, sonradan sıkılaştırıldı. İlk sürüm
+#: `\bchin (up|down|level|parallel)\b` ve çıplak `\bfeet flat\b` içeriyordu;
+#: aile-geneli süpürme (bkz. `tools/sweep_posture_dialect.py`) ikisinin de
+#: YANLIŞ YÖNDE isabet ettiğini gösterdi:
+#:   · jablab/InSkFbZWoBY: "he walks in with HIS chin down" → ÜÇÜNCÜ ŞAHIS
+#:     ANLATIM, öğrenciye yönerge değil.
+#:   · ostinato/dc8PNOTTUlg: "I've got nice control with MY feet flat" →
+#:     BİRİNCİ ŞAHIS; bu zaten `FIRST_PERSON_DEMO_MARKERS` sınıfının işi,
+#:     duruş-yönergesi sınıfının değil.
+#: Aktif tarafta yanlış pozitif, pasif taraftakinin AYNASI ve daha
+#: tehlikelisidir: pasif yanlış-pozitifi iyi kaynağı ÖLDÜRÜR, aktif
+#: yanlış-pozitifi KÖTÜ kaynağı REFERANSA SOKAR (M-F-43'ün korumaya
+#: çalıştığı ulaşılamaz-hedef tehdidi). Bu yüzden kalıplar artık
+#: tereddütsüz ikinci-şahıs ister. Bedeli isimle kayıtlı: "keep your hands
+#: up, chin down" (jablab/umI6jNMVG-s) gibi GERÇEK yönergeler de elendi —
+#: güvenli yön bilinçli olarak seçildi.
+POSTURE_CUE_MARKERS = (
+    r"\b(sit|stand) (up )?(tall|straight|upright)\b",
+    r"\bkeep your (back|spine|shoulders?|head|chin|neck|wrist)\b",
+    r"\b(drop|lower|roll) your shoulders?\b",
+    r"\byour shoulders? (back and )?down\b",
+    r"\byour chin (up|down|level|parallel)\b",
+    r"\b(align|lengthen|elongate|straighten) your (spine|back|neck|posture)\b",
+    r"\byour feet flat\b", r"\bboth (of your )?feet flat\b",
+    r"\bsit (on|at|toward|towards) the (edge|front) of your\b",
+    r"\byour (sitting|seated) position\b",
+)
+
 #: Aktif/kendi-üretimli hareket işaretleri.
 ACTIVE_MARKERS = (
     r"\bactive range of motion\b", r"\bAROM\b", r"\bactively\b",
@@ -58,7 +109,7 @@ ACTIVE_MARKERS = (
     r"\b(raise|lift|reach|bring) your\b", r"\byour turn\b",
     r"\bdo (this|it) (with me|yourself)\b", r"\bon your own\b",
     r"\bexercise demo(nstration)?\b",
-)
+) + POSTURE_CUE_MARKERS
 
 #: BİRİNCİ-ŞAHIS GÖSTERİM sınıfı (J-058/M-F-104): eğitmen kendi hareketini
 #: birinci şahısla anlatır ("I throw the fist away from me", "here is the
