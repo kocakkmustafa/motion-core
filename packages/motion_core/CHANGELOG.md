@@ -3,6 +3,18 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.8.4 — 2026-07-29 — NaN→null artefakt kodlaması
+
+- 0.8.3'ün kapısı dürüst NaN üretince JSON kodlama çöktü (NaN JSON'da
+  yok). Ölçülmemiş hücre artık `null` (meanRad/dispersionRad/floorShare/
+  meanAgreement). Eski artefaktlarda HİÇ NaN hücre olmaması J-056'nın
+  ayrı belirtisiydi: çöp numerikler her hücreyi dolduruyordu. Gerçek-veri
+  kanıtı (stance 0.8.4 yeniden-üretimi): 57.334/399.279 hücre (%14,4)
+  dürüst null; meanAgreement 0,737→0,788 İYİLEŞTİ (çöp temizlenince
+  anlaşma sıkılaştı). NOT: uzak tag-silme guard'ı gereği v0.8.3 tag'i
+  yalnız kapı-düzeltmesini içerir ve artefakt yazımında çöker —
+  **tüketiciler v0.8.4 kullanmalı.**
+
 ## 0.8.3 — 2026-07-29 (yeni vardiya) — ÇÖP-ÖLÇÜM-GİBİ P0
 
 - **J-056 (JabLab kanıtladı): `prepareTake` görünürlük-kapısını HİÇ
