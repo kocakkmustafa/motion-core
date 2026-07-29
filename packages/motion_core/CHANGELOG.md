@@ -3,6 +3,12 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.4.2 — 2026-07-29 (gece vardiyası, tur 12b)
+
+- **M-J-07: `$` önekli anahtar her düzeyde yok sayılır** — "sayı kendi
+  gerekçesini taşır" aile pratiği config'te yaşar; kural 8'in katılığı
+  değişmedi (yazım hatası hâlâ sert hata — testli). 154/154.
+
 ## 0.4.1 — 2026-07-29 (gece vardiyası, tur 12)
 
 - **Okuyucu, mühürlü şemaya hizalandı (M-O-10 + Gravita M-talebi):**

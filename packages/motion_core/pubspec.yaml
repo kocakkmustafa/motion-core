@@ -4,7 +4,7 @@ description: >-
   (Gravita, Lissom, JabLab, Ostinato, Choreia). Pure Dart: pose normalization,
   joint-angle similarity, banded DTW, beat grids, phase state machines and the
   fixture/replay contract. Holds no app-specific rules or content.
-version: 0.4.1
+version: 0.4.2
 publish_to: none
 
 environment:

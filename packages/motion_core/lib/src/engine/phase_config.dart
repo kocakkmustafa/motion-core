@@ -775,6 +775,11 @@ final class PhaseConfigParser {
       }
     }
     for (final String k in m.keys) {
+      // M-J-07: `$` önekli her anahtar her düzeyde yok sayılır — bu ailenin
+      // pratiği "sayı kendi gerekçesini taşır"; şema gerekçeyi config'ten
+      // dışarı itemez. Kural 8'in amacı yazım hatası ve bilinmeyen semantik
+      // yakalamaktır; `$` önekli anahtar tanımı gereği semantik-dışıdır.
+      if (k.startsWith(r'$')) continue;
       if (!required.contains(k) && !optional.contains(k)) {
         throw PhaseConfigError(
             path, "bilinmeyen alan: '$k' (sessiz yutma yok — kural 8)");

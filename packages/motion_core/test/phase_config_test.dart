@@ -213,6 +213,7 @@ void main() {
   });
 
   _round2();
+  _round3();
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +285,28 @@ void _round2() {
           ['measurementSpace'] = 'world';
       final PhaseConfig c = parser.parse(cfg);
       expect(c.metrics['kneeAngle']!.measurementSpace, MeasurementSpace.world);
+    });
+  });
+}
+
+void _round3() {
+  const PhaseConfigParser parser = PhaseConfigParser();
+
+  group(r'0.4.2 — $-önekli gerekçe anahtarları (M-J-07)', () {
+    test(r'$why/$doc her düzeyde yok sayılır — sayı gerekçesini taşır', () {
+      final Map<String, dynamic> cfg = _validConfig();
+      cfg[r'$why'] = 'kök gerekçe';
+      (cfg['techniques'] as List)[0][r'$timeoutWhy'] = 'J-009 ölçümü';
+      (((cfg['techniques'] as List)[0]['phases'] as List)[1]
+          as Map<String, dynamic>)[r'$derivation'] = 'D2: 128ms medyan';
+      final PhaseConfig c = parser.parse(cfg);
+      expect(c.techniques.single.phases, hasLength(3));
+    });
+
+    test('yazım hatası hâlâ sert hata — katılık zayıflamadı', () {
+      final Map<String, dynamic> bad = _validConfig();
+      (bad['techniques'] as List)[0]['tiemoutMs'] = 400; // typo
+      expect(() => parser.parse(bad), throwsA(isA<PhaseConfigError>()));
     });
   });
 }
