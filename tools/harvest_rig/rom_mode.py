@@ -60,6 +60,33 @@ ACTIVE_MARKERS = (
     r"\bexercise demo(nstration)?\b",
 )
 
+#: BİRİNCİ-ŞAHIS GÖSTERİM sınıfı (J-058/M-F-104): eğitmen kendi hareketini
+#: birinci şahısla anlatır ("I throw the fist away from me", "here is the
+#: first punch"). ACTIVE_MARKERS'taki kalıplardan (ör. "raise YOUR") farklı
+#: bir REGISTER — o izleyiciye komut verir, bu gösterenin KENDİ hareketini
+#: anlatır; ikisi de aktif-icra kanıtı, farklı dilbilgisel kalıplar. Ölçülen
+#: kör nokta: frolov'un jab transkripti ("I throw the fist away from me...",
+#: "here is the first punch") bu sınıf olmadan `unknown`da kalıyordu (J-058).
+#:
+#: GÜVENLİK (M-F-43 fail-closed disiplini): bu sınıf pasif tespitini
+#: EZEMEZ. "I will/I'll move/lift/take" ve "let me move/lift/take" ZATEN
+#: PASSIVE_MARKERS'ta ve `classify()` pasifi aktiften ÖNCE kontrol eder
+#: (adım 1) — pasif işaret varsa bu sınıf hiç görülmeden PASSIVE kazanır.
+#: Fiil listesi kasıtlı GENİŞ AMA SINIRLI: ailenin gövde-hareketi
+#: disiplinlerinde (dövüş/PT/dans/genel) ortak gösterim fiilleri — rastgele
+#: bir fiil hunısı değil, "kendi hareketini anlatan birinci şahıs" sınıfı.
+#: DÜZENLİ SÜPÜRME ZORUNLU (M-F-104): yeni bir kaynak sınıfı eklenince aile
+#: genelindeki mevcut transkript korpusuna karşı regresyon koşulmalı — bkz.
+#: `tests/rom_mode_corpus_sweep.py`.
+FIRST_PERSON_DEMO_MARKERS = (
+    r"\bI(?:'m| am)? (?:throw(?:ing|s)?|punch(?:ing|es)?|kick(?:ing|s)?|"
+    r"jump(?:ing|s)?|swing(?:ing|s)?|step(?:ping|s)?|pivot(?:ing|s)?|"
+    r"reach(?:ing|es)?|extend(?:ing|s)?|drive(?:s)?|push(?:ing|es)?|"
+    r"pull(?:ing|s)?|rotate(?:s)?|bend(?:ing|s)?|twist(?:ing|s)?|"
+    r"lean(?:ing|s)?)\b",
+    r"\bhere(?:'s| is| comes)\s+(?:the|your|my)\b",
+)
+
 
 @dataclass
 class RomVerdict:
@@ -124,7 +151,8 @@ def classify(
     blob = "\n".join((title, description, transcript))
     passive = _hits(PASSIVE_MARKERS + tuple(extra_passive), blob)
     weak = _hits(WEAK_PASSIVE_MARKERS, blob)
-    active = _hits(ACTIVE_MARKERS + tuple(extra_active), blob)
+    active = _hits(
+        ACTIVE_MARKERS + FIRST_PERSON_DEMO_MARKERS + tuple(extra_active), blob)
 
     if passive:
         reason = ("pasif/klinisyen işareti bulundu"
