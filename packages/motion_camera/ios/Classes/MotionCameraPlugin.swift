@@ -216,14 +216,26 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     ]
 
     func run(rotated: Bool) -> FlutterStandardTypedData? {
-      guard let image = try? MPImage(pixelBuffer: buffer) else { return nil }
-      let processing = ImageProcessingOptions()
-      processing.rotationDegrees = rotated ? 180 : 0
+      // ROTATION LIVES ON THE IMAGE, not on a separate options object.
+      // Measured against the pin (J-071, first compile ever): 0.10.21 has
+      // NO `ImageProcessingOptions` type at all, and
+      // `detect(videoFrame:timestampInMilliseconds:)` takes no
+      // `imageProcessingOptions:` argument — both were compile errors. The
+      // version's own way to express in-plane rotation is
+      // `MPImage(pixelBuffer:orientation:)`, where `.down` is 180°.
+      //
+      // Semantics are PRESERVED: MediaPipe rotates a copy before inference
+      // and returns coordinates in the ROTATED frame, so the back-mapping
+      // below (x→1-x, y→1-y, no index swap) stays exactly as it was.
+      guard
+        let image = try? MPImage(
+          pixelBuffer: buffer,
+          orientation: rotated ? .down : .up)
+      else { return nil }
       guard
         let result = try? landmarker.detect(
           videoFrame: image,
-          timestampInMilliseconds: Int(tUs / 1000),
-          imageProcessingOptions: processing),
+          timestampInMilliseconds: Int(tUs / 1000)),
         let pose = result.landmarks.first
       else { return nil }  // model saw no person → pass value null
       var floats = [Float32](repeating: 0, count: 132)
