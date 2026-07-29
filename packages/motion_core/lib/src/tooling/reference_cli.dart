@@ -181,6 +181,11 @@ final class ReferenceCli {
     );
   }
 
+  /// JSON has no NaN — an unmeasured cell is encoded as `null`, never as a
+  /// plausible number. (Pre-0.8.3 artifacts contained no NaN cells at all,
+  /// which was itself J-056's symptom: garbage numerics filled every cell.)
+  static Object? _num(double v) => v.isFinite ? v : null;
+
   /// Runs the full pipeline and returns the artifact as a JSON-shaped map.
   ///
   /// Throws what [ReferenceBuilder.build] throws — refusals are the point,
@@ -460,12 +465,15 @@ final class ReferenceCli {
         'excludedNoMeasurableFrameIds': excludedNoFrames,
         'priorDisagreements': ref.priorDisagreements,
         'length': ref.length,
-        'meanAgreement': meanAgreement,
+        'meanAgreement': _num(meanAgreement),
         'unreliableJoints': ref.unreliableJoints(),
       },
       'tolerance': <String, dynamic>{
         'perJointSource': toleranceSource,
-        'floorBoundShare': floorShare,
+        'floorBoundShare': <String, Object?>{
+          for (final MapEntry<String, double> e in floorShare.entries)
+            e.key: _num(e.value),
+        },
         'params': <String, double>{
           'freeFloorDeg': 8,
           'freeCeilingDeg': 45,
@@ -474,11 +482,16 @@ final class ReferenceCli {
       },
       'joints': jointIds,
       'frames': <String, dynamic>{
-        'meanRad': <List<double>>[
+        'meanRad': <List<Object?>>[
           for (int f = 0; f < ref.length; f++)
-            <double>[for (int j = 0; j < jointIds.length; j++) ref.frames[f][j]],
+            <Object?>[
+              for (int j = 0; j < jointIds.length; j++) _num(ref.frames[f][j]),
+            ],
         ],
-        'dispersionRad': ref.dispersion,
+        'dispersionRad': <List<Object?>>[
+          for (final List<double> row in ref.dispersion)
+            <Object?>[for (final double v in row) _num(v)],
+        ],
       },
     };
   }
