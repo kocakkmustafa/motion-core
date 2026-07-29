@@ -70,9 +70,18 @@ void main() {
 
     test('gating an isotropic frame needs xExtent — the G-038 composition',
         () {
-      final PoseFrame truth = _bentArm();
-      // Denek karenin sağ yarısında: ham-normalize x ~0.62 → izotropikte ~1.1.
-      final PoseFrame iso = _normalizedAt(truth, wide).toIsotropic(wide);
+      // Denek geniş karenin SAĞ yarısında durur: ham-normalize x ~0.75-0.97
+      // (tamamen kadraj İÇİ) → izotropikte x ~1.33-1.72 (aspect 1.78'e kadar
+      // meşru). Ham [0,1] sınırıyla kapılanırsa "kadraj dışı" sayılır.
+      final PoseFrame base = _normalizedAt(_bentArm(), wide);
+      final List<PoseLandmark> shifted = base.landmarks
+          .map((PoseLandmark l) =>
+              PoseLandmark(l.x + 0.35, l.y, l.z, l.visibility))
+          .toList(growable: false);
+      final PoseFrame rightHalf = PoseFrame(tUs: 0, landmarks: shifted);
+      assert(rightHalf.landmarks.every((PoseLandmark l) => l.x <= 1.0),
+          'kurgu şartı: denek HAM uzayda tamamen kadraj içinde olmalı');
+      final PoseFrame iso = rightHalf.toIsotropic(wide);
       const ConfidenceGate gate = ConfidenceGate();
 
       final FrameQuality wrong = gate.evaluate(iso);
