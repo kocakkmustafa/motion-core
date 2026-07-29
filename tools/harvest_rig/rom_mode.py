@@ -53,13 +53,24 @@ class RomVerdict:
     active_hits: list[str] = field(default_factory=list)
     passive_hits: list[str] = field(default_factory=list)
     reason: str = ""
+    #: M-F-45: pasif icra bu harekette biyomekanik olarak mümkün mü. `False`
+    #: ise M-F-43'ün koruduğu tehdit YAPISAL OLARAK yoktur (kimse birine pasif
+    #: squat yaptıramaz), bu yüzden `unknown` kaynak referansa girebilir.
+    passive_execution_possible: bool = True
     #: Sınıflandırmanın hangi metinlere baktığı — transkript yoksa kanıt zayıf
     #: demektir ve bunu gizlemek yerine kaydediyoruz.
     sources_seen: list[str] = field(default_factory=list)
 
     @property
     def reference_eligible(self) -> bool:
-        return self.mode == ACTIVE
+        if self.mode == ACTIVE:
+            return True
+        # `passive` HER ZAMAN dışarıda: pasif icra imkânsız sanılan bir
+        # harekette pasif işaret bulunduysa, kaynak muhtemelen o hareketi
+        # göstermiyordur — bu bir uygunluk değil, eşleşme sorunudur.
+        if self.mode == PASSIVE:
+            return False
+        return not self.passive_execution_possible
 
     def to_detail(self) -> dict:
         return {
@@ -68,6 +79,7 @@ class RomVerdict:
             "romPassiveHits": self.passive_hits,
             "romReason": self.reason,
             "romSourcesSeen": self.sources_seen,
+            "passiveExecutionPossible": self.passive_execution_possible,
             "referenceEligible": self.reference_eligible,
         }
 
@@ -81,6 +93,7 @@ def _hits(patterns: tuple[str, ...], text: str) -> list[str]:
 def classify(
     *, title: str = "", description: str = "", transcript: str = "",
     extra_passive: tuple[str, ...] = (), extra_active: tuple[str, ...] = (),
+    passive_execution_possible: bool = True,
 ) -> RomVerdict:
     """Kaynağın gösterim modunu metinden sınıflandır.
 
@@ -103,14 +116,26 @@ def classify(
                   + (" — aktif işaret de var ama karışık kaynakta hangi "
                      "tekrarın hangi modda olduğu metinden bilinemez"
                      if active else ""))
-        return RomVerdict(PASSIVE, active, passive, reason, sources)
+        return RomVerdict(
+            PASSIVE, active, passive, reason,
+            sources_seen=sources,
+            passive_execution_possible=passive_execution_possible,
+        )
     if active:
-        return RomVerdict(ACTIVE, active, passive, "yalnız aktif işaret", sources)
+        return RomVerdict(
+            ACTIVE, active, passive, "yalnız aktif işaret",
+            sources_seen=sources,
+            passive_execution_possible=passive_execution_possible,
+        )
     return RomVerdict(
         UNKNOWN, active, passive,
-        "hiçbir mod işareti yok — fail-closed: referansa giremez"
+        ("hiçbir mod işareti yok; pasif icra bu harekette biyomekanik olarak "
+         "MÜMKÜN DEĞİL — tehdit yapısal olarak yok, referansa girebilir (M-F-45)"
+         if not passive_execution_possible else
+         "hiçbir mod işareti yok — fail-closed: referansa giremez")
         + ("" if "transcript" in sources
            else " (TRANSKRİPT YOK: sınıflandırma yalnız başlık/açıklamaya "
                 "dayanıyor, kanıt zayıf)"),
-        sources,
+        sources_seen=sources,
+        passive_execution_possible=passive_execution_possible,
     )

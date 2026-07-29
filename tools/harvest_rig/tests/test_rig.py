@@ -247,6 +247,23 @@ def check_rom_mode() -> None:
     check(spoken.mode == PASSIVE,
           "transkript başlıkta görünmeyen pasif ifadeyi yakalıyor")
 
+    # M-F-45: pasif icra imkânsızsa unknown referansa GİREBİLİR.
+    squat = classify(title="Deep Squat Assessment",
+                     passive_execution_possible=False)
+    check(squat.mode == UNKNOWN and squat.reference_eligible,
+          "pasif icra imkânsız + unknown -> referansa GİREBİLİR (M-F-45)")
+    check(not classify(title="Deep Squat Assessment").reference_eligible,
+          "aynı başlık, pasif icra mümkünse -> fail-closed sürer")
+    # Pasif işaret, muafiyetten BAĞIMSIZ olarak her zaman dışarıda.
+    pas = classify(title="Passive Squat Mobilization",
+                   passive_execution_possible=False)
+    check(pas.mode == PASSIVE and not pas.reference_eligible,
+          "pasif işaret muafiyete rağmen HER ZAMAN dışarıda")
+    # Alan sırası tuzağı: konumsal çağrıda `sources` bool slotuna kayıyordu.
+    check(isinstance(squat.sources_seen, list)
+          and isinstance(squat.passive_execution_possible, bool),
+          "RomVerdict alanları doğru slotlarda (konumsal kayma yok)")
+
     # Sınıflandırma FIXTURE'a akıyor mu — manifestte kalırsa kural uygulanmaz.
     m = HarvestManifest.start(app="lissom", video_id="x", source_url="u")
     m.rom_mode, m.reference_eligible = PASSIVE, False
