@@ -118,13 +118,23 @@ final class ConfidenceGate {
   /// stricter bar than limbs.
   final double torsoThreshold;
 
-  /// How far outside `[0, 1]` a landmark may drift before it counts as having
-  /// left the frame. A small margin absorbs jitter at the image border.
+  /// How far outside the frame bounds a landmark may drift before it counts
+  /// as having left the frame. A small margin absorbs jitter at the border.
+  ///
+  /// **Coordinate-space warning (G-038, measured):** the horizontal bound is
+  /// `xExtent`, not a hard-coded 1. In raw normalized space x lives in
+  /// [0, 1]; after [PoseFrame.toIsotropic] it lives in [0, aspect] — on a
+  /// 16:9 frame that is [0, 1.78], and gating isotropic frames with the raw
+  /// bound silently rejected every frame whose subject stood right of the
+  /// old midline (5-14% pass rate collapsed to 0%, reported as "out of
+  /// frame" rather than "space mismatch"). Callers gating isotropic frames
+  /// MUST pass `xExtent: size.aspect`.
   final double frameMargin;
 
   FrameQuality evaluate(
     PoseFrame frame, {
     List<int> required = LmRegion.fullBody,
+    double xExtent = 1.0,
   }) {
     final List<int> weak = <int>[];
     final List<int> offFrame = <int>[];
@@ -147,7 +157,7 @@ final class ConfidenceGate {
       sum += lm.visibility;
       if (lm.visibility < landmarkThreshold) weak.add(i);
       if (lm.x < -frameMargin ||
-          lm.x > 1 + frameMargin ||
+          lm.x > xExtent + frameMargin ||
           lm.y < -frameMargin ||
           lm.y > 1 + frameMargin) {
         offFrame.add(i);

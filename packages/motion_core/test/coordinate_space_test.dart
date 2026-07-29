@@ -68,6 +68,23 @@ void main() {
       }
     });
 
+    test('gating an isotropic frame needs xExtent — the G-038 composition',
+        () {
+      final PoseFrame truth = _bentArm();
+      // Denek karenin sağ yarısında: ham-normalize x ~0.62 → izotropikte ~1.1.
+      final PoseFrame iso = _normalizedAt(truth, wide).toIsotropic(wide);
+      const ConfidenceGate gate = ConfidenceGate();
+
+      final FrameQuality wrong = gate.evaluate(iso);
+      expect(wrong.offFrameLandmarks, isNotEmpty,
+          reason: 'ham sınırla kapılamak sağ-yarı deneği "kadraj dışı" sayar — '
+              'kusurun kendisi; bu beklenti kırılırsa test öznesini yitirmiş');
+
+      final FrameQuality right = gate.evaluate(iso, xExtent: wide.aspect);
+      expect(right.offFrameLandmarks, isEmpty,
+          reason: 'aspect-farkında sınırla aynı denek kadraj içindedir');
+    });
+
     test('a square frame is already isotropic and passes through unchanged',
         () {
       final PoseFrame truth = _bentArm();
@@ -77,3 +94,5 @@ void main() {
     });
   });
 }
+
+

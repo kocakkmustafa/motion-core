@@ -3,6 +3,14 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.4.3 — 2026-07-29 (tur 15)
+
+- **G-038 (P1) bileşim kusuru:** `ConfidenceGate.evaluate` artık `xExtent`
+  alır — izotropik uzayda x ∈ [0, aspect]; ham [0,1] sınırıyla kapılamak
+  sağ-yarı deneği sessizce "kadraj dışı" sayıyordu (ölçüldü: %5-14 → %0).
+  Bileşim testi eklendi. Ayrıca fixture `t` birim beyanı (G-040: birim de
+  bir beyandır — ms). 155/155.
+
 ## 0.4.2 — 2026-07-29 (gece vardiyası, tur 12b)
 
 - **M-J-07: `$` önekli anahtar her düzeyde yok sayılır** — "sayı kendi
