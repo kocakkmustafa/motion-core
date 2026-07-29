@@ -31,6 +31,15 @@ measured per-dim jitter extreme (~0.03 over a 3 s window) and below a real
 in-window pose change (±0.10 for half-a-torso of travel). Real-footage calibration lands with
 Ostinato's step-1b windows. Override per call; do not silently retune here.
 
+Visibility criterion (M-O-41, measured by Ostinato): energy + drift alone
+pick windows that then DIE at the canonical CLI's confidence gate — the
+pilot's angle-space heuristic chose "most static" moments that were partly
+out-of-frame/low-visibility, and 5 of 9 şan/piyano sources collapsed to
+"no measurable frames" before any agreement question could be asked. A
+window is only useful if it SURVIVES the downstream gate, so frames whose
+body landmarks are not sufficiently visible and in-frame are treated as
+absent here (they fall into the coverage criterion).
+
 Transcript hook (M-O-40): pass `candidate_times_s` (e.g. timestamps where
 the transcript says "sit like this / hold this position") and overlapping
 windows rank first. Candidates prioritise, they never admit: a candidate
@@ -111,6 +120,22 @@ def _drift(seg: list[list[float]]) -> float:
     return worst
 
 
+def _frame_visible(lm: list[list[float]], *, min_vis: float = 0.5,
+                   min_share: float = 0.8) -> bool:
+    """Body landmarks sufficiently visible AND in frame (M-O-41).
+
+    Mirrors the spirit of the canonical CLI's confidence gate so a chosen
+    window survives it. PROVISIONAL bounds, declared like the rest.
+    """
+    ok = 0
+    for i in BODY:
+        x, y = lm[i][0], lm[i][1]
+        vis = lm[i][3] if len(lm[i]) > 3 else 1.0
+        if vis >= min_vis and 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            ok += 1
+    return ok >= min_share * len(BODY)
+
+
 def find_hold_windows(
     frames: list[list[list[float]] | None],
     *,
@@ -130,6 +155,10 @@ def find_hold_windows(
     """
     if fps <= 0:
         raise SystemExit("fps > 0 zorunlu — sessiz varsayım yok (doc 60 §1)")
+    # M-O-41: a poorly-visible frame counts as ABSENT — stillness measured
+    # over half-seen bodies produces windows the downstream gate rejects.
+    frames = [f if f is not None and _frame_visible(f) else None
+              for f in frames]
     series = normalized_series([f for f in frames if f is not None])
     # Re-expand to align indices with the raw frame list for coverage math.
     norm_by_idx: list[list[float] | None] = []
@@ -185,7 +214,8 @@ def find_hold_windows(
 # --------------------------------------------------------------------------
 
 def _synth_hold(n: int, *, drift_total: float = 0.0, amp: float = 0.0,
-                jitter: float = 0.002, seed: int = 1):
+                jitter: float = 0.002, vis: float = 1.0, off_frame: bool = False,
+                seed: int = 1):
     """Fake landmark frames: a still pose, optionally drifting or swinging."""
     rng = __import__("random").Random(seed)
     frames = []
@@ -201,7 +231,8 @@ def _synth_hold(n: int, *, drift_total: float = 0.0, amp: float = 0.0,
             if i in (11, 12, 23, 24):
                 continue
             j = rng.gauss(0, jitter)
-            lm[i] = [0.5 + slide + swing + j, 0.5 + j, 0, 1]
+            x = (1.2 if off_frame else 0.5) + slide + swing + j
+            lm[i] = [x, 0.5 + j, 0, vis]
         frames.append(lm)
     return frames
 
@@ -235,6 +266,13 @@ def self_test() -> int:
         _synth_hold(240, drift_total=0.12), 30, False)
     run("kimse yok (kapsama reddi)",
         [None] * 240, 30, False)
+    # M-O-41: perfectly still but the body is barely visible / out of
+    # frame — the pilot's heuristic picked exactly these and the CLI gate
+    # then dropped every frame.
+    run("durağan ama düşük görünürlük (M-O-41 reddi)",
+        _synth_hold(240, vis=0.2), 30, False)
+    run("durağan ama kadraj dışı (M-O-41 reddi)",
+        _synth_hold(240, off_frame=True), 30, False)
 
     # Two-speed rule (doc 60 §1): the same physical hold at 60 fps must
     # read the SAME per-second energy class and still be found.
