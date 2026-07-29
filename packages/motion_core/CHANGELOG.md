@@ -3,6 +3,27 @@
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:
 `motion_core-vX.Y.Z`). Breaking değişiklik = 5 app'in DEFTER'ine kayıt + duyuru.
 
+## 0.7.0 — 2026-07-29 (tur 25)
+
+- **KANONİK REFERANS-CLI (M-F-46 üretim yanı):** `tool/build_reference.dart` +
+  `ReferenceCli` (lib/src/tooling/) — mantık kütüphanede yaşar, araç yalnız
+  argüman ayrıştırır: app-side çağıran da AYNI fonksiyonu koşar ("kanonik"
+  ancak böyle doğru kalır; Gravita'nın 3-kapılı tasarımı temel).
+  Boru: fixture decode (v1+v2) → J-028 izotropik (frameSize varsa; yoksa
+  artefakt bunu SÖYLER) → güven kapısı (yumuşatılmış: required'ın ≥%60'ı +
+  gövde güvenilir + kadraj-içi; düşen kare SAYILIR) → normalize → açı-uzayı →
+  ReferenceBuilder (minTakes/minSources/M-F-47).
+  Artefakt `motion-core/reference@1`: gates bloku · take-başına
+  frames/undetected/gateDropped/`cycleCount: null` (ÖLÇÜLMEDİ demek —
+  makul sayı uydurulmaz, Choreia thinEvidence dersi tersinden) ·
+  mirrored/excluded/priorDisagreements · eklem-başına tolerans KAYNAĞI
+  (G-050: yalnız `variance` "varyans-türetimli" iddiası taşır) +
+  floorBoundShare · meanRad/dispersionRad + tolerans parametreleri.
+  Retler yutulmaz: sayı/kaynak kapısı=65, anlaşma kapısı=66 çıkış kodu.
+- Test: 170/170 (3 yeni: iddia-artefakt eşleşmesi · tel-formatı gidiş-dönüş
+  değişmezliği · tek-eğitmen-altı-kanal reddi) + gerçek dosyalarla CLI duman
+  testi (6 fixture → 17 eklem × 64 kare artefakt).
+
 ## 0.6.1 — 2026-07-29 (tur 23)
 
 - **Tolerans-kaynağı etiketi (G-050/M-F-55, Gravita'nın bulgusu):** ilk gerçek

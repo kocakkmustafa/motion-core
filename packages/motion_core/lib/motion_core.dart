@@ -42,3 +42,4 @@ export 'src/scoring/dtw.dart';
 export 'src/scoring/reference_builder.dart';
 export 'src/scoring/sequence_comparator.dart';
 export 'src/scoring/similarity.dart';
+export 'src/tooling/reference_cli.dart';
