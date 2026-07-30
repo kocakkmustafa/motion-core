@@ -182,6 +182,59 @@ MOVEMENT_CUE_MARKERS = (
     r"(?!\s+(?:in|on)\s+the\b)",
 )
 
+#: BİRİNCİ-ŞAHIS ÇOĞUL hareket yönergesi (M-F-213 sevki · JabLab J-090).
+#:
+#: Dans/grup öğretiminin ANA KİPİ ve ailenin iki mevcut sınıfı da buna KÖR:
+#: `MOVEMENT_CUE_MARKERS` ikinci şahıs ("keep your hands"),
+#: `FIRST_PERSON_DEMO_MARKERS` tekil birinci şahıs ("I'm throwing").
+#: "We're going to step back with our right on count one" hiçbirine girmiyor.
+#:
+#: BULUNUŞU (zayıf-işaret süpürmesinin yan ürünü): `choreia/FtZzjGsPxjg`
+#: sunumsal bir ifadeyle (`here's the regular basic`) uygun sayılıyordu; o
+#: kalıp zayıf-kademeye inince kaynak `unknown`a düştü — DOĞRU sonuç ama
+#: YANLIŞ sebeple: transkriptte gerçek aktif kanıt VARDI ve sözlük onu
+#: görmüyordu.
+#:
+#: TUZAK SINIFI — SUNUMSAL ÇOĞUL. "We're going to talk about / look at /
+#: cover / go over the hook" bir HAREKET DEĞİL, bir GÜNDEM cümlesidir. Bu
+#: yüzden fiil listesi BEYAZ LİSTE: sunumsal fiiller listede olmadığı için
+#: eşleşemez. Kara liste tutmak, her yeni sunum fiilinde sızıntı demek olurdu.
+#:
+#: İKİ MECAZ KAPISI (imperative ailesindeki `in/on the` disiplininin kardeşi,
+#: ikisi de gerçek kullanımdan alındı):
+#:   * "move ON TO the next drill" → konu geçişi, hareket değil
+#:   * "step THROUGH the combination" → anlatım, hareket değil
+#: Fiil hareket fiili olsa bile bu edatlar cümleyi sunumsal yapıyor.
+FIRST_PERSON_PLURAL_CUE_MARKERS = (
+    r"\b(?:we(?:'re| are|'ll| will)?|let'?s)\s+"
+    r"(?:(?:gonna|going to|will)\s+)?(?:be\s+)?"
+    r"(step|turn|rotate|pivot|shift|lean|bend|straighten|reach|extend|"
+    r"push|pull|drive|swing|throw|punch|jab|kick|jump|hop|drop|lift|"
+    r"raise|lower|slide|cross|squat|hinge|press|roll|twist|move|"
+    r"stepping|turning|moving|shifting|leaning|reaching|swinging)\b"
+    # ÜÇ MECAZ/İDYOM KAPISI — üçü de GERÇEK korpustan ölçülerek eklendi:
+    #   * "move ON TO / step THROUGH"  → konu geçişi (ilk iki kapı)
+    #   * "jump/dive INTO the exercises" → başlama idyomu; hareket fiili ama
+    #     hareket DEĞİL (ostinato/pwIO71FhP9g · choreia/AyzYABnWDEM)
+    #   * "move now TO THE NEXT step" → yine konu geçişi, ama araya sözcük
+    #     giriyor ve dar bir bakış onu KAÇIRIYORDU (choreia/o6E9Ljr5o_c);
+    #     bu yüzden 0-2 sözcüklük pencere.
+    r"(?!(?:\s+\w+){0,2}\s+(?:on\s+to|onto|into|through|to\s+the\s+next)\b)"
+    r"(?!\s+(?:on\s+to|onto|into|through)\b)",
+    # ⚠️ AÇIK KALEM — NESNE↔GÖVDE ayrımı bu ailede YAPILAMIYOR (J-090).
+    # Ölçülen iki yanlış-pozitif kalıyor ve İSİMLE duruyorlar:
+    #   "we move this five down a half step" → bir NOTA (ostinato/2mPS-2guHVo)
+    #   "if we raise the bench up"           → bir TABURE (ostinato/D9hEN4wEwNU)
+    # `MOVEMENT_CUE_MARKERS` bunu `your <uzuv>` ŞARTIYLA çözüyor; bu ailede
+    # aynısı YAPILAMAZ, çünkü ailenin ÇEKİRDEK vakasının ("we're going to
+    # step back") hiç uzvu yok — uzuv şart koşmak tam onu öldürürdü.
+    # Olumsuz-ileribakışla denendi ve BIRAKILDI: geri-izleme "the LEFT arm"da
+    # "left"i nesne sayıp meşru bir uzuv ifadesini eliyordu; yığılmış
+    # ileribakışlar okunamaz ve sessizce yanlış oluyor. Yapısal alternatif
+    # (uzuv VEYA iyelik VEYA çıplak yön ŞART — olumlu kural) ailenin kapsamını
+    # değiştirir, o yüzden tek başıma seçmedim.
+)
+
 #: Aktif/kendi-üretimli hareket işaretleri.
 ACTIVE_MARKERS = (
     r"\bactive range of motion\b", r"\bAROM\b", r"\bactively\b",
@@ -189,7 +242,7 @@ ACTIVE_MARKERS = (
     r"\b(raise|lift|reach|bring) your\b", r"\byour turn\b",
     r"\bdo (this|it) (with me|yourself)\b", r"\bon your own\b",
     r"\bexercise demo(nstration)?\b",
-) + POSTURE_CUE_MARKERS + MOVEMENT_CUE_MARKERS
+) + POSTURE_CUE_MARKERS + MOVEMENT_CUE_MARKERS + FIRST_PERSON_PLURAL_CUE_MARKERS
 
 #: BİRİNCİ-ŞAHIS GÖSTERİM sınıfı (J-058/M-F-104): eğitmen kendi hareketini
 #: birinci şahısla anlatır ("I throw the fist away from me", "here is the

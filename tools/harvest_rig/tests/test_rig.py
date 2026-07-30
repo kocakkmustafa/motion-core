@@ -890,6 +890,11 @@ def main() -> int:
     if test_weak_active_tier.main() != 0:
         FAILURES.append("weak-active tier self-test")
 
+    print("[15] birinci-şahıs çoğul hareket yönergesi (M-F-213)")
+    import test_first_person_plural  # noqa: PLC0415
+    if test_first_person_plural.main() != 0:
+        FAILURES.append("first-person-plural self-test")
+
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
     # yani yazılmış ama hükme bağlanmamış bir testti (L-063 sınıfı).

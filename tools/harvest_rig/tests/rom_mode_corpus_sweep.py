@@ -29,7 +29,8 @@ APPS = ["ostinato", "lissom", "jablab", "gravita", "gravita-squat", "choreia"]
 #: yoksa "kapattım" sanılan sınıf hâlâ isabet eder ve süpürme SESSİZCE
 #: hiçbir şey ölçmez (bu tuzağa bir kez düştüm, J-059).
 SWEEPABLE = ("FIRST_PERSON_DEMO_MARKERS", "POSTURE_CUE_MARKERS",
-             "MOVEMENT_CUE_MARKERS", "WEAK_ACTIVE_MARKERS")
+             "MOVEMENT_CUE_MARKERS", "WEAK_ACTIVE_MARKERS",
+             "FIRST_PERSON_PLURAL_CUE_MARKERS")
 
 #: `WEAK_ACTIVE_MARKERS` süpürmesi DİĞERLERİNDEN farklı bir şey sınar ve bu
 #: kasıtlı: diğer demetler için soru "yeni sınıf passive'i active'e döndürdü
