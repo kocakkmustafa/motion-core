@@ -468,6 +468,35 @@ def cmd_run(args: argparse.Namespace) -> int:
             return 1
         m.record("dedup", "ok")
 
+        if getattr(args, "no_extract", False):
+            # AĞ İŞİ ŞİMDİ, AĞIR İŞ SONRA. Makine-slot kuralının amacı kaynak
+            # çekişmesi (MediaPipe + disk); pull/triage ağ-bağımlı ve hafif,
+            # başka bir app'in arka-plan ekstraksiyonuyla anlamlı çekişmez.
+            # Bu bayrak o ayrımı hattın İÇİNDE yapar — daha önce her app
+            # kendi sürücüsünü yazmak zorundaydı ve o sürücü manifest'i
+            # kanonik yazmayı unutabilirdi (provenance ZORUNLU, M-F-13).
+            #
+            # İmza YİNE kaydedilir: indirilmiş dosyanın gerçek ölçümüdür ve
+            # dedup'ın onu bilmesi işe yarar. Yeniden koşumu kilitlemez —
+            # `check_duplicate` self_id'yi dışlıyor (L-106).
+            m.record("extract", "skipped", reason="--no-extract")
+            # SESSİZ BIRAKILMAYAN SONUÇ: transkript adımı da bu turda
+            # koşmuyor, dolayısıyla romMode'un transkriptle GÜÇLENDİRİLMESİ
+            # ertelendi. Manifest'teki mod başlık/açıklamaya dayanıyor ve
+            # DARALABİLİR de (M-F-45 muafiyeti transkriptle kalkabilir), yani
+            # "zayıf kanıt" olarak işaretlenmezse fazla-izinli okunur.
+            m.record("romMode", m.rom_mode,
+                     provisional=True,
+                     reason="--no-extract: transkript turu koşmadı, mod "
+                            "yalnız başlık/açıklamadan; tam koşumda "
+                            "DARALABİLİR de (M-F-45 muafiyeti transkriptle "
+                            "kalkabilir), o yüzden fazla-izinli okunmamalı")
+            register_signature(sig, m.video_id, library / "signature-index.json")
+            print(f"✅ {m.video_id}: pull+triage TAMAM — ekstraksiyon ATLANDI")
+            print(f"   tamamlamak için: harvest.py run --url {args.url} "
+                  f"--app {args.app} --library {args.library}")
+            return 0
+
         fx_dir.mkdir(parents=True, exist_ok=True)
         fx_path = extract(m, fx_dir, variant=args.variant)
         m.record("extract", "ok", fixture=fx_path.name)
@@ -529,6 +558,14 @@ def main() -> int:
     r.add_argument("--variant", default="full",
                    choices=["lite", "full", "heavy"])
     r.add_argument("--no-transcribe", action="store_true")
+    r.add_argument(
+        "--no-extract", action="store_true",
+        help="pull+triage+dedup koş, EKSTRAKSİYONU atla. Ağ işi hafif ve "
+             "makine-slot çekişmesi yaratmaz; MediaPipe çıkarımı yaratır. "
+             "Manifest kanonik yazılır, imza kaydedilir, romMode "
+             "'provisional' işaretlenir (transkript turu koşmadığı için). "
+             "Tam koşum sonradan yapılır; check_duplicate self_id'yi "
+             "dışladığı için yeniden koşum kilitlenmez.")
     r.add_argument(
         "--triage-profile",
         help="App-özel triyaj eşikleri (JSON). Örn. lissom app/config/harvest/"
