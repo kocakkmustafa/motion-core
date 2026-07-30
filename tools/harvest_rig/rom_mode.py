@@ -215,6 +215,28 @@ FIRST_PERSON_DEMO_MARKERS = (
     r"reach(?:ing|es)?|extend(?:ing|s)?|drive(?:s)?|push(?:ing|es)?|"
     r"pull(?:ing|s)?|rotate(?:s)?|bend(?:ing|s)?|twist(?:ing|s)?|"
     r"lean(?:ing|s)?)\b",
+)
+
+#: ZAYIF AKTİF işaret (M-F-208 / JabLab J-089) — `WEAK_PASSIVE_MARKERS`in
+#: aynadaki hâli ve AYNI kural: **tek başına mod belirlemez.**
+#:
+#: `here's the ...` bu sınıfın kurucu üyesi ve buraya BİR ÖLÇÜMLE indi.
+#: Kalıp `FIRST_PERSON_DEMO_MARKERS`e J-058'de eklenmişti (frolov'un jab
+#: transkriptindeki "here is the first punch" için) — ama ailenin diğer tüm
+#: kalıplarının aksine **hareket fiili İSTEMİYOR**: "here's the thing",
+#: "here's the deal", "here's the problem" de eşleşir.
+#:
+#: ÖLÇÜLEN VAKA (JabLab `lqvdxbOyTgU`, protips4u uppercut dersi): ailenin
+#: fiil gerektiren kalıplarından **SIFIR** eşleşme; tek eşleşme
+#: *"this is the lead uppercut, and here's the other one"*. Yani bir kaynağın
+#: REFERANS-UYGUNLUĞU, hareket kanıtı olmayan tek bir sunum ifadesine
+#: dayanıyordu.
+#:
+#: Kademe KOMBİNASYON EŞİĞİ İÇERMEZ ("≥2 zayıf yeter" gibi bir kural
+#: ölçülmemiş olurdu): zayıf işaret tek başına SIFIR, güçlünün yanında yalnız
+#: bağlamdır. Salt-zayıf kaynak fail-closed `unknown` kalır ve sebebi İSİMLE
+#: yazılır — sessizce düşmez.
+WEAK_ACTIVE_MARKERS = (
     r"\bhere(?:'s| is| comes)\s+(?:the|your|my)\b",
 )
 
@@ -232,6 +254,11 @@ class RomVerdict:
     #: Sınıflandırmanın hangi metinlere baktığı — transkript yoksa kanıt zayıf
     #: demektir ve bunu gizlemek yerine kaydediyoruz.
     sources_seen: list[str] = field(default_factory=list)
+    #: M-F-208 kademesi: bulunan ama TEK BAŞINA hüküm taşımayan aktif
+    #: işaretler. Kaydediliyor ki "hiç işaret yoktu" ile "yalnız zayıf işaret
+    #: vardı" AYIRT EDİLEBİLSİN — ikincisi bir sonraki turda tekrar
+    #: araştırılmasın diye.
+    weak_active_hits: list[str] = field(default_factory=list)
 
     @property
     def reference_eligible(self) -> bool:
@@ -249,6 +276,7 @@ class RomVerdict:
             "romMode": self.mode,
             "romActiveHits": self.active_hits,
             "romPassiveHits": self.passive_hits,
+            "romWeakActiveHits": self.weak_active_hits,
             "romReason": self.reason,
             "romSourcesSeen": self.sources_seen,
             "passiveExecutionPossible": self.passive_execution_possible,
@@ -284,6 +312,9 @@ def classify(
     weak = _hits(WEAK_PASSIVE_MARKERS, blob)
     active = _hits(
         ACTIVE_MARKERS + FIRST_PERSON_DEMO_MARKERS + tuple(extra_active), blob)
+    # Zayıf-aktif AYRI toplanır: `active`a karışsaydı tek başına ACTIVE
+    # üretirdi — düzeltilen kusur tam buydu.
+    weak_active = _hits(WEAK_ACTIVE_MARKERS, blob)
 
     if passive:
         reason = ("pasif/klinisyen işareti bulundu"
@@ -298,13 +329,21 @@ def classify(
     if active:
         return RomVerdict(
             ACTIVE, active, weak,
-            "yalnız aktif işaret" + (f"; zayıf işaret {weak} tek başına pasif "
-                                     "SAYILMAZ" if weak else ""),
+            "yalnız aktif işaret"
+            + (f"; zayıf işaret {weak} tek başına pasif SAYILMAZ" if weak else "")
+            + (f"; zayıf-aktif {weak_active} güçlü işaretin yanında bağlam"
+               if weak_active else ""),
             sources_seen=sources,
+            weak_active_hits=weak_active,
             passive_execution_possible=passive_execution_possible,
         )
     return RomVerdict(
         UNKNOWN, active, weak,
+        # Salt-zayıf kaynak SESSİZCE düşmez: sebebi isimle yazılır, yoksa
+        # "hiçbir işaret yok" ile "yalnız zayıf işaret var" ayırt edilemez.
+        (f"YALNIZ ZAYIF-AKTİF işaret {weak_active} — tek başına aktif "
+         "SAYILMAZ (M-F-208 kademesi); hareket-fiilli güçlü işaret yok"
+         if weak_active else "") or
         ("hiçbir mod işareti yok; pasif icra bu harekette biyomekanik olarak "
          "MÜMKÜN DEĞİL — tehdit yapısal olarak yok, referansa girebilir (M-F-45)"
          if not passive_execution_possible else
@@ -313,5 +352,6 @@ def classify(
            else " (TRANSKRİPT YOK: sınıflandırma yalnız başlık/açıklamaya "
                 "dayanıyor, kanıt zayıf)"),
         sources_seen=sources,
+        weak_active_hits=weak_active,
         passive_execution_possible=passive_execution_possible,
     )

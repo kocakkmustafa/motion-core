@@ -885,6 +885,11 @@ def main() -> int:
     if test_rig_provenance.main() != 0:
         FAILURES.append("rig provenance self-test")
 
+    print("[14] zayıf-aktif kademesi (M-F-208)")
+    import test_weak_active_tier  # noqa: PLC0415
+    if test_weak_active_tier.main() != 0:
+        FAILURES.append("weak-active tier self-test")
+
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
     # yani yazılmış ama hükme bağlanmamış bir testti (L-063 sınıfı).
