@@ -6,6 +6,7 @@ node_modules/
 
 # Python offline hattı — ortam ve büyük ikili varlıklar repoya girmez
 tools/fixture_pipeline/.venv/
+tools/fixture_pipeline/.venv
 tools/fixture_pipeline/models/*.task
 __pycache__/
 *.py[cod]
