@@ -52,6 +52,13 @@ R12'de `bestDeg` dizisi bir take'in diğerlerinin ~2 katı uzakta durduğunu
 söylüyordu ve kimse sinyal olarak okumadı. Bu kapı alanın VAR olduğunu ölçebilir,
 OKUNDUĞUNU ölçemez.
 
+Üçüncü sınır — **taban ANINDAKİ şemayı korur.** Boş bir kapsayıcının içindeki
+alan adları tabanda yoktur, dolayısıyla o kapsayıcıya GELECEKTE yazılacak bir
+kaydın kaybı yakalanamaz. Kapsam bu yüzden artefakt-başına farklıdır ve
+tüketen uygulama kendi kapsamını YAZMALI (fazla iddia etmemek için). Artefaktlar
+arası ŞEMA BİRLEŞİMİ ile tohumlama bu boşluğu kapatabilir ama yanlış-pozitif
+riski taşır — artefaktlar meşru olarak farklılaşabilir; o karar koordinatörde.
+
 Kullanım
 --------
     python3 artifact_keyset_gate.py <artefakt-dizini>
