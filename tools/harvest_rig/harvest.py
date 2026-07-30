@@ -35,7 +35,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from manifest import HarvestManifest  # noqa: E402
+from manifest import HarvestManifest, rig_staleness_warning  # noqa: E402
 from context_tags import from_rom_mode as ctx_from_rom
 from rom_mode import classify as classify_rom
 from triage import TriageThresholds, triage  # noqa: E402
@@ -545,6 +545,15 @@ def main() -> int:
     r.set_defaults(fn=cmd_run)
 
     args = ap.parse_args()
+
+    # AÇILIŞ NÖBETİ (M-F-206 / J-085): rig bayatsa YÜKSEK SESLE söyle.
+    # Reddetmiyoruz — dalda araç geliştirmek meşru bir akış ve onu kırmak
+    # kuralı işe yaramaz hâle getirir. Amaç kirlenmeyi GÖRÜNÜR yapmak:
+    # J-085'te sessiz olduğu için üç yanlış teşhis kuruldu ve bir yama
+    # yazılıp geri alındı.
+    warning = rig_staleness_warning()
+    if warning:
+        print(warning, file=sys.stderr)
     return args.fn(args)
 
 
