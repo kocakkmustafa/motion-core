@@ -1,3 +1,16 @@
+## 0.9.0 — 2026-07-30 — SessionStore çekirdek-terfisi (üçler kuralı)
+
+- `SessionRecord`/`SessionStore`/`JsonlSessionStore` çekirdekte (M-F-193
+  hakemliği; karar: workspace/SESSION-STORE-TERFI-KARARI.md). Nötr iş-birimi
+  + KAYIT-başına unitLabel (Gravita ölçümü: iki birim aynı app'te) ·
+  yazım-anı lessonClass AÇIK sözlük + en-az-yetki okuması (yalnız 'scored'
+  skorlanmış okunur) · unmeasuredUnits ("sessizlik yalandır"; tamamlama
+  ATTEMPTED üzerinden — ölçülemeyen deneme ilerleme düşürmez) · staticHold
+  tekrarı kabul-ve-belgeli · J-064 depo değişmezleri aynen (JSONL ·
+  satır-şema v:2, v1-mirası okunur · tmp+rename · bozuk-satır toleransı ·
+  mutable-liste) · kurucu File alır (kablolama app'te). İlk tüketici Lissom;
+  diğer üç app kendi turlarında adopte eder.
+
 # Changelog — motion_core
 
 Sürümleme: semver. App'ler pinli sürüm tüketir (git dependency, tag'li:

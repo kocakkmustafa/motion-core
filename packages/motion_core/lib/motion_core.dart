@@ -32,6 +32,7 @@ export 'src/pose/orientation_aware_source.dart';
 export 'src/pose/pose_frame.dart';
 export 'src/pose/smoothing.dart';
 export 'src/pose/structural_validator.dart';
+export 'src/session/session_store.dart';
 export 'src/rhythm/audio_timeline.dart';
 export 'src/rhythm/beat_grid.dart';
 export 'src/rhythm/cue_gate.dart';
