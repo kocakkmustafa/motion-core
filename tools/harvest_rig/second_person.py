@@ -269,6 +269,11 @@ def main() -> int:
     if orphans:
         print(f"  ⚠️ yetim (manifestsiz, PAYDAYA DAHİL DEĞİL): "
               f"{', '.join(orphans)}\n")
+    # Koordinatör düzeltmesi (ölçüm koşumunda bulundu): v2 refaktörü bu
+    # başlatmayı düşürmüştü — sözleşme testleri ayırıcı-matematiğini sınıyor,
+    # main() ancak mediapipe'lı ortamda koşuyor; NameError ilk gerçek koşumda
+    # çıktı. "Derleniyor/testler yeşil ≠ koşuyor" — bir kez daha.
+    reports: list[dict] = []
     for v in vids:
         dur = durations.get(v.stem)
         if dur is None:
