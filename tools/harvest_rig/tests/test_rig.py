@@ -18,6 +18,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import artifact_keyset_gate  # noqa: E402
 import hold_isolator  # noqa: E402
 import presence_isolator  # noqa: E402
 from harvest import hamming, perceptual_signature  # noqa: E402
@@ -793,6 +794,10 @@ def main() -> int:
     print("[11] hazır-bulunma izolatörü (M-F-85)")
     if presence_isolator.self_test() != 0:
         FAILURES.append("presence_isolator self-test")
+
+    print("[12] artefakt anahtar-kümesi kapısı (M-F-174)")
+    if artifact_keyset_gate.self_test() != 0:
+        FAILURES.append("artifact_keyset_gate self-test")
 
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,

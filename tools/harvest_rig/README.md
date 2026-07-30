@@ -34,6 +34,49 @@ $VENV harvest.py probe video.mp4
 Kütüphane düzeni: `raw/` (video+info.json) · `landmarks/` (fixture v2 JSON) ·
 `manifests/` · `transcripts/` · `signature-index.json`.
 
+## Artefakt alan-bütünlüğü kapısı (M-F-174)
+
+`artifact_keyset_gate.py` — üretilen artefaktlarda **sessiz alan kaybını**
+yakalar. Choreia'da aynı arıza üç kez tekrarlandı; üçüncüsü sınıfın adını
+düzeltti: kayıp "elle yamalı olmak"la değil **girdinin kalıcılığıyla** ilgili
+(her turda yeniden türetilen bir alan, girdisi havuzdan çıkınca kayboldu).
+
+```bash
+python3 artifact_keyset_gate.py <artefakt-dizini>            # kapı
+python3 artifact_keyset_gate.py <artefakt-dizini> --update    # taban tazele
+python3 artifact_keyset_gate.py --self-test                   # 11 senaryo
+```
+
+Neden satır-diff yetmiyor: yeniden üretilen JSON'da binlerce ondalık churn
+kaybı boğuyor (Choreia turunda gözle tarandı ve ilk geçişte kaçırıldı). Kapı
+**anahtar yollarını** karşılaştırır; dizi indeksleri `[]` ile sıkıştırılır, yani
+dizi uzunluğu ve değerler serbestçe değişir, ALAN ADLARI değişmez.
+
+Taban `<dizin>/.keyset-baseline.json`'da tutulur, git-HEAD'de DEĞİL: HEAD
+kendiliğinden kayar, bir kayıp commit'lenince yeni taban olur ve sonraki
+karşılaştırma temiz geçer (`namedVariant` tam böyle öldü). `--update` bir
+kaybı/boşalmayı **absorbe etmez**, kazancı eder — asimetri kasıtlı, çünkü taban
+güncellemesi kaybın meşrulaştırıldığı yerdir.
+
+İki ayrı beyan var, ve ayrımı bilinçli:
+
+| Beyan | Anlamı | Kapsam |
+|---|---|---|
+| `declaredRemovals` | alan ŞEMADAN kaldırıldı | genel |
+| `artifacts[<ad>].declaredEmpty` | bu artefaktta bu kapsayıcı MEŞRU olarak boş | artefakt+yola ÖZGÜ |
+
+Boşalma (`excluded: []`) ile kayıp (kapsayıcı dolu, alan yok) aynı imzayı
+üretir ama AYRI sınıflardır: ikisini tek beyanla geçirmek, korunmak istenen
+alanı kapatır ve sonraki gerçek kaybı sessizce geçirir.
+
+**Kapının sınırı:** alanın VARLIĞINI ölçer, DEĞERİNİ ölçmez — ölçülmüş arıza
+kipi alan kaybıydı (3 vaka), değer-bozulması ölçülmedi, o yüzden kapı konmadı.
+Kardeş kip de dışarıda: "yazılmış ama OKUNMAMIŞ alan" (Choreia R12'de `bestDeg`
+bir aykırıyı söylüyordu, kimse okumadı) — varlık ölçülebilir, okunmuşluk ölçülemez.
+
+Uygulamalar bunu **vendor eder** (M-F-94: `PIN_SHA` + `DECLARED_DIFFERENCES` +
+`--drift-check`); çekirdek Python rig'i kopyalanır, import edilmez.
+
 ## Bağımlılık ve lisans denetimi (katalog §0)
 
 | Araç | Lisans | Durum |
