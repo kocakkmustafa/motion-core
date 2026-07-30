@@ -880,6 +880,11 @@ def main() -> int:
     if artifact_keyset_gate.self_test() != 0:
         FAILURES.append("artifact_keyset_gate self-test")
 
+    print("[13] sınıflandırıcı provenance + bayat-rig nöbeti (M-F-206)")
+    import test_rig_provenance  # noqa: PLC0415
+    if test_rig_provenance.main() != 0:
+        FAILURES.append("rig provenance self-test")
+
     # Hüküm EN SONDA verilir. Önceki sürümde bu blok [4]'ün ÇAĞRISINDAN önce
     # geliyordu: blok [4] kırılsa bile betik "Hepsi geçti" deyip 0 dönüyordu,
     # yani yazılmış ama hükme bağlanmamış bir testti (L-063 sınıfı).

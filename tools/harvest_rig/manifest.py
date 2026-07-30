@@ -73,11 +73,62 @@ def rig_version() -> dict[str, Any]:
                      "(M-F-135 bayat-kopya sınıfı)"),
             "observedSha": sha,
         }
+    # BAYATLIK — M-F-135'in görmediği ikinci sınıf (JabLab J-085'te ölçüldü).
+    #
+    # Yukarıdaki iki kademe "hangi rig" sorusunu yanıtlıyor ama "GÜNCEL Mİ"
+    # sorusunu yanıtlamıyor. Ölçülmüş vaka: hasat, paylaşımlı bir ağaçtan
+    # koşuldu; o ağaç BAŞKA bir oturumun dalında duruyordu. Damga tertemiz
+    # çıktı (takipli ✓, motion-core ✓, dirty=false ✓) — oysa rig, origin/main'e
+    # merge edilmiş 3414 satırı ve KOŞUMU DOĞRUDAN ETKİLEYEN bir işaret
+    # ailesini taşımıyordu. Her kaynak `unknown` damgalanıp fail-closed
+    # kuralıyla referans dışına düştü ve hiçbir alan sebebi söylemedi.
+    #
+    # Ölçü: origin/main'in BURADA OLMAYAN commit sayısı. Tek sayı, yoruma
+    # açık değil; 0 = güncel, >0 = o kadar iş eksik.
+    #
+    # AĞ YOK: yalnız yerel ref okunur. Bir hasat koşumu `git fetch` yapmamalı
+    # (yavaş, ağa bağımlı, ve başka bir oturumun ağacını güncellemek YAN
+    # ETKİ olur). Yerel `origin/main` yoksa bilinmiyor denir, UYDURULMAZ.
+    behind: int | None = None
+    origin_known = git("rev-parse", "--verify", "--quiet", "origin/main") is not None
+    if origin_known:
+        cnt = git("rev-list", "--count", "HEAD..origin/main")
+        behind = int(cnt) if cnt and cnt.isdigit() else None
     return {
         "sha": sha,
         "dirty": bool(git("status", "--porcelain", "--", str(here))),
         "vendored": False,
+        "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
+        # None = yerel origin/main yok → BİLİNMİYOR (0 ile karıştırılmasın).
+        "behindOriginMain": behind,
+        "originMainKnown": origin_known,
     }
+
+
+def rig_staleness_warning() -> str | None:
+    """Bayat rig için YÜKSEK SESLİ uyarı metni — yoksa `None`.
+
+    **Uyarır, REDDETMEZ** (rapor-önce): bir dalda araç geliştirmek meşru bir
+    akıştır ve onu kırmak, kuralı işe yaramaz hâle getirirdi. Amaç kirlenmeyi
+    GÖRÜNÜR yapmak — J-085'te sessiz olduğu için üç yanlış teşhis kuruldu.
+    """
+    v = rig_version()
+    if v.get("vendored"):
+        return f"⚠️  RIG DAMGASIZ: {v.get('note')}"
+    behind = v.get("behindOriginMain")
+    if behind:
+        return (
+            f"⚠️  BAYAT RIG: bu ağaç origin/main'in GERİSİNDE — eksik commit: "
+            f"{behind} (dal: {v.get('branch')}, HEAD: {str(v.get('sha'))[:8]}).\n"
+            f"    Kararlar (romMode/triyaj/context) bu sürümün kurallarıyla "
+            f"verilecek ve çıktıya öyle damgalanacak.\n"
+            f"    Meşru dal-testi ise sorun yok; DEĞİLSE origin/main-pinli "
+            f"izole bir worktree'den koşun (M-F-139 genellemesi)."
+        )
+    if not v.get("originMainKnown"):
+        return ("⚠️  origin/main yerel olarak YOK — rig güncelliği "
+                "DOĞRULANAMADI (ağ kullanılmıyor, varsayım yapılmıyor).")
+    return None
 
 
 def tool_versions() -> dict[str, Any]:
@@ -172,7 +223,28 @@ class HarvestManifest:
         self.title = info.get("title")
         self.description = info.get("description")
 
+    #: KARAR aşamaları: çıktısı bir HÜKÜM olan, dolayısıyla hangi kural
+    #: sürümünün verdiği sorulabilir olması gereken aşamalar. `pull`/`extract`
+    #: mekaniktir (aynı girdi → aynı çıktı, sürümden bağımsız); onları
+    #: damgalamak gürültü olurdu.
+    _DECISION_STAGES = frozenset({"romMode", "triage", "contextTags", "dedup"})
+
     def record(self, stage: str, status: str, **detail: Any) -> None:
+        # SINIFLANDIRICI PROVENANCE (M-F-206 / JabLab J-085): bir karar
+        # kaydı, onu VEREN rig sürümünü taşımak zorunda. Fixture provenance'ı
+        # (`toolVersions.harvestRig`) "bu dosyayı hangi rig üretti" diyor;
+        # buradaki damga "bu HÜKMÜ hangi rig verdi" diyor — ikisi ayrılabilir,
+        # çünkü bir manifest sonradan başka bir sürümle TAZELENEBİLİR
+        # (M-F-138 uygunluk tazelemesi tam bunu yapıyor). Damga olmadan
+        # tazelenmiş ve tazelenmemiş kayıt ayırt edilemez.
+        if stage in self._DECISION_STAGES and "classifiedBy" not in detail:
+            v = rig_version()
+            detail = {**detail, "classifiedBy": {
+                "sha": v.get("sha"),
+                "dirty": v.get("dirty"),
+                "branch": v.get("branch"),
+                "behindOriginMain": v.get("behindOriginMain"),
+            }}
         self.stages.append(
             StageRecord(
                 stage=stage,
