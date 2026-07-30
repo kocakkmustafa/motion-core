@@ -29,7 +29,14 @@ APPS = ["ostinato", "lissom", "jablab", "gravita", "gravita-squat", "choreia"]
 #: yoksa "kapattım" sanılan sınıf hâlâ isabet eder ve süpürme SESSİZCE
 #: hiçbir şey ölçmez (bu tuzağa bir kez düştüm, J-059).
 SWEEPABLE = ("FIRST_PERSON_DEMO_MARKERS", "POSTURE_CUE_MARKERS",
-             "MOVEMENT_CUE_MARKERS")
+             "MOVEMENT_CUE_MARKERS", "WEAK_ACTIVE_MARKERS")
+
+#: `WEAK_ACTIVE_MARKERS` süpürmesi DİĞERLERİNDEN farklı bir şey sınar ve bu
+#: kasıtlı: diğer demetler için soru "yeni sınıf passive'i active'e döndürdü
+#: mü", bu demet için soru **"HİÇBİR ŞEYİ döndürmedi mi"**. Zayıf işaret
+#: tanım gereği tek başına mod belirlemez (M-F-208 kademesi), dolayısıyla
+#: demeti açıp kapatmak sıfır geçiş üretmeli. Sıfırdan farklı bir sonuç,
+#: kademenin bir yerde SIZDIĞI anlamına gelir.
 
 
 def _disable(family: str):
