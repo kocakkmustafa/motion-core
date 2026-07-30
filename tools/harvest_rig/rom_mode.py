@@ -221,10 +221,34 @@ FIRST_PERSON_PLURAL_CUE_MARKERS = (
     #     bu yüzden 0-2 sözcüklük pencere.
     r"(?!(?:\s+\w+){0,2}\s+(?:on\s+to|onto|into|through|to\s+the\s+next)\b)"
     r"(?!\s+(?:on\s+to|onto|into|through)\b)",
-    # ⚠️ AÇIK KALEM — NESNE↔GÖVDE ayrımı bu ailede YAPILAMIYOR (J-090).
-    # Ölçülen iki yanlış-pozitif kalıyor ve İSİMLE duruyorlar:
-    #   "we move this five down a half step" → bir NOTA (ostinato/2mPS-2guHVo)
-    #   "if we raise the bench up"           → bir TABURE (ostinato/D9hEN4wEwNU)
+    # ⚠️ AÇIK KALEM — NESNE↔GÖVDE ayrımı bu ailede YAPILAMIYOR (J-090/J-091).
+    #
+    # ⛔ OLUMLU KURAL DENENDİ VE ÖLÇÜLEREK BIRAKILDI (M-F-216 hükmü a,
+    #    kabul kriteri 4). Üç okunabilir desene bölündü — iyelik · yön ·
+    #    uzuv — ve 313-manifestlik korpusta ölçüldü:
+    #      kriter 1 (13 gerçek geçişin 13'ü YAŞAMALI) → **12/13, DÜŞTÜ**
+    #      kriter 2 (yanlış-pozitif ÖLMELİ)           → **yaşadı, DÜŞTÜ**
+    #    Kaybedilen geçiş: `lissom/W_O65GVbLQM` — tek eşleşmesi
+    #    "let's turn for a sec so we can showcase this"; yön de uzuv de
+    #    iyelik de yok, çünkü hareket İNSTRÜKSİYONEL değil SUNUMSAL.
+    #    Ölmeyen yanlış-pozitif: `ostinato/2mPS-2guHVo` — "we're gonna
+    #    move UP a half step" bir YÖN sözcüğü kullanıyor ama hareket eden
+    #    şey PERDE, gövde değil.
+    #
+    #    SEBEP TEK CÜMLEYLE: fark SÖZDİZİMSEL DEĞİL ANLAMSAL. "move up (a
+    #    half step)" ile "move up (the body)" aynı sözdizimidir; ayrımı
+    #    taşıyan şey ismin ALANIDIR. Hiçbir olumlu sözdizim kuralı bunu
+    #    göremez — olumsuz ileribakış da göremedi (geri-izleme "the LEFT
+    #    arm"ı eliyordu). İki yol da ölçüldü; takas ölçülmüş-imkânsızlıkla
+    #    kapandı.
+    # KAYNAK DÜZEYİNDE tek yanlış-pozitif kalıyor (ilk sayımım İKİ demişti
+    # ve YANLIŞTI — uygunluk CÜMLE değil KAYNAK düzeyindedir):
+    #   ostinato/2mPS-2guHVo → "we move this five down a half step" ve
+    #     "we're gonna move up a half step": ikisi de PERDE hareketi. Kaynak
+    #     gerçekten yanlış-pozitif.
+    #   ostinato/D9hEN4wEwNU → "if we raise the bench up" spurious AMA aynı
+    #     kaynakta "as we lean back and forth" var: piyanistin taburede
+    #     salınımı, GERÇEK gövde hareketi. Kaynak HAKLI olarak uygun.
     # `MOVEMENT_CUE_MARKERS` bunu `your <uzuv>` ŞARTIYLA çözüyor; bu ailede
     # aynısı YAPILAMAZ, çünkü ailenin ÇEKİRDEK vakasının ("we're going to
     # step back") hiç uzvu yok — uzuv şart koşmak tam onu öldürürdü.

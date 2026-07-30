@@ -76,7 +76,13 @@ def main() -> int:
     _expect("we move this five down a half step", True,
             "BİLİNEN AÇIK: nota, gövde değil (ostinato/2mPS-2guHVo)")
     _expect("if we raise the bench up", True,
-            "BİLİNEN AÇIK: tabure, gövde değil (ostinato/D9hEN4wEwNU)")
+            "spurious CÜMLE ama kaynak HAKLI: aynı kaynakta 'as we lean "
+            "back and forth' var (D9hEN4wEwNU) — uygunluk KAYNAK düzeyinde")
+    # Olumlu-kural denemesinin kaybettiği geçiş: kural bir GERÇEK geçişi
+    # öldürüyorsa kriter 1 düşer (M-F-216). Buraya pinlendi ki bir sonraki
+    # deneme aynı duvara kör gitmesin.
+    _expect("let's turn for a sec so we can showcase this", True,
+            "olumlu-kuralın ÖLDÜRDÜĞÜ gerçek geçiş (lissom/W_O65GVbLQM)")
 
     if FAILURES:
         print(f"\n{len(FAILURES)} HATA")
