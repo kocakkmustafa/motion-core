@@ -153,6 +153,68 @@ def check_second_person_probe() -> None:
           "sonda salt-rapor olduğunu BEYAN eder (eşik icadına karşı nöbetçi)")
 
 
+
+def check_mirror_discriminator() -> None:
+    """Ayna ayırıcısı GERÇEKTEN ayırt ediyor mu? (M-F-171/2)
+
+    Neden gerekli: koordinatörün "ikinci poz görünürlük paritesinde → gerçek
+    kişi" okuması AYNA sınıfında ÇÜRÜDÜ (Gravita G-087) — ayna yansıması
+    landmark görünürlüğü bakımından gerçek insandan ayırt edilemez. Ayrım
+    başka bir imzada: yansıma AYNALANMIŞ ve EŞZAMANLIdır.
+
+    ⚠️ Bu testin ilk sürümü ÖLÇÜMLE düzeltildi, iki kez:
+      1. Benzerlik formülü `max(0, 1-mesafe)` idi; RMS-normalize uzayda
+         uyuşmayan şekillerin mesafesi ~1,1 olduğu için HER vakada 0'a
+         kırpılıyordu — ölü ölçü. Artık HAM mesafe raporlanıyor.
+      2. Sentetik vakam sol/sağı düzgün kaydırıyordu; o şekil hâlâ
+         ayna-simetrikti, yani test ölçtüğü şeyi ayırt edemiyordu. Artık
+         GERÇEKTEN asimetrik duruş (sol kol yukarı, sağ aşağı) kullanılıyor.
+    """
+    class _P:
+        def __init__(self, x, y):
+            self.x, self.y, self.visibility = x, y, 0.95
+
+    import second_person as sp  # noqa: PLC0415
+
+    def body(cx, *, mirrored=False, symmetric=False):
+        pts = [_P(cx, 0.0) for _ in range(33)]
+        if symmetric:
+            conf = {11: (-0.10, 0.20), 12: (0.10, 0.20), 13: (-0.15, 0.38),
+                    14: (0.15, 0.38), 15: (-0.18, 0.55), 16: (0.18, 0.55)}
+        else:  # sol kol YUKARI, sağ kol AŞAĞI = gerçekten asimetrik
+            conf = {11: (-0.10, 0.20), 13: (-0.14, 0.02), 15: (-0.16, -0.16),
+                    12: (0.10, 0.20), 14: (0.15, 0.38), 16: (0.18, 0.55)}
+        conf.update({23: (-0.07, 0.55), 24: (0.07, 0.55), 25: (-0.08, 0.78),
+                     26: (0.08, 0.78), 27: (-0.09, 1.0), 28: (0.09, 1.0)})
+        if mirrored:
+            conf = {sp.MIRROR_SWAP.get(i, i): (-dx, dy)
+                    for i, (dx, dy) in conf.items()}
+        for i, (dx, dy) in conf.items():
+            pts[i] = _P(cx + dx, dy)
+        return pts
+
+    def reading(a, b):
+        p2 = sp._normalized_shape(b)
+        mir = sp._shape_dist(sp._normalized_shape(a, mirror=True), p2)
+        dir_ = sp._shape_dist(sp._normalized_shape(a), p2)
+        dm = dir_ - mir
+        return "AYNA" if dm > 0.10 else ("KISI" if dm < -0.10 else "AYRIM_YOK")
+
+    check(reading(body(0.3), body(0.7, mirrored=True)) == "AYNA",
+          "yansıma AYNA olarak okunuyor (aynalanmış mesafe belirgin küçük)")
+    check(reading(body(0.3), body(0.7)) == "KISI",
+          "paralel hareket eden ayrı kişi AYNA sanılmıyor")
+    check(reading(body(0.3, symmetric=True),
+                  body(0.7, symmetric=True)) == "AYRIM_YOK",
+          "SİMETRİK duruşta ayrım YAPILMIYOR ve bu SÖYLENİYOR — ayna ile "
+          "paralel simetrik gövdede gerçekten ayırt edilemez (kusur değil sınır)")
+
+    src = (Path(__file__).resolve().parent.parent / "second_person.py").read_text(
+        encoding="utf-8")
+    check("max(0.0, 1.0 - d)" not in src,
+          "ölü `1-mesafe` benzerlik formülü geri gelmemiş (ölçümle elendi)")
+
+
 def check_triage_profile() -> None:
     """M-F-27: CLI profil yolu — eşikler gerçekten uygulanıyor mu.
 
@@ -656,6 +718,7 @@ def main() -> int:
               "üçüncü hâl YOK")
         check_rig_version_gate()
         check_second_person_probe()
+        check_mirror_discriminator()
 
     print("[4] triyaj profili (CLI yolu)")
     check_triage_profile()

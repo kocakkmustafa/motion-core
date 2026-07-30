@@ -37,6 +37,17 @@ import numpy as np
 #: yoksa leke mi" sorusu bu landmark'ların görünürlüğünden okunur.
 CORE_IDS = (0, 11, 12, 23, 24)
 
+#: ŞEKİL karşılaştırması için kullanılan iskelet noktaları (gövde+uzuvlar).
+SHAPE_IDS = (11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+
+#: BlazePose sol↔sağ landmark takas çiftleri — ayna sınaması için.
+MIRROR_SWAP = {
+    1: 4, 4: 1, 2: 5, 5: 2, 3: 6, 6: 3, 7: 8, 8: 7, 9: 10, 10: 9,
+    11: 12, 12: 11, 13: 14, 14: 13, 15: 16, 16: 15, 17: 18, 18: 17,
+    19: 20, 20: 19, 21: 22, 22: 21, 23: 24, 24: 23, 25: 26, 26: 25,
+    27: 28, 28: 27, 29: 30, 30: 29, 31: 32, 32: 31,
+}
+
 
 @dataclass
 class SecondPersonReport:
@@ -52,6 +63,14 @@ class SecondPersonReport:
     #: Birinci pozun aynı ölçüsü — kıyas tabanı (ikincinin ne kadar zayıf
     #: olduğu ancak birincininkiyle karşılaştırılınca anlaşılır).
     firstPoseCoreVisibility: list[float] = field(default_factory=list)
+
+    #: AYNA AYIRICISI (M-F-171/2). Ayna yansıması AYNALANMIŞ ve EŞZAMANLIdır:
+    #: ikinci pozun şekli, birinci pozun SOL/SAĞ TAKASLI şekline benzer.
+    #: Gerçek ikinci kişi (ör. yan yana aynı egzersizi yapan iki sunucu) ise
+    #: takassız haliyle benzer. Bu yüzden İKİ ölçü birlikte raporlanır —
+    #: tek sayı ayna ile iki-kişi-paralel'i ayırt EDEMEZ.
+    mirroredShapeDist: list[float] = field(default_factory=list)
+    directShapeDist: list[float] = field(default_factory=list)
     error: str | None = None
 
     @property
@@ -72,10 +91,29 @@ class SecondPersonReport:
                 "max": round(float(a.max()), 4),
             }
 
+        mir, dir_ = stats(self.mirroredShapeDist), stats(self.directShapeDist)
+        verdict = "ölçülemedi (iki-pozlu kare yok)"
+        if mir and dir_:
+            # Mesafe: KÜÇÜK olan daha benzer. Aynalanmış mesafe belirgin
+            # küçükse ikinci poz yansımadır.
+            dm = dir_["median"] - mir["median"]
+            if dm > 0.10:
+                verdict = ("AYNA-BENZERİ: aynalanmış şekil mesafesi belirgin "
+                           "KÜÇÜK → ikinci poz muhtemelen YANSIMA")
+            elif dm < -0.10:
+                verdict = ("GERÇEK-İKİNCİ-KİŞİ-BENZERİ: takassız mesafe daha "
+                           "küçük → paralel hareket eden ayrı kişi")
+            else:
+                verdict = ("AYRIM YOK: iki mesafe yakın — bu ölçü sınıfı "
+                           "belirleyemiyor (simetrik duruşta ayna ile paralel "
+                           "GERÇEKTEN ayırt edilemez; göz triyajı gerekir)")
         return {
             **asdict(self),
             "secondPoseCoreVisibility": stats(self.secondPoseCoreVisibility),
             "firstPoseCoreVisibility": stats(self.firstPoseCoreVisibility),
+            "mirroredShapeDist": mir,
+            "directShapeDist": dir_,
+            "mirrorReading": verdict,
             "twoPoseShare": round(self.twoPoseShare, 4),
             "$note": "SALT RAPOR — eşik yok, klip reddedilmedi. `twoPoseShare` "
                      "HAM orandır (kalite süzgeci uygulanmamıştır); ikinci "
@@ -83,6 +121,37 @@ class SecondPersonReport:
                      "dağılımının `firstPoseCoreVisibility` ile "
                      "karşılaştırılmasından okunur.",
         }
+
+
+def _normalized_shape(pts, ids=SHAPE_IDS, *, mirror: bool = False):
+    """İskeleti konum/ölçekten ARINDIRIP karşılaştırılabilir şekle çevirir.
+
+    İki poz görüntüde farklı yerde ve farklı ölçektedir; ham koordinat
+    karşılaştırmak konumu ölçmek olur, şekli değil. Bu yüzden merkez çıkarılır
+    ve RMS ölçeğe bölünür. `mirror=True` ise SOL/SAĞ landmark'lar takaslanır VE
+    x ekseni ters çevrilir — ayna yansımasının iki bileşeni de budur.
+    """
+    idx = [MIRROR_SWAP.get(i, i) if mirror else i for i in ids]
+    xy = np.array([[pts[i].x, pts[i].y] for i in idx], dtype=float)
+    if mirror:
+        xy[:, 0] = -xy[:, 0]
+    xy -= xy.mean(axis=0)
+    scale = float(np.sqrt((xy ** 2).sum(axis=1).mean()))
+    return xy / scale if scale > 1e-9 else None
+
+
+def _shape_dist(a, b) -> float | None:
+    """Normalize edilmiş iskeletler arası ortalama nokta MESAFESİ (küçük=benzer).
+
+    ⚠️ İlk sürümde bunu `1 - mesafe` diye bir "benzerlik" olarak yazmıştım ve
+    ÖLÇTÜM: RMS-normalize uzayda uyuşmayan şekillerin tipik mesafesi ~1,1
+    olduğu için `max(0, 1-d)` HER vakada 0'a kırpılıyordu — yani ölü bir ölçü.
+    Uydurulmuş bir 0-1 skalası yerine HAM mesafe raporlanıyor: iki mesafe
+    birbiriyle karşılaştırılır, mutlak bir eşiğe ihtiyaç yok.
+    """
+    if a is None or b is None:
+        return None
+    return float(np.linalg.norm(a - b, axis=1).mean())
 
 
 def probe(
@@ -136,6 +205,15 @@ def probe(
                 if len(poses) >= 2:
                     rep.framesWithTwoPoses += 1
                     rep.secondPoseCoreVisibility.append(core_vis(poses[1]))
+                    # AYNA AYIRICISI: ikinci poz, birinci pozun AYNALANMIŞ
+                    # şekline mi yoksa TAKASSIZ şekline mi daha çok benziyor?
+                    p2 = _normalized_shape(poses[1])
+                    dm = _shape_dist(
+                        _normalized_shape(poses[0], mirror=True), p2)
+                    dd = _shape_dist(_normalized_shape(poses[0]), p2)
+                    if dm is not None and dd is not None:
+                        rep.mirroredShapeDist.append(dm)
+                        rep.directShapeDist.append(dd)
     except Exception as exc:  # noqa: BLE001 - sonda hattı durdurmaz
         rep.error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -174,10 +252,23 @@ def main() -> int:
             if d:
                 durations[str(doc.get("video_id"))] = float(d)
 
-    reports = []
-    vids = sorted(p for p in raw.iterdir()
-                  if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"})
-    print(f"{len(vids)} klip · num_poses=2 · SALT RAPOR (eşik yok)\n")
+    # M-F-171/3: PAYDA manifestli kliplere sınırlanır. v1 `raw/*.mp4`'ü
+    # körlemesine tarıyordu ve MANİFESTSİZ (yetim) dosyaları da sayıyordu —
+    # Gravita'da bu, push_up havuzunun ">0,3 aday" listesini YANLIŞ yaptı:
+    # iki "aday" aslında yetim SQUAT klibiydi (G-087). Yetimler sessizce
+    # ATLANMAZ; kendileri bir bulgudur, ayrıca raporlanır.
+    manifested = {str(json.loads(mf.read_text(encoding="utf-8")).get("video_id"))
+                  for mf in (lib / "manifests").glob("*.json")}
+    all_vids = sorted(p for p in raw.iterdir()
+                      if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"})
+    vids = [p for p in all_vids if p.stem in manifested]
+    orphans = [p.stem for p in all_vids if p.stem not in manifested]
+    print(f"{len(all_vids)} ham dosya → {len(vids)} MANİFESTLİ klip taranıyor "
+          f"({len(orphans)} yetim AYRI raporlanıyor) · num_poses=2 · "
+          f"SALT RAPOR (eşik yok)\n")
+    if orphans:
+        print(f"  ⚠️ yetim (manifestsiz, PAYDAYA DAHİL DEĞİL): "
+              f"{', '.join(orphans)}\n")
     for v in vids:
         dur = durations.get(v.stem)
         if dur is None:
@@ -212,6 +303,13 @@ def main() -> int:
                            "sayabilir. Hüküm için ikinci-poz görünürlük "
                            "dağılımı birinciyle karşılaştırılmalı.",
         "clips": len(reports),
+        "orphans": orphans,
+        "$orphansNote": "MANİFESTSİZ ham dosyalar — paydaya DAHİL DEĞİL ve "
+                        "sessizce atlanmadı. v1 bunları sayıyordu ve Gravita'da "
+                        "push_up havuzunun aday listesini yanlış yaptı (G-087): "
+                        "iki 'aday' aslında yetim squat klibiydi. Yetim dosya "
+                        "kendisi bir bulgudur (kesintili hasat turu / "
+                        "kütüphane karışması, G-057 sınıfı).",
         "shareDistribution": {
             "mean": round(float(np.mean(shares)), 4) if shares else None,
             "median": round(float(np.median(shares)), 4) if shares else None,
