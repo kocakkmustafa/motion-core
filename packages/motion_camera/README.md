@@ -5,7 +5,12 @@ Sözleşme: [`docs/70-KAMERA-KOPRUSU-SOZLESMESI.md`](../../docs/70-KAMERA-KOPRUS
 
 - Çekirdek görüntü görmez: yalnız monoton saatli landmark zarfları.
 - Pinler (M-L-02): iOS MediaPipeTasksVision **0.10.21** · Android tasks-vision **0.10.29**.
-- Durum: Dart katmanı testli; native katman **PROVISIONAL** (derlenmedi/cihazda koşmadı) — canlılık listesi sözleşme §7.
+- Durum: Dart katmanı testli; native katman **COMPILED-NOT-RUN** — iOS ve
+  Android İKİSİ DE pinli sürümlere karşı DERLENDİ (J-071; §7.1-7.2 geçti),
+  ama **hiçbir cihazda KOŞMADI**. "Derleniyor" ile "çalışıyor" ayrı
+  beyanlar: gerçek sayılar (judgedRatio · meanInferenceUs · dual-pass
+  maliyeti · buffer-tutma · clock-domain · ters-geçiş fikstürü) sözleşme
+  §7.3-7.7'de AÇIK.
 
 ```dart
 final controller = MotionCameraController();
