@@ -216,6 +216,86 @@ def check_mirror_discriminator() -> None:
           "ölü `1-mesafe` benzerlik formülü geri gelmemiş (ölçümle elendi)")
 
 
+
+def check_probe_injection_end_to_end() -> None:
+    """`scan()` UÇTAN UCA koşuyor mu — mediapipe/cv2 OLMADAN? (M-F-182)
+
+    Bu testin varlık sebebi ÖLÇÜLMÜŞ bir hata: sonda v2'de `reports`
+    başlatması düşmüştü ve ilk GERÇEK koşumda NameError verdi (G-095).
+    Sözleşme testleri ayırıcının MATEMATİĞİNİ sınıyordu; orkestrasyon
+    (manifest filtreleme · yetim ayrımı · toplama · JSON yazımı) hiç
+    koşulmuyordu çünkü mediapipe'sız ortamda koşulamıyordu.
+
+    Enjeksiyon dikişi o yolu koşulabilir yaptı. Sahte detektör GERÇEKÇİ
+    zarf üretir: 0-poz · 1-poz · 2-poz kareleri.
+    """
+    import second_person as sp  # noqa: PLC0415
+
+    class _P:
+        def __init__(self, x, y, vis=0.95):
+            self.x, self.y, self.visibility = x, y, vis
+
+    def _body(cx, *, mirrored=False):
+        pts = [_P(cx, 0.0) for _ in range(33)]
+        conf = {11: (-0.10, 0.20), 13: (-0.14, 0.02), 15: (-0.16, -0.16),
+                12: (0.10, 0.20), 14: (0.15, 0.38), 16: (0.18, 0.55),
+                23: (-0.07, 0.55), 24: (0.07, 0.55), 25: (-0.08, 0.78),
+                26: (0.08, 0.78), 27: (-0.09, 1.0), 28: (0.09, 1.0)}
+        if mirrored:
+            conf = {sp.MIRROR_SWAP.get(i, i): (-dx, dy)
+                    for i, (dx, dy) in conf.items()}
+        for i, (dx, dy) in conf.items():
+            pts[i] = _P(cx + dx, dy)
+        return pts
+
+    with tempfile.TemporaryDirectory() as td:
+        lib = Path(td) / "lib"
+        (lib / "raw").mkdir(parents=True)
+        (lib / "manifests").mkdir()
+        # iki MANİFESTLİ klip + bir YETİM (manifestsiz)
+        for vid in ("clipA", "clipB", "orphanX"):
+            (lib / "raw" / f"{vid}.mp4").write_bytes(b"\x00")
+        for vid in ("clipA", "clipB"):
+            (lib / "manifests" / f"{vid}.json").write_text(
+                json.dumps({"video_id": vid,
+                            "stages": [{"detail": {"durationS": 10.0}}]}),
+                encoding="utf-8")
+
+        def fake_clip_probe(path, duration_s):
+            """GERÇEKÇİ zarf: clipA aynalı ikinci-poz, clipB tek-poz+boş."""
+            def detect(i):
+                if path.stem == "clipA":
+                    if i % 4 == 0:
+                        return []                       # 0-poz
+                    if i % 4 == 1:
+                        return [_body(0.3)]             # 1-poz
+                    return [_body(0.3), _body(0.7, mirrored=True)]  # 2-poz
+                return [] if i % 3 == 0 else [_body(0.4)]
+            return sp._probe_with(path, duration_s=duration_s, n_frames=12,
+                                  detect=detect)
+
+        out = lib / "report.json"
+        rc = sp.scan(lib, model=Path("unused.task"), n_frames=12,
+                     out_path=str(out), clip_probe=fake_clip_probe)
+        check(rc == 0, "scan() mediapipe/cv2 OLMADAN uçtan uca 0 ile dönüyor "
+                       "(NameError sınıfı hata artık bu ortamda yakalanır)")
+        check(out.exists(), "scan() raporu GERÇEKTEN yazıyor")
+
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        check(doc["clips"] == 2,
+              "payda yalnız MANİFESTLİ klipleri sayıyor (yetim paydada değil)")
+        check(doc["orphans"] == ["orphanX"],
+              "yetim AYRICA raporlanıyor, sessizce atlanmıyor")
+        by_id = {r["videoId"]: r for r in doc["reports"]}
+        check("AYNA" in by_id["clipA"]["mirrorReading"],
+              "2-pozlu aynalı klip AYNA-BENZERİ okunuyor (uçtan uca)")
+        check(by_id["clipB"]["framesWithTwoPoses"] == 0,
+              "tek-pozlu klipte iki-poz sayısı 0 — sahte pozitif yok")
+        check(by_id["clipA"]["sampledFrames"] == 12
+              and by_id["clipA"]["framesWithAnyPose"] == 9,
+              "0-poz kareleri sayılıyor ama pozlu-kare paydasına girmiyor")
+
+
 def check_triage_profile() -> None:
     """M-F-27: CLI profil yolu — eşikler gerçekten uygulanıyor mu.
 
@@ -720,6 +800,7 @@ def main() -> int:
         check_rig_version_gate()
         check_second_person_probe()
         check_mirror_discriminator()
+        check_probe_injection_end_to_end()
 
     print("[4] triyaj profili (CLI yolu)")
     check_triage_profile()

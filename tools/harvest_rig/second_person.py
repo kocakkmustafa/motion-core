@@ -154,6 +154,41 @@ def _shape_dist(a, b) -> float | None:
     return float(np.linalg.norm(a - b, axis=1).mean())
 
 
+
+def _probe_with(path: Path, *, duration_s: float, n_frames: int,
+                detect) -> SecondPersonReport:
+    """Poz-listesi üreten bir `detect` ile raporu doldurur (kamera YOK).
+
+    Neden ayrı: `probe()`'un mediapipe+cv2 gerektiren KURULUM kısmı ile
+    RAPORLAMA mantığı ayrışıyor. Raporlama mantığı bu fonksiyonda ve
+    enjekte edilmiş bir detektörle sınanabiliyor — G-095'in dersi
+    ("sınanamayan yolu sınanmış saymak") yapısal olarak kapanıyor.
+    """
+    rep = SecondPersonReport(videoId=path.stem)
+
+    def core_vis(pts) -> float:
+        vals = [pts[i].visibility for i in CORE_IDS if i < len(pts)]
+        return float(np.mean(vals)) if vals else 0.0
+
+    for i in range(n_frames):
+        poses = detect(i) or []
+        rep.sampledFrames += 1
+        if not poses:
+            continue
+        rep.framesWithAnyPose += 1
+        rep.firstPoseCoreVisibility.append(core_vis(poses[0]))
+        if len(poses) >= 2:
+            rep.framesWithTwoPoses += 1
+            rep.secondPoseCoreVisibility.append(core_vis(poses[1]))
+            p2 = _normalized_shape(poses[1])
+            dm = _shape_dist(_normalized_shape(poses[0], mirror=True), p2)
+            dd = _shape_dist(_normalized_shape(poses[0]), p2)
+            if dm is not None and dd is not None:
+                rep.mirroredShapeDist.append(dm)
+                rep.directShapeDist.append(dd)
+    return rep
+
+
 def probe(
     path: Path,
     *,
@@ -161,13 +196,22 @@ def probe(
     duration_s: float,
     n_frames: int = 24,
     min_confidence: float = 0.3,
+    detector=None,
 ) -> SecondPersonReport:
     """Klibi örnekleyip `num_poses=2` ile ikinci-kişi dağılımını ölçer.
 
     `min_confidence` ÜRETİM triyajıyla AYNI (0.3) tutulur: sondanın işi yeni
     bir rejim icat etmek değil, üretimin GÖRMEDİĞİ ikinci pozu aynı
     duyarlılıkta saymaktır.
+
+    `detector`: TEST DİKİŞİ (M-F-182). `None` ise gerçek MediaPipe
+    landmarker kurulur — **üretim davranışı değişmez.** Verilirse
+    `detector(rgb) -> list[list[landmark]]` çağrılır; böylece bu yol
+    mediapipe OLMADAN da koşulabilir.
     """
+    if detector is not None:
+        return _probe_with(path, duration_s=duration_s, n_frames=n_frames,
+                           detect=detector)
     import mediapipe as mp  # noqa: PLC0415 - ağır import yalnız gerektiğinde
     from mediapipe.tasks import python as mp_python  # noqa: PLC0415
     from mediapipe.tasks.python import vision  # noqa: PLC0415
@@ -222,7 +266,7 @@ def probe(
 
 
 def main() -> int:
-    """Bir hasat kütüphanesinin `raw/` dizinini tarar, JSON rapor yazar."""
+    """CLI sarmalayıcı — iş `scan()`te (M-F-182 test dikişi)."""
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__)
@@ -232,8 +276,32 @@ def main() -> int:
     ap.add_argument("--frames", type=int, default=24)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+    return scan(Path(args.library).expanduser(),
+                model=Path(args.model).expanduser(),
+                n_frames=args.frames, out_path=args.out)
 
-    lib = Path(args.library).expanduser()
+
+def scan(lib: Path, *, model: Path, n_frames: int = 24,
+         out_path=None, clip_probe=None) -> int:
+    """Kütüphaneyi tarar, JSON rapor yazar.
+
+    `clip_probe`: TEST DİKİŞİ. `None` ise gerçek `probe()` kullanılır
+    (üretim davranışı değişmez). Verilirse `clip_probe(path, duration_s)`
+    çağrılır — böylece ORKESTRASYON katmanı (manifest filtreleme, yetim
+    ayrımı, toplama, JSON yazımı) mediapipe/cv2 OLMADAN uçtan uca
+    koşulabilir.
+
+    ⚠️ Parametre adı `out_path` — `out` DEĞİL. İlk refaktörümde `out`
+    demiştim ve gövdedeki rapor sözlüğü olan yerel `out` ile GÖLGELENDİ;
+    uçtan uca test bunu İLK koşumda yakaladı (dikişin kendisi işini
+    hemen kanıtladı).
+
+    ⚠️ Bu dikişin varlık sebebi ÖLÇÜLMÜŞ bir hatadır: v2 refaktöründe
+    `reports` başlatması düşmüştü ve ilk gerçek koşumda NameError verdi
+    (G-095). Sözleşme testleri ayırıcının MATEMATİĞİNİ sınıyordu, bu
+    orkestrasyonu sınamıyordu — ve o yol mediapipe'sız ortamda hiç
+    çalıştırılamıyordu. Artık çalıştırılabiliyor.
+    """
     raw = lib / "raw"
     if not raw.is_dir():
         print(f"⛔ raw/ yok: {raw}")
@@ -282,8 +350,9 @@ def main() -> int:
             cnt = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
             cap.release()
             dur = (cnt / fps) if fps else 10.0
-        r = probe(v, model_path=Path(args.model).expanduser(),
-                  duration_s=dur, n_frames=args.frames)
+        r = (clip_probe(v, dur) if clip_probe is not None
+             else probe(v, model_path=model, duration_s=dur,
+                        n_frames=n_frames))
         s = r.summary()
         reports.append(s)
         sv = s["secondPoseCoreVisibility"]
@@ -323,7 +392,8 @@ def main() -> int:
         },
         "reports": reports,
     }
-    dest = Path(args.out).expanduser() if args.out else lib / "second-person-probe.json"
+    dest = (Path(out_path).expanduser() if out_path
+            else lib / "second-person-probe.json")
     dest.write_text(json.dumps(out, ensure_ascii=False, indent=2),
                     encoding="utf-8")
     print(f"\nham-oran dağılımı: {out['shareDistribution']}")
