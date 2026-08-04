@@ -202,5 +202,14 @@ void main() {
       expect(await store.unreadableRecords(), 0);
       expect(await store.recent(), isEmpty);
     });
+
+    test('yol DİZİNSE → FileSystemException (yanlış-ok sınıfı; M-F-251 — '
+        'var olan ama okunamayan yol "ilk açılış" gibi OKUNAMAZ)', () async {
+      final File path = f('asdir');
+      await Directory(path.path).create();
+      final JsonlSessionStore store = JsonlSessionStore(path);
+      expect(store.recent(), throwsA(isA<FileSystemException>()));
+      expect(store.unreadableRecords(), throwsA(isA<FileSystemException>()));
+    });
   });
 }
