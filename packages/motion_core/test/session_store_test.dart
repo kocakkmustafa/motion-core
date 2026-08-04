@@ -145,4 +145,62 @@ void main() {
       expect(plank.unitsCompleted, plank.workedSeconds);
     });
   });
+
+  group('unreadableRecords — M-F-228 (0.10.0): kayıp SAYILIR, susulmaz', () {
+    late Directory d2;
+    setUp(() async {
+      d2 = await Directory.systemTemp.createTemp('mc_unread');
+    });
+    tearDown(() async {
+      await d2.delete(recursive: true);
+    });
+    File f(String name) => File('${d2.path}/$name.jsonl');
+
+    test('temiz geçmiş → 0 (aşırı-kısıtlı ikiz: okunabilir satır kayıp sayılmaz)',
+        () async {
+      final JsonlSessionStore store = JsonlSessionStore(f('clean'));
+      await store.append(rec('jab'));
+      await store.append(rec('cross'));
+      expect(await store.unreadableRecords(), 0);
+      expect((await store.recent()).length, 2);
+    });
+
+    test('1 sağlam + 3 bozuk → records 1 + unreadable 3 (kısmi hâl)', () async {
+      final File file = f('partial');
+      final JsonlSessionStore store = JsonlSessionStore(file);
+      await store.append(rec('jab'));
+      await file.writeAsString(
+          '${await file.readAsString()}garbage\n{"v":2,"broken":\n{half\n');
+      expect(await store.unreadableRecords(), 3);
+      expect((await store.recent()).length, 1);
+    });
+
+    test('TÜM satırlar bozuk → records 0 + unreadable N '
+        '(uç değer kısmi-dalı susturamaz — JabLab uç-durum kuralı)', () async {
+      final File file = f('allbad');
+      await file.writeAsString('x\ny\nz\n');
+      final JsonlSessionStore store = JsonlSessionStore(file);
+      expect(await store.unreadableRecords(), 3);
+      expect(await store.recent(), isEmpty);
+    });
+
+    test('bilinmeyen sürüm KAYIPTIR; v1 GÖÇÜLÜR, kayıp sayılmaz', () async {
+      final File file = f('versions');
+      const String v1 = '{"v":1,"lessonId":"old",'
+          '"completedAt":"2026-07-01T00:00:00.000Z","workedSeconds":60,'
+          '"roundsCompleted":2,"plannedRounds":3}';
+      const String v9 = '{"v":9,"lessonId":"future"}';
+      await file.writeAsString('$v1\n$v9\n');
+      final JsonlSessionStore store = JsonlSessionStore(file);
+      expect(await store.unreadableRecords(), 1);
+      final List<SessionRecord> all = await store.recent();
+      expect(all.single.lessonId, 'old');
+    });
+
+    test('dosya YOK → 0/0 (ilk açılış, kayıp değildir)', () async {
+      final JsonlSessionStore store = JsonlSessionStore(f('missing'));
+      expect(await store.unreadableRecords(), 0);
+      expect(await store.recent(), isEmpty);
+    });
+  });
 }

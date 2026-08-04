@@ -121,6 +121,21 @@ abstract interface class SessionStore {
 
   /// Total worked seconds for one lesson — what progress gates ask.
   Future<int> workedSecondsFor(String lessonId);
+
+  /// How many stored records THIS store could not read (corrupt lines,
+  /// versions this reader cannot parse). REQUIRED with no default — a
+  /// default of 0 would let a data-losing implementation stay silent on
+  /// the one question it must answer (M-F-228; JabLab's measured case:
+  /// 40 of 50 lines corrupt and the summary said "10 sessions" with full
+  /// confidence — the "you did less" lie). Stores whose read path is
+  /// structurally all-or-nothing return 0 AS A DECLARATION, not a default.
+  ///
+  /// Surfaces derive their own three-state reading from this + open
+  /// failure: ok (opened, 0) · partial(n) (opened, n>0 — totals are a
+  /// floor, say so) · unavailable (open failed — "hiç yapmadın ≠
+  /// bilmiyorum" applies, no numbers shown). The tri-state TYPE stays
+  /// app-side until the shell arbitration promotes a shared surface.
+  Future<int> unreadableRecords();
 }
 
 /// Append-only JSONL store (family ruling: no third-party DB — a session
@@ -163,7 +178,7 @@ final class JsonlSessionStore implements SessionStore {
 
   @override
   Future<List<SessionRecord>> recent({int? limit}) async {
-    final List<SessionRecord> all = await _readAll();
+    final List<SessionRecord> all = (await _readAll()).records;
     all.sort((SessionRecord a, SessionRecord b) =>
         b.completedAt.compareTo(a.completedAt));
     if (limit == null || limit >= all.length) return all;
@@ -173,24 +188,36 @@ final class JsonlSessionStore implements SessionStore {
   @override
   Future<int> workedSecondsFor(String lessonId) async {
     int total = 0;
-    for (final SessionRecord r in await _readAll()) {
+    for (final SessionRecord r in (await _readAll()).records) {
       if (r.lessonId == lessonId) total += r.workedSeconds;
     }
     return total;
   }
 
-  Future<List<SessionRecord>> _readAll() async {
+  @override
+  Future<int> unreadableRecords() async => (await _readAll()).unreadable;
+
+  Future<({List<SessionRecord> records, int unreadable})> _readAll() async {
     // MUTABLE list is mandatory: recent() sorts in place. Returning
     // `const []` broke the empty-history path — the FIRST LAUNCH — in the
     // original app (a real defect its tests caught; pinned here for good).
-    if (!await _file.exists()) return <SessionRecord>[];
+    if (!await _file.exists()) {
+      // Missing file is EMPTY history, not lost history: nothing was ever
+      // written, so nothing is unreadable. First launch must read as ok/0.
+      return (records: <SessionRecord>[], unreadable: 0);
+    }
     final List<SessionRecord> out = <SessionRecord>[];
+    int skipped = 0;
     for (final String raw in (await _file.readAsString()).split('\n')) {
       final String line = raw.trim();
       if (line.isEmpty) continue;
       // A CORRUPT LINE NEVER WIPES HISTORY: declaring months of records
       // unreadable over one bad line loses the same data twice. Skip the
       // line, read the rest.
+      //
+      // BUT NEVER SILENTLY (M-F-228 / JabLab J-092): skipped lines are
+      // COUNTED and carried to the surface. The resilience decision is
+      // right; hiding the resilience is the "you did less" lie.
       try {
         final Map<String, dynamic> j =
             (jsonDecode(line) as Map).cast<String, dynamic>();
@@ -198,13 +225,20 @@ final class JsonlSessionStore implements SessionStore {
         if (v == schemaVersion) {
           out.add(SessionRecord.fromJson(j));
         } else if (v == 1) {
+          // v1 is MIGRATED, not lost — readable history is never counted
+          // as unreadable (the over-strict twin: counting readable lines
+          // would fabricate loss where none exists).
           out.add(SessionRecord.fromV1Json(j));
+        } else {
+          // Unknown version IS a loss for this reader: the line may be
+          // intact, but this version cannot read it — for the user the
+          // result is the same, an incomplete summary.
+          skipped++;
         }
-        // else: unknown version — skipped, never crashed on.
       } on Object catch (_) {
-        continue;
+        skipped++;
       }
     }
-    return out;
+    return (records: out, unreadable: skipped);
   }
 }
