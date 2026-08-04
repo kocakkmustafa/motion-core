@@ -10,6 +10,7 @@ eşiği — hepsi config'te durur. Yeni bir test eklemek kod değişimi gerektir
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +19,24 @@ import numpy as np
 
 from . import geometry as geo
 from . import landmarks as lm
+
+#: M-F-56/M-F-225 çevirme günü değişecek TEK satır budur (True olur).
+#: Dağınık env-okuma yasağı (M-F-227): MOCORE_ANATOMICAL'ı okuyan her araç
+#: `anatomical_mode()` çağırır; kendi `os.environ.get(...)=="1"` satırını yazmaz.
+ANATOMICAL_DEFAULT = False
+
+
+def anatomical_mode(env: str | None = None) -> bool:
+    """MOCORE_ANATOMICAL'ın TEK kanonik okuması.
+
+    '1' → anatomik · '0' → kamera (AÇIK opt-out; M-F-53 şart-b iki-mod
+    koşulabilirliği çevirme sonrası da korunur) · unset/boş → ANATOMICAL_DEFAULT.
+    `env` parametresi yalnız test içindir (ortamı kirletmeden sınanır).
+    """
+    v = os.environ.get("MOCORE_ANATOMICAL") if env is None else env
+    if v is None or v == "":
+        return ANATOMICAL_DEFAULT
+    return v == "1"
 
 SCHEMA_VERSION = 1
 
@@ -180,6 +199,10 @@ class Measurement:
     valid: bool
     reason: str | None = None
     unit: str = "deg"
+    #: M-F-227/M-F-241: sayı hangi çerçeve-modundan geldi — "camera" ya da
+    #: "anatomical:<frameRef>". Sessiz mod-değişimi yasağının damga ayağı:
+    #: çevirme günü sayılar kaynağını üzerinde taşır, rapor ayrıca sormaz.
+    frame_basis: str = "camera"
 
 
 def evaluate(metric: MetricDef, frame: geo.Frame, *,
@@ -209,6 +232,11 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
         # Doğrudan 3D: izdüşüm bilgi kaybıdır. Menteşe eklemde fleksiyon tek
         # serbestlik derecesidir, düzleme indirmeye gerek yok.
         plane = "none"
+    # M-F-241: damga, modun bu metriğe GERÇEKTEN dokunup dokunmadığını söyler —
+    # anatomical=True iken camera-çerçeveli metrik "camera" kalır (dokunulmaz).
+    basis = ("anatomical:" + metric.frame_ref
+             if anatomical and metric.frame_ref in ("gravityYaw", "proximal", "none")
+             else "camera")
     conf = frame.confidence(metric.indices)
     # Sanal noktalar bileşenlerinin ortalamasıdır; gerçek noktalar kendileridir.
     pts = [frame.xyz[list(lm.resolve(p))].mean(axis=0) for p in metric.points]
@@ -254,7 +282,7 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
 
     def _invalid(reason: str) -> Measurement:
         v = float("nan") if mask_invalid else value
-        return Measurement(metric.id, v, conf, False, reason, metric.unit)
+        return Measurement(metric.id, v, conf, False, reason, metric.unit, basis)
 
     if not np.isfinite(value):
         return _invalid(INVALID_DEGENERATE)
@@ -267,7 +295,7 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
         lo, hi = metric.value_range
         if not (lo <= value <= hi):
             return _invalid(INVALID_OUT_OF_RANGE)
-    return Measurement(metric.id, value, conf, True, None, metric.unit)
+    return Measurement(metric.id, value, conf, True, None, metric.unit, basis)
 
 
 @dataclass(frozen=True)

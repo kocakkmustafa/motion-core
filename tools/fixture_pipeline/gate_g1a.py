@@ -28,7 +28,7 @@ from mocore import synth
 
 #: M-F-53 şart (b): kapı hem eski (dünya ekseni) hem yeni (anatomik) izdüşümle
 #: koşulabilmeli ki göçün kalibre eşiklere etkisi ÖLÇÜLEBİLSİN.
-ANATOMICAL = os.environ.get("MOCORE_ANATOMICAL") == "1"
+ANATOMICAL = mz.anatomical_mode()  # M-F-241: tek kanonik okuma (dağınık env-okuma yasağı)
 
 #: Sentetik iskeletin varsayılan ölçüleri — analitik beklentiler bunlara dayanır.
 _B = synth.BodyProportions()
