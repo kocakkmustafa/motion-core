@@ -60,8 +60,12 @@
 |---|---|
 | Gravita | ✅ sealed yerel tip → 0.11.0 tipine doğal dokunuşta geçer |
 | Choreia | ✅ yerel üç-durum → 0.11.0 tipine doğal dokunuşta geçer |
-| JabLab | yerel üç-hâl modeli normatif girdiydi — adopsiyon = yerel store
-emekliliği (kendi turunda; M-F-246 sözü: kırılmayacak) |
+| JabLab | ✅ TAMAM (2026-08-04, `325542d`): yerel store EMEKLİ, pin `f13bdc9`
+(motion_core-v0.11.0'ı ebeveyn olarak taşır — tek-pin çözümü); v1→v2 veri-göçü
+5 testle + CİHAZDA doğrulandı ("göç yanlış çalışsaydı J-092 mekanizması kendi
+kurbanı olurdu"); değişmez-7 CASUS-DEPO ile sınanıyor (ürün unreadableRecords'u
+gerçekten çağırmazsa test düşer); RecordedSummary app'te KALDI (sunum = app'in
+sesi — widget-terfi-etmez sınırının aynısı) |
 | Lissom | SessionStore tüketicisi (ilk adaptör 0.9.0) — üç-hâl yüzeyi kendi
 doğal dokunuşunda |
 | Ostinato | SessionStore adopsiyonu YASAK (tüketici yüzeyi yok — M-F-236) |
