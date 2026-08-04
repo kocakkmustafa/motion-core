@@ -91,9 +91,16 @@ def rig_version() -> dict[str, Any]:
     # ETKİ olur). Yerel `origin/main` yoksa bilinmiyor denir, UYDURULMAZ.
     behind: int | None = None
     origin_known = git("rev-parse", "--verify", "--quiet", "origin/main") is not None
+    lineage: bool | None = None
     if origin_known:
         cnt = git("rev-list", "--count", "HEAD..origin/main")
         behind = int(cnt) if cnt and cnt.isdigit() else None
+        # C-114 sınıfı körlük (M-F-238): `HEAD..origin/main` sayımı TEK YÖNLÜ —
+        # HEAD main'in ARDILIYSA (merge edilmemiş dal) sayım 0 döner ve ağaç
+        # "güncel" görünür; oysa kararlar main'de OLMAYAN kurallarla verilir.
+        # Soy sorusu doğrudan sorulur: HEAD, origin/main'in atası mı?
+        # (git() exit!=0'da None döner; is-ancestor çıktısızdır → "" = evet.)
+        lineage = git("merge-base", "--is-ancestor", "HEAD", "origin/main") is not None
     return {
         "sha": sha,
         "dirty": bool(git("status", "--porcelain", "--", str(here))),
@@ -102,6 +109,9 @@ def rig_version() -> dict[str, Any]:
         # None = yerel origin/main yok → BİLİNMİYOR (0 ile karıştırılmasın).
         "behindOriginMain": behind,
         "originMainKnown": origin_known,
+        # True = HEAD, origin/main soy-ağacında (atası ya da kendisi).
+        # False = merge edilmemiş/ayrık dal — behind=0 olsa bile main DEĞİL.
+        "onMainLineage": lineage,
     }
 
 
@@ -124,6 +134,18 @@ def rig_staleness_warning() -> str | None:
             f"verilecek ve çıktıya öyle damgalanacak.\n"
             f"    Meşru dal-testi ise sorun yok; DEĞİLSE origin/main-pinli "
             f"izole bir worktree'den koşun (M-F-139 genellemesi)."
+        )
+    # M-F-238: behind=0 GÜNCEL demek DEĞİL — ardıl/ayrık dal da 0 verir
+    # (C-114 sınıfı körlük). Soy alanı AÇIKÇA False ise yüksek sesle söyle;
+    # None (eski damga / bilinmiyor) bu dalı tetiklemez.
+    if v.get("behindOriginMain") == 0 and v.get("onMainLineage") is False:
+        return (
+            f"⚠️  İLERİ/AYRIK RIG: HEAD, origin/main'in ATASI DEĞİL — bu ağaç "
+            f"main'e merge EDİLMEMİŞ kod içeriyor (dal: {v.get('branch')}, "
+            f"HEAD: {str(v.get('sha'))[:8]}). behindOriginMain=0 bunu GÖREMEZ.\n"
+            f"    Kararlar main'de OLMAYAN kurallarla verilecek ve çıktıya öyle "
+            f"damgalanacak. Meşru dal-testi ise sorun yok; DEĞİLSE "
+            f"origin/main-pinli izole worktree'den koşun (M-F-139)."
         )
     if not v.get("originMainKnown"):
         return ("⚠️  origin/main yerel olarak YOK — rig güncelliği "

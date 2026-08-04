@@ -87,6 +87,29 @@ def main() -> int:
     _check("elle verilen damga ezildi",
            m2.stages[-1].detail["classifiedBy"]["sha"] == "elle")
 
+    print("[7] İLERİ/AYRIK dal (behind=0 ama soy-dışı) SESSİZ GEÇMEZ — M-F-238")
+    # C-114 sınıfı: `HEAD..origin/main` sayımı ardıl dalda 0 döner; yalnız
+    # sayıma bakan nöbet, merge edilmemiş kuralların kararlarını "güncel"
+    # damgalar. Soy alanı açıkça False ise uyarı ŞART.
+    M.rig_version = lambda: {"sha": "d" * 40, "dirty": False, "vendored": False,
+                             "branch": "feat/unmerged", "behindOriginMain": 0,
+                             "originMainKnown": True, "onMainLineage": False}
+    w7 = M.rig_staleness_warning()
+    _check("ileri/ayrık dalda uyarı yok", w7 is not None)
+    _check("ileri/ayrık uyarısı ATASI DEĞİL demiyor",
+           w7 is not None and "ATASI DEĞİL" in w7)
+    _check("ileri/ayrık uyarısı dal adını söylemiyor",
+           w7 is not None and "feat/unmerged" in w7)
+
+    print("[8] main-soyunda behind=0 SESSİZ kalır (ayırt-edicilik ikizi)")
+    # [7]'nin pozitif ikizi: uyarı, soy-içi güncel ağaçta SUSMALI — susmuyorsa
+    # nöbet ayırt etmiyor, gürültü üretiyor demektir.
+    M.rig_version = lambda: {"sha": "e" * 40, "dirty": False, "vendored": False,
+                             "branch": "main", "behindOriginMain": 0,
+                             "originMainKnown": True, "onMainLineage": True}
+    _check("soy-içi güncel ağaçta gereksiz uyarı",
+           M.rig_staleness_warning() is None)
+
     M.rig_version = real
 
     if FAILURES:
