@@ -201,10 +201,25 @@ final class JsonlSessionStore implements SessionStore {
     // MUTABLE list is mandatory: recent() sorts in place. Returning
     // `const []` broke the empty-history path — the FIRST LAUNCH — in the
     // original app (a real defect its tests caught; pinned here for good).
-    if (!await _file.exists()) {
+    // M-F-251 (Gravita'nın simülatör avı): `File.exists()` DİZİN için false
+    // döner — yol var-ama-dosya-değilken "hiç yazılmamış" dalına girmek,
+    // var olan ama okunamayan geçmişi `ok` diye okutur (yanlış-ok sınıfı).
+    // Yol-tipi açıkça sorulur: notFound = ilk açılış; dosya-dışı her şey
+    // AÇILAMAZ ve yüksek sesle söylenir — tüketicilerin mevcut
+    // unavailable-yolu (açılış istisnası) tam bunun için var.
+    final FileSystemEntityType pathType =
+        await FileSystemEntity.type(_file.path);
+    if (pathType == FileSystemEntityType.notFound) {
       // Missing file is EMPTY history, not lost history: nothing was ever
       // written, so nothing is unreadable. First launch must read as ok/0.
       return (records: <SessionRecord>[], unreadable: 0);
+    }
+    if (pathType != FileSystemEntityType.file) {
+      throw FileSystemException(
+        'session store yolu okunabilir bir dosya değil ($pathType) — '
+        'bu ilk-açılış DEĞİL, açılamayan bir geçmiştir (unavailable yolu)',
+        _file.path,
+      );
     }
     final List<SessionRecord> out = <SessionRecord>[];
     int skipped = 0;
