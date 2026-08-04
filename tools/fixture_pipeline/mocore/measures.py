@@ -98,6 +98,19 @@ class MetricDef:
             )
         for p in self.points:
             lm.resolve(p)  # bilinmeyen isimde patlar (sanal isimler de geçerli)
+        # L-190/M-F-233: TÜKETİLEMEYEN çerçeve beyanı yükleme anında reddedilir —
+        # uygulanmayan beyan süse döner ve sessizce yanlışlaşır (L-181 sınıfı).
+        if self.kind == "height_diff_norm" and self.frame_ref == "none":
+            raise ValueError(
+                f"{self.id}: height_diff_norm 'frameRef: none' taşıyamaz — dikey, "
+                "bir çerçeve ister; camera/gravityYaw/proximal beyan edin (L-190)."
+            )
+        if (self.kind == "distance_norm" and self.plane == "none"
+                and self.frame_ref != "none"):
+            raise ValueError(
+                f"{self.id}: düzlemsiz distance_norm rotasyon-DEĞİŞMEZİDİR; "
+                f"'frameRef: {self.frame_ref}' boş iddiadır — 'none' yazın (L-190)."
+            )
 
     @property
     def indices(self) -> tuple[int, ...]:
@@ -211,9 +224,17 @@ def evaluate(metric: MetricDef, frame: geo.Frame, *,
         # sorularının boy-bağımsız cevabı. Yer düzlemi bilinmediği için mutlak
         # yükseklik değil, vücut-içi referansa göre ölçülür.
         t = geo.torso_length(frame.xyz)
-        value = (pts[0][1] - pts[1][1]) / t if t > 1e-9 else float("nan")
-        # +y aşağı bakar; işareti "yukarısı pozitif" olacak şekilde çevir.
-        value = -value
+        if t <= 1e-9:
+            value = float("nan")
+        elif axes is not None:
+            # L-190/M-F-233: "dikey", metriğin BEYAN ETTİĞİ çerçevenin SI
+            # ekseni — beyan süs değil. gravityYaw'da SI=[0,-1,0] olduğundan
+            # ham-y yoluyla BİT-AYNI (testle çivili); davranış farkı yalnız
+            # proximal beyanında doğar (gövde-ekseni dikeyi).
+            value = float(np.dot(pts[0] - pts[1], axes[1])) / t
+        else:
+            # +y aşağı bakar; işaret "yukarısı pozitif" olacak şekilde çevrik.
+            value = -((pts[0][1] - pts[1][1]) / t)
     elif metric.kind == "line_deviation_norm":
         # Nokta–doğru uzaklığı / gövde uzunluğu. Plank'ta kalçanın omuz–ayak
         # bileği hattından sapması gibi "hizada mı?" ölçüleri.
