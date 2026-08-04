@@ -20,10 +20,15 @@ import numpy as np
 from . import geometry as geo
 from . import landmarks as lm
 
-#: M-F-56/M-F-225 çevirme günü değişecek TEK satır budur (True olur).
+#: M-F-258 (2026-08-04): ÇEVRİLDİ — M-F-56 kriterleri karşılandı (kriter-1:
+#: G-090 + iki-modlu taze kapı koşumları [M-F-227]; kriter-2: Lissom'un
+#: L-199..203 hasat-karar çevrimi açık env=1'le TEMİZ + iki-yönlü bayrak-
+#: canlılık + frameBasis damgalı). Karar zinciri: M-F-225 (ÇEVİR hükmü,
+#: M-F-222 delegasyonu) → M-F-227/230/241 (kanıt+hazırlık) → M-F-258 (icra).
+#: '0' opt-out'u YAŞAR (M-F-53 şart-b; flip-simülasyon testli).
 #: Dağınık env-okuma yasağı (M-F-227): MOCORE_ANATOMICAL'ı okuyan her araç
 #: `anatomical_mode()` çağırır; kendi `os.environ.get(...)=="1"` satırını yazmaz.
-ANATOMICAL_DEFAULT = False
+ANATOMICAL_DEFAULT = True
 
 
 def anatomical_mode(env: str | None = None) -> bool:
