@@ -119,6 +119,12 @@ def body_axes(xyz: np.ndarray, mode: str = "gravityYaw") -> np.ndarray:
     sürümde tam bu oldu ve kapı yakaladı (A1 60,000° hata, A9 1 ölü metrik).
     Çerçeve yalnız kişinin YÖNELİMİNİ (yaw) izlemeli, duruşunu değil.
 
+    ⚠️ BEYAN EDİLEN VARSAYIM (L-190/M-F-233): dünya-y = yerçekimi, yani kamera
+    roll≈0. gravityYaw çerçevesi ROLL DÜZELTMEZ — telefon yatıksa TÜM
+    gravityYaw metrikleri yatık bir "dikey"le ölçer. Bu bilinçli bir sınırdır
+    (SI'yı gövdeden türetmek yukarıdaki tuzağa düşer); gerçek-dünya roll
+    dağılımı cihaz-günü ölçüm kalemidir.
+
     `mode` (M-F-54 taksonomisi):
       gravityYaw : SI = yerçekimi dikeyi. POSTÜR metrikleri için — gövdenin
                    dikeyden sapmasını ölçen metrik, gövdeyle dönen bir
