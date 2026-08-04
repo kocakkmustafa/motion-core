@@ -140,6 +140,39 @@ def main() -> int:
           (not dg_cam.valid) and (not dg_ana.valid)
           and math.isnan(dg_cam.value) and math.isnan(dg_ana.value))
 
+    # --- 6. anatomical_mode kanonik çözücü (M-F-241 flip-hazırlığı) ---
+    ok6 = (mz.anatomical_mode(env=None) is mz.ANATOMICAL_DEFAULT
+           if os.environ.get("MOCORE_ANATOMICAL") is None else True)
+    ok6 = ok6 and mz.anatomical_mode(env="1") is True
+    ok6 = ok6 and mz.anatomical_mode(env="0") is False
+    ok6 = ok6 and mz.anatomical_mode(env="") is mz.ANATOMICAL_DEFAULT
+    check("6a. anatomical_mode: '1'/'0'/boş/unset semantiği", ok6)
+    # Çevirme-günü simülasyonu: varsayılan True olsa bile '0' opt-out'u YAŞAR
+    # (M-F-53 şart-b: iki-mod koşulabilirliği çevirme sonrası da korunur).
+    saved = mz.ANATOMICAL_DEFAULT
+    try:
+        mz.ANATOMICAL_DEFAULT = True
+        ok6b = (mz.anatomical_mode(env=None) is True
+                and mz.anatomical_mode(env="0") is False
+                and mz.anatomical_mode(env="1") is True)
+    finally:
+        mz.ANATOMICAL_DEFAULT = saved
+    check("6b. flip-simülasyonu: varsayılan=True iken '0' opt-out yaşıyor", ok6b)
+
+    # --- 7. frame_basis damgası: sayı kaynağını üzerinde taşır ---
+    f = synth.build_frame(synth.Pose(trunk_lean=20.0))
+    b_cam = mz.evaluate(m_gy, f, anatomical=False).frame_basis
+    b_gy = mz.evaluate(m_gy, f, anatomical=True).frame_basis
+    m_camref = _metric("h_camref", "camera")
+    b_camref = mz.evaluate(m_camref, f, anatomical=True).frame_basis
+    b_inv = mz.evaluate(m_gy, f_dg, anatomical=True).frame_basis
+    check("7a. kamera modu → 'camera'", b_cam == "camera", b_cam)
+    check("7b. anatomik+gravityYaw → 'anatomical:gravityYaw'",
+          b_gy == "anatomical:gravityYaw", b_gy)
+    check("7c. anatomik modda camera-çerçeveli metrik 'camera' KALIR (dokunulmaz)",
+          b_camref == "camera", b_camref)
+    check("7d. geçersiz ölçüm de damga taşır", b_inv == "anatomical:gravityYaw", b_inv)
+
     print()
     if FAILS:
         print(f"KIRMIZI: {len(FAILS)} iddia düştü: {FAILS}")
