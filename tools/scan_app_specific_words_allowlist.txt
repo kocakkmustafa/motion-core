@@ -1,0 +1,18 @@
+# Pre-existing, reviewed exceptions to scan_app_specific_words.py.
+#
+# Format: <path-relative-to-repo-root>:<line-number>:<exact matched line text>
+#
+# Both current entries are developer-facing validator diagnostic strings
+# (issues.add(...) in phase_config.dart) that CITE which app's real
+# measured bug motivated a generic structural rule — the rule itself
+# (referenced-metric-must-exist, endpoint-conditions-must-not-overlap)
+# applies identically regardless of which app's config is being validated.
+# That is attribution/provenance, not app-conditioned behavior.
+#
+# This is a content-keyed allowlist, not a line-number suppression: if a
+# listed line's exact text ever changes, this entry stops matching and the
+# hit reappears in CI — it must be re-reviewed and re-added deliberately,
+# never silently carried forward. A NEW hit anywhere else is never covered
+# by this file.
+packages/motion_core/lib/src/engine/phase_config.dart:890:'yazılamaz (Gravita metrik sözlüğü kuralı)');
+packages/motion_core/lib/src/engine/phase_config.dart:944:'iki uçta birden sayılır (değişmez #9, Gravita V11)');

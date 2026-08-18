@@ -1,0 +1,22 @@
+name: motion_entitlements
+description: >-
+  Domain-independent purchase/entitlement contracts for the Yula Motion
+  family: store product refs, the unknown/loading/entitled/notEntitled/
+  recoverableError purchase state machine, restore, a local cache and a
+  server-adapter interface reserved for the future Motion Pass gate. Holds
+  no paywall design and no price.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

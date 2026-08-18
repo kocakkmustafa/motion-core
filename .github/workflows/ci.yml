@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  app-specific-word-scan:
+    name: App-özgü kelime taraması (core API sızıntı kapısı)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Süzgecin kendisi çalışıyor mu (negatif test)
+        # Hiçbir şey bulmayan bir denetim ile bozuk bir denetim dışarıdan
+        # aynı görünür — süzgeç önce kendi negatif testini geçmeli.
+        run: python3 -m unittest tools/tests/test_scan_app_specific_words.py -v
+
+      - name: packages/*/lib altında app-özgü kelime taraması
+        # 02-MOTION-AILESI-ORKESTRASYON.md §7: app-özgü kelime veya content ID
+        # core API'sine girmez. Yalnız gönderilen kod taranır (yorumlar hariç,
+        # test/docs hariç) — bkz. tools/scan_app_specific_words.py başlık notu.
+        run: python3 tools/scan_app_specific_words.py
+
+  dart-package:
+    name: ${{ matrix.package }} (dart test)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [motion_core]
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
+
+  flutter-package:
+    name: ${{ matrix.package }} (flutter test)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - motion_camera
+          - motion_feedback
+          - motion_audio
+          - motion_store
+          - motion_entitlements
+          - motion_telemetry
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
