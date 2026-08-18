@@ -1,0 +1,30 @@
+{
+  "_readme": "Explicit, evidence-based annotations for consumer_matrix.sh failures that are confirmed pre-existing and unrelated to any motion_core/motion_camera pin change on this branch. This file does NOT flip a failing step to passing — matrix_passed/task_state still reflect the real result (REJECTED if any required step failed). It only adds a documented, auditable root-cause note so a REJECTED verdict caused by an unrelated app-side gap is not mistaken for a core regression. Each entry cites the exact evidence read to reach that conclusion; add a new entry only after reading the actual failure log, never speculatively.",
+  "jablab": {
+    "android_release": {
+      "category": "pre_existing_missing_escape_hatch",
+      "owner_session": "JABLAB",
+      "evidence": "jablab/app/android/app/build.gradle.kts has a hard-stop release-signing gate (cites its own ledger id J-215) with NO 'allowDebugSigning' property override, unlike lissom and gravita's build.gradle.kts which both expose -PallowDebugSigning=true for exactly this local-verification case. Confirmed via grep: 'allowdebugsign' has zero matches in jablab's build.gradle.kts. This branch does not touch any app's android/ directory.",
+      "not_core_regression": true,
+      "suggested_owner_action": "Add the same project.hasProperty(\"allowDebugSigning\") override lissom/gravita already have, or accept that local compileability checks for jablab require a real (founder-provided) release keystore."
+    }
+  },
+  "gravita": {
+    "analyze": {
+      "category": "pre_existing_lint_debt",
+      "owner_session": "GRAVITA",
+      "evidence": "flutter analyze reports 15 pre-existing issues: unused constructor params in lib/app/onboarding_screen.dart, unused imports, underscore-prefixed local identifiers in test/contrast_test.dart, and one 'hide HistoryStatus' warning against package:motion_core (test/free_bucket_integrity_test.dart) for a name motion_core does not export. This branch made zero changes to motion_core's public API or to any gravita file.",
+      "not_core_regression": true,
+      "suggested_owner_action": "Gravita's own lint cleanup; the motion_core 'hide HistoryStatus' warning specifically should be checked against motion_core's actual current exports (unrelated to this branch either way, since this branch did not modify motion_core)."
+    }
+  },
+  "ostinato": {
+    "analyze": {
+      "category": "pre_existing_unrelated_prototype",
+      "owner_session": "OSTINATO",
+      "evidence": "flutter analyze reports 12 errors, all in tools/midi_spike/lib/main.dart: 'Target of URI doesn't exist: package:flutter_midi_command/...' and several undefined MIDI types. flutter_midi_command is not declared in ostinato's pubspec.yaml -- an unfinished experimental spike (matches the family's own roadmap note that flutter_midi_command integration was still planned, M-F-13..17 tool catalog). Unrelated to motion_core/motion_camera.",
+      "not_core_regression": true,
+      "suggested_owner_action": "Either add flutter_midi_command to pubspec.yaml (if the spike is being resumed) or exclude tools/midi_spike from `flutter analyze`'s scope until it is."
+    }
+  }
+}
