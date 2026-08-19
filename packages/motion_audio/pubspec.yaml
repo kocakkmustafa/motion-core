@@ -1,0 +1,21 @@
+name: motion_audio
+description: >-
+  Domain-independent audio primitives for the Yula Motion family: mic/MIDI
+  stream latency calibration, pitch/onset/chord primitives and a bounded
+  transient frame buffer. Holds no instrument curriculum — no notion of
+  "correct" playing, only measured signal.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

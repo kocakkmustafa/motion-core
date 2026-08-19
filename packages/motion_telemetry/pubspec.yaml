@@ -1,0 +1,22 @@
+name: motion_telemetry
+description: >-
+  Domain-independent telemetry gate for the Yula Motion family: a versioned
+  event allowlist, a consent gate, attribute redaction and an explicit-
+  action-only diagnostic export. Holds no raw sensor/health/content
+  payload — this package's job is to make sure such payloads can never
+  leave the device through it.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

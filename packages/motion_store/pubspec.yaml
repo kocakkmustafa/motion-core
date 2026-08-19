@@ -1,0 +1,21 @@
+name: motion_store
+description: >-
+  Domain-independent local persistence contracts for the Yula Motion
+  family: an append-only provenance journal, a rebuildable projection store,
+  fail-closed migration, export/delete and a secure-key adapter interface.
+  Holds no cloud-sync decision — everything here is local-first.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

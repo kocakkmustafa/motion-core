@@ -1,0 +1,22 @@
+name: motion_feedback
+description: >-
+  Domain-independent feedback delivery arbitration for the Yula Motion
+  family: cue priority, bundled-audio/haptic references, ducking and the
+  one-correction-at-a-time policy. Holds no product name, lesson text or
+  model judgment — callers decide *what* is wrong, this package decides
+  *whether and when* a correction is actually delivered.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

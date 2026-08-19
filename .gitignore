@@ -15,3 +15,9 @@ __pycache__/
 *.mov
 *.mp4
 *.m4v
+
+# Kütüphane paketleri pubspec.lock commit'lemez (dart.dev/guides/libraries/
+# private-files#pubspeclock) — motion_camera zaten bu kuralı taşıyordu, yeni
+# paketler için tek noktadan uygulanıyor. motion_core'un ZATEN İZLENEN kendi
+# pubspec.lock'ı bundan etkilenmez (gitignore izlenen dosyayı geri almaz).
+packages/*/pubspec.lock
