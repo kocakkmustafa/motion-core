@@ -5,7 +5,7 @@ description: >-
   action-only diagnostic export. Holds no raw sensor/health/content
   payload — this package's job is to make sure such payloads can never
   leave the device through it.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:

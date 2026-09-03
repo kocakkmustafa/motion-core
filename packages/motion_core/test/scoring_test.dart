@@ -5,6 +5,151 @@ import 'package:test/test.dart';
 
 import 'helpers.dart';
 
+/// Frozen copy of the pre-remediation full-grid implementation.
+///
+/// The production implementation may change its storage shape, but every
+/// in-band arithmetic operation, predecessor tie-break and reported raw path
+/// cost must remain exactly equivalent to this oracle.
+DtwResult _legacyFullGridAlign(
+  Dtw dtw,
+  int n,
+  int m,
+  PairCost cost, {
+  int? dtUs,
+}) {
+  if (n == 0 || m == 0) {
+    return const DtwResult(
+      normalizedCost: 1.0,
+      pathRef: <int>[],
+      pathLearner: <int>[],
+      refToLearner: <int>[],
+      bandSaturated: true,
+    );
+  }
+
+  final int radius = dtw.effectiveRadius(dtUs);
+  final double slope = (n > 1) ? (m - 1) / (n - 1) : 0.0;
+  double loBand(int i) => (i * slope) - radius;
+  double hiBand(int i) => (i * slope) + radius;
+  int lowFor(int i) => math.max(0, loBand(i).floor());
+  int highFor(int i) => math.min(m - 1, hiBand(i).ceil());
+
+  final List<List<double>> acc = List<List<double>>.generate(
+    n,
+    (_) => List<double>.filled(m, double.infinity),
+    growable: false,
+  );
+
+  for (int i = 0; i < n; i++) {
+    final int lo = lowFor(i);
+    final int hi = highFor(i);
+    for (int j = lo; j <= hi; j++) {
+      final double c = cost(i, j);
+      if (i == 0 && j == 0) {
+        acc[i][j] = c;
+        continue;
+      }
+      double best = double.infinity;
+      if (i > 0 && acc[i - 1][j] + dtw.warpPenalty < best) {
+        best = acc[i - 1][j] + dtw.warpPenalty;
+      }
+      if (j > 0 && acc[i][j - 1] + dtw.warpPenalty < best) {
+        best = acc[i][j - 1] + dtw.warpPenalty;
+      }
+      if (i > 0 && j > 0 && acc[i - 1][j - 1] < best) {
+        best = acc[i - 1][j - 1];
+      }
+      acc[i][j] = best.isInfinite ? double.infinity : best + c;
+    }
+  }
+
+  if (acc[n - 1][m - 1].isInfinite) {
+    return DtwResult(
+      normalizedCost: 1.0,
+      pathRef: const <int>[],
+      pathLearner: const <int>[],
+      refToLearner: List<int>.generate(
+        n,
+        (int i) => math.min(m - 1, i),
+        growable: false,
+      ),
+      bandSaturated: true,
+      bandEdgeRatio: 1.0,
+    );
+  }
+
+  final List<int> pr = <int>[];
+  final List<int> pl = <int>[];
+  int edgeTouches = 0;
+  int i = n - 1;
+  int j = m - 1;
+  while (true) {
+    pr.add(i);
+    pl.add(j);
+    if (j <= loBand(i) || j >= hiBand(i)) edgeTouches++;
+    if (i == 0 && j == 0) break;
+    if (i == 0) {
+      j -= 1;
+      continue;
+    }
+    if (j == 0) {
+      i -= 1;
+      continue;
+    }
+    final double diag = acc[i - 1][j - 1];
+    final double up = acc[i - 1][j] + dtw.warpPenalty;
+    final double left = acc[i][j - 1] + dtw.warpPenalty;
+    if (diag <= up && diag <= left) {
+      i -= 1;
+      j -= 1;
+    } else if (up <= left) {
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+  final List<int> pathRef = pr.reversed.toList(growable: false);
+  final List<int> pathLearner = pl.reversed.toList(growable: false);
+
+  final List<List<int>> buckets =
+      List<List<int>>.generate(n, (_) => <int>[], growable: false);
+  for (int k = 0; k < pathRef.length; k++) {
+    buckets[pathRef[k]].add(pathLearner[k]);
+  }
+  final List<int> refToLearner = List<int>.generate(
+    n,
+    (int idx) {
+      final List<int> bucket = buckets[idx];
+      if (bucket.isEmpty) return math.min(m - 1, (idx * slope).round());
+      return bucket[bucket.length ~/ 2];
+    },
+    growable: false,
+  );
+
+  double pathCost = 0;
+  for (int k = 0; k < pathRef.length; k++) {
+    pathCost += cost(pathRef[k], pathLearner[k]);
+  }
+  final double edgeRatio = edgeTouches / pathRef.length;
+  return DtwResult(
+    normalizedCost: pathCost / pathRef.length,
+    pathRef: pathRef,
+    pathLearner: pathLearner,
+    refToLearner: refToLearner,
+    bandSaturated: edgeRatio > dtw.saturationRatio,
+    bandEdgeRatio: edgeRatio,
+  );
+}
+
+void _expectExactAlignment(DtwResult actual, DtwResult expected) {
+  expect(actual.normalizedCost, expected.normalizedCost);
+  expect(actual.pathRef, expected.pathRef);
+  expect(actual.pathLearner, expected.pathLearner);
+  expect(actual.refToLearner, expected.refToLearner);
+  expect(actual.bandSaturated, expected.bandSaturated);
+  expect(actual.bandEdgeRatio, expected.bandEdgeRatio);
+}
+
 void main() {
   final SyntheticPose testPose = SyntheticPose.neutral.copyWith(
     leftUpperArm: math.pi / 3,
@@ -128,6 +273,176 @@ void main() {
   });
 
   group('Dtw', () {
+    test('sparse rows preserve the full-grid result and tie-break exactly', () {
+      final scenarios = <({Dtw dtw, int n, int m, int? dtUs})>[
+        (
+          dtw: const Dtw(
+            bandRadius: 1,
+            bandRadiusS: null,
+            minBandRadius: 1,
+          ),
+          n: 7,
+          m: 9,
+          dtUs: null,
+        ),
+        (
+          dtw: const Dtw(
+            bandRadius: 5,
+            bandRadiusS: null,
+            minBandRadius: 1,
+            warpPenalty: 0,
+          ),
+          n: 6,
+          m: 6,
+          dtUs: null,
+        ),
+        (
+          dtw: const Dtw(
+            bandRadius: 1,
+            bandRadiusS: 0.15,
+            minBandRadius: 1,
+            warpPenalty: 0.03,
+          ),
+          n: 11,
+          m: 5,
+          dtUs: 50000,
+        ),
+        (
+          dtw: const Dtw(
+            bandRadius: 4,
+            bandRadiusS: null,
+            minBandRadius: 1,
+          ),
+          n: 1,
+          m: 5,
+          dtUs: null,
+        ),
+      ];
+
+      for (final scenario in scenarios) {
+        double cost(int i, int j) => ((i * 3 + j * 5) % 7) / 7;
+        final DtwResult expected = _legacyFullGridAlign(
+          scenario.dtw,
+          scenario.n,
+          scenario.m,
+          cost,
+          dtUs: scenario.dtUs,
+        );
+        final DtwResult actual = scenario.dtw.align(
+          scenario.n,
+          scenario.m,
+          cost,
+          dtUs: scenario.dtUs,
+        );
+        _expectExactAlignment(actual, expected);
+      }
+
+      // Every predecessor has equal accumulated cost here. This freezes the
+      // legacy backtrace preference explicitly: diagonal, then up, then left.
+      const Dtw tied = Dtw(
+        bandRadius: 8,
+        bandRadiusS: null,
+        minBandRadius: 1,
+        warpPenalty: 0,
+      );
+      double tiedCost(int i, int j) => 0;
+      _expectExactAlignment(
+        tied.align(8, 5, tiedCost),
+        _legacyFullGridAlign(tied, 8, 5, tiedCost),
+      );
+    });
+
+    test('a large narrow-band alignment fits the sparse cell budget', () {
+      const int length = 12000;
+      const Dtw sparse = Dtw(
+        bandRadius: 2,
+        bandRadiusS: null,
+        minBandRadius: 1,
+        maxSequenceLength: length,
+        maxStoredCells: 60000,
+      );
+
+      final DtwCapacity capacity = sparse.capacityFor(length, length);
+      expect(capacity.allowed, isTrue);
+      expect(capacity.storedCells, 59994);
+      expect(sparse.canAlign(length, length), isTrue);
+
+      final DtwResult result = sparse.align(
+        length,
+        length,
+        (int i, int j) => i == j ? 0 : 1,
+      );
+      expect(result.normalizedCost, 0);
+      expect(result.pathRef, hasLength(length));
+      expect(result.pathLearner, result.pathRef);
+    });
+
+    test('sequence and sparse-cell limits fail closed with named reasons', () {
+      const Dtw sequenceBound = Dtw(
+        maxSequenceLength: 4,
+        maxStoredCells: 100,
+      );
+      int sequenceCostCalls = 0;
+      expect(sequenceBound.canAlign(5, 5), isFalse);
+      expect(
+        () => sequenceBound.align(5, 5, (int i, int j) {
+          sequenceCostCalls++;
+          return 0;
+        }),
+        throwsA(
+          isA<DtwLimitExceeded>().having(
+            (DtwLimitExceeded e) => e.reason,
+            'reason',
+            DtwLimitReason.sequenceLengthExceeded,
+          ),
+        ),
+      );
+      expect(sequenceCostCalls, 0);
+
+      const Dtw cellBound = Dtw(
+        bandRadius: 4,
+        bandRadiusS: null,
+        minBandRadius: 4,
+        maxSequenceLength: 10,
+        maxStoredCells: 20,
+      );
+      int cellCostCalls = 0;
+      expect(cellBound.canAlign(5, 5), isFalse);
+      expect(
+        () => cellBound.align(5, 5, (int i, int j) {
+          cellCostCalls++;
+          return 0;
+        }),
+        throwsA(
+          isA<DtwLimitExceeded>().having(
+            (DtwLimitExceeded e) => e.reason,
+            'reason',
+            DtwLimitReason.storedCellLimitExceeded,
+          ),
+        ),
+      );
+      expect(cellCostCalls, 0);
+    });
+
+    test('callers cannot raise the library-wide hard ceilings', () {
+      const Dtw attemptedOverride = Dtw(
+        maxSequenceLength: 1 << 30,
+        maxStoredCells: 1 << 40,
+      );
+      expect(
+        attemptedOverride.effectiveMaxSequenceLength,
+        Dtw.hardMaxSequenceLength,
+      );
+      expect(
+        attemptedOverride.effectiveMaxStoredCells,
+        Dtw.hardMaxStoredCells,
+      );
+      expect(
+        attemptedOverride.canAlign(Dtw.hardMaxSequenceLength + 1, 1),
+        isFalse,
+      );
+    });
+
     test('identical sequences align on the diagonal at zero cost', () {
       final List<PoseFrame> frames = basicSideStep().sample(fps: 30);
       final List<JointAngleVector> v = frames

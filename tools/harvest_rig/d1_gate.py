@@ -62,7 +62,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -73,6 +72,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from manifest import rig_staleness_warning, rig_version  # noqa: E402
+from yt_dlp_safety import require_safe_yt_dlp, validate_video_id  # noqa: E402
 
 #: Oran kapısı: aranan teknik anması, diğerlerinin toplamının bu katı olmalı.
 #: 2,0 keyfi değil ölçülmüş: 1,75'te kalan `iInkodqd5pE` elle bakıldığında
@@ -217,31 +217,44 @@ def fetch_subtitle(video_id: str, *, workdir: Path,
     `2I4HLsi0RuU`ı elenmiş sayardı; oysa o kaynak yalnız BU ARAÇLA triyaj
     edilemiyor, göz-doğrulaması hâlâ mümkün.
     """
-    if shutil.which("yt-dlp") is None:
-        raise RuntimeError("yt-dlp bulunamadı — D1 kapısı ağ aracına bağlı")
+    safe_id = validate_video_id(video_id)
+    workdir = Path(workdir).resolve(strict=True)
+    yt_dlp = require_safe_yt_dlp()
+    with tempfile.TemporaryDirectory(prefix=".subtitle-", dir=str(workdir)) as tmp:
+        staging = Path(tmp).resolve(strict=True)
+        out_tmpl = str(staging / "%(id)s.%(ext)s")
+        cmd = yt_dlp.command([
+            "--skip-download",
+            "--no-playlist",
+            "--write-auto-subs", "--sub-langs", "en.*",
+            "--sub-format", "json3",
+            "-o", out_tmpl,
+        ], f"https://www.youtube.com/watch?v={safe_id}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None, None
+        if proc.returncode != 0:
+            return None, None
 
-    out_tmpl = str(workdir / "%(id)s.%(ext)s")
-    cmd = [
-        "yt-dlp", "--skip-download",
-        "--write-auto-subs", "--sub-langs", "en.*", "--sub-format", "json3",
-        "-o", out_tmpl,
-        # `--` sonrası: `-` ile başlayan kimlik yt-dlp tarafından da bayrak
-        # sanılmasın (argparse'la aynı tuzağın ikinci kopyası).
-        "--", f"https://www.youtube.com/watch?v={video_id}",
-    ]
-    try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
-    except (OSError, subprocess.TimeoutExpired):
-        return None, None
+        files = sorted(staging.glob("*.json3"))
+        if not files or any(
+            path.is_symlink()
+            or path.parent != staging
+            or not path.name.startswith(f"{safe_id}.")
+            for path in files
+        ):
+            return None, None
 
-    files = sorted(workdir.glob(f"{video_id}*.json3"))
-    if not files:
-        return None, None
-
-    try:
-        doc = json.loads(files[0].read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None, None
+        try:
+            doc = json.loads(files[0].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None, None
 
     words: list[str] = []
     last_ms = 0
@@ -357,6 +370,10 @@ def main(argv: list[str] | None = None) -> int:
                 ids.append(s)
     if not ids:
         p.error("hiç kimlik verilmedi (--id / --id-file)")
+    try:
+        ids = [validate_video_id(video_id) for video_id in ids]
+    except ValueError as error:
+        p.error(str(error))
 
     verdicts: list[Verdict] = []
     with tempfile.TemporaryDirectory(prefix="d1-gate-") as tmp:

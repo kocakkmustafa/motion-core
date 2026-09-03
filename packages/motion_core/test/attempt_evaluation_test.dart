@@ -193,5 +193,34 @@ void main() {
       expect(e.reliable, isFalse);
       expect(e.unreliableReason, 'empty sequence');
     });
+
+    test('sequence limits return a named unreliable result before scoring', () {
+      final List<PoseFrame> frames = reference();
+      final AttemptEvaluation e = SequenceComparator(
+        dtw: const Dtw(maxSequenceLength: 4),
+      ).evaluate(reference: frames, learner: frames);
+
+      expect(e.reliable, isFalse);
+      expect(e.unreliableReason, DtwLimitReason.sequenceLengthExceeded.code);
+      expect(e.alignment.pathRef, isEmpty);
+      expect(e.jointSummaries, isEmpty);
+    });
+
+    test('cell limits return a distinct named unreliable result', () {
+      final List<PoseFrame> frames = reference().take(5).toList(growable: false);
+      final AttemptEvaluation e = SequenceComparator(
+        dtw: const Dtw(
+          bandRadius: 4,
+          bandRadiusS: null,
+          minBandRadius: 4,
+          maxSequenceLength: 5,
+          maxStoredCells: 20,
+        ),
+      ).evaluate(reference: frames, learner: frames);
+
+      expect(e.reliable, isFalse);
+      expect(e.unreliableReason, DtwLimitReason.storedCellLimitExceeded.code);
+      expect(e.alignment.pathRef, isEmpty);
+    });
   });
 }

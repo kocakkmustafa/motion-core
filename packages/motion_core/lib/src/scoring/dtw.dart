@@ -1,7 +1,64 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 /// Cost of matching reference index `i` against learner index `j`.
 typedef PairCost = double Function(int i, int j);
+
+/// Stable, machine-readable reasons why a DTW alignment was refused.
+enum DtwLimitReason {
+  sequenceLengthExceeded('dtw_sequence_length_exceeded'),
+  storedCellLimitExceeded('dtw_stored_cell_limit_exceeded');
+
+  const DtwLimitReason(this.code);
+
+  final String code;
+}
+
+/// Capacity preflight for one prospective [Dtw.align] call.
+final class DtwCapacity {
+  const DtwCapacity({
+    required this.referenceLength,
+    required this.learnerLength,
+    required this.storedCells,
+    required this.maxSequenceLength,
+    required this.maxStoredCells,
+    required this.reason,
+  });
+
+  final int referenceLength;
+  final int learnerLength;
+
+  /// Number of numeric accumulator cells the slope-adjusted band would store.
+  final int storedCells;
+
+  /// Effective limits after library-wide hard ceilings are applied.
+  final int maxSequenceLength;
+  final int maxStoredCells;
+
+  final DtwLimitReason? reason;
+
+  bool get allowed => reason == null;
+}
+
+/// Named fail-closed exception from a direct [Dtw.align] call.
+///
+/// This is an [ArgumentError] so existing batch/CLI boundaries that already
+/// reject invalid input continue to stop cleanly instead of silently treating
+/// a refused alignment as a poor match.
+final class DtwLimitExceeded extends ArgumentError {
+  DtwLimitExceeded(this.capacity)
+      : reason = capacity.reason!,
+        super(
+          '${capacity.reason!.code}: alignment '
+          '${capacity.referenceLength}x${capacity.learnerLength} requires '
+          '${capacity.storedCells} stored cells; limits are '
+          '${capacity.maxSequenceLength} frames per sequence and '
+          '${capacity.maxStoredCells} stored cells',
+        );
+
+  final DtwCapacity capacity;
+  final DtwLimitReason reason;
+}
 
 /// Result of a dynamic time warping alignment.
 final class DtwResult {
@@ -70,7 +127,21 @@ final class Dtw {
     this.minBandRadius = 4,
     this.saturationRatio = 0.15,
     this.warpPenalty = 0.08,
+    this.maxSequenceLength = hardMaxSequenceLength,
+    this.maxStoredCells = hardMaxStoredCells,
   });
+
+  /// Absolute per-alignment ceiling: 10 minutes at 30 fps, or 5 at 60 fps.
+  ///
+  /// Callers may lower this with [maxSequenceLength], but cannot raise it.
+  static const int hardMaxSequenceLength = 18000;
+
+  /// Absolute per-alignment ceiling for numeric accumulator storage.
+  ///
+  /// Two million Float64 cells are 16 MB (about 15.3 MiB). Row metadata and
+  /// the linear result structures are additionally bounded by
+  /// [hardMaxSequenceLength].
+  static const int hardMaxStoredCells = 2000000;
 
   /// Corridor half-width in frames around the slope-adjusted diagonal.
   ///
@@ -91,6 +162,19 @@ final class Dtw {
   final double? bandRadiusS;
 
   final int minBandRadius;
+
+  /// Caller-selected sequence ceiling, clamped by
+  /// [hardMaxSequenceLength].
+  final int maxSequenceLength;
+
+  /// Caller-selected band-cell ceiling, clamped by [hardMaxStoredCells].
+  final int maxStoredCells;
+
+  int get effectiveMaxSequenceLength =>
+      math.max(0, math.min(maxSequenceLength, hardMaxSequenceLength));
+
+  int get effectiveMaxStoredCells =>
+      math.max(0, math.min(maxStoredCells, hardMaxStoredCells));
 
   /// The corridor radius in frames for material with the given measured
   /// frame interval; falls back to the legacy [bandRadius] when the
@@ -141,7 +225,61 @@ final class Dtw {
 
   static const double _inf = double.infinity;
 
+  /// Computes the exact sparse-band storage needed by [align] without
+  /// allocating it.
+  DtwCapacity capacityFor(int n, int m, {int? dtUs}) {
+    final int sequenceLimit = effectiveMaxSequenceLength;
+    final int cellLimit = effectiveMaxStoredCells;
+    if (n < 0 || m < 0 || n > sequenceLimit || m > sequenceLimit) {
+      return DtwCapacity(
+        referenceLength: n,
+        learnerLength: m,
+        storedCells: 0,
+        maxSequenceLength: sequenceLimit,
+        maxStoredCells: cellLimit,
+        reason: DtwLimitReason.sequenceLengthExceeded,
+      );
+    }
+    if (n == 0 || m == 0) {
+      return DtwCapacity(
+        referenceLength: n,
+        learnerLength: m,
+        storedCells: 0,
+        maxSequenceLength: sequenceLimit,
+        maxStoredCells: cellLimit,
+        reason: null,
+      );
+    }
+
+    final int radius = effectiveRadius(dtUs);
+    final double slope = (n > 1) ? (m - 1) / (n - 1) : 0.0;
+    int storedCells = 0;
+    for (int i = 0; i < n; i++) {
+      final int low = math.max(0, ((i * slope) - radius).floor());
+      final int high = math.min(m - 1, ((i * slope) + radius).ceil());
+      if (high >= low) storedCells += high - low + 1;
+    }
+
+    return DtwCapacity(
+      referenceLength: n,
+      learnerLength: m,
+      storedCells: storedCells,
+      maxSequenceLength: sequenceLimit,
+      maxStoredCells: cellLimit,
+      reason: storedCells > cellLimit
+          ? DtwLimitReason.storedCellLimitExceeded
+          : null,
+    );
+  }
+
+  /// Whether [align] can run within both library-wide resource ceilings.
+  bool canAlign(int n, int m, {int? dtUs}) =>
+      capacityFor(n, m, dtUs: dtUs).allowed;
+
   DtwResult align(int n, int m, PairCost cost, {int? dtUs}) {
+    final DtwCapacity capacity = capacityFor(n, m, dtUs: dtUs);
+    if (!capacity.allowed) throw DtwLimitExceeded(capacity);
+
     if (n == 0 || m == 0) {
       return const DtwResult(
         normalizedCost: 1.0,
@@ -165,11 +303,24 @@ final class Dtw {
     int lowFor(int i) => math.max(0, loBand(i).floor());
     int highFor(int i) => math.min(m - 1, hiBand(i).ceil());
 
-    final List<List<double>> acc = List<List<double>>.generate(
-      n,
-      (_) => List<double>.filled(m, _inf),
-      growable: false,
-    );
+    final List<int> rowStarts = List<int>.generate(n, lowFor, growable: false);
+    final List<Float64List> acc = List<Float64List>.generate(n, (int i) {
+      final int width = math.max(0, highFor(i) - rowStarts[i] + 1);
+      final Float64List row = Float64List(width);
+      row.fillRange(0, width, _inf);
+      return row;
+    }, growable: false);
+
+    double accumulatedAt(int i, int j) {
+      if (i < 0 || i >= n) return _inf;
+      final int offset = j - rowStarts[i];
+      if (offset < 0 || offset >= acc[i].length) return _inf;
+      return acc[i][offset];
+    }
+
+    void setAccumulatedAt(int i, int j, double value) {
+      acc[i][j - rowStarts[i]] = value;
+    }
 
     for (int i = 0; i < n; i++) {
       final int lo = lowFor(i);
@@ -177,22 +328,26 @@ final class Dtw {
       for (int j = lo; j <= hi; j++) {
         final double c = cost(i, j);
         if (i == 0 && j == 0) {
-          acc[i][j] = c;
+          setAccumulatedAt(i, j, c);
           continue;
         }
         double best = _inf;
-        if (i > 0 && acc[i - 1][j] + warpPenalty < best) {
-          best = acc[i - 1][j] + warpPenalty;
+        if (i > 0 && accumulatedAt(i - 1, j) + warpPenalty < best) {
+          best = accumulatedAt(i - 1, j) + warpPenalty;
         }
-        if (j > 0 && acc[i][j - 1] + warpPenalty < best) {
-          best = acc[i][j - 1] + warpPenalty;
+        if (j > 0 && accumulatedAt(i, j - 1) + warpPenalty < best) {
+          best = accumulatedAt(i, j - 1) + warpPenalty;
         }
-        if (i > 0 && j > 0 && acc[i - 1][j - 1] < best) best = acc[i - 1][j - 1];
-        acc[i][j] = best.isInfinite ? _inf : best + c;
+        if (i > 0 &&
+            j > 0 &&
+            accumulatedAt(i - 1, j - 1) < best) {
+          best = accumulatedAt(i - 1, j - 1);
+        }
+        setAccumulatedAt(i, j, best.isInfinite ? _inf : best + c);
       }
     }
 
-    if (acc[n - 1][m - 1].isInfinite) {
+    if (accumulatedAt(n - 1, m - 1).isInfinite) {
       // The corridor could not reach the end — the two sequences differ in
       // length far beyond the tolerated drift.
       return DtwResult(
@@ -224,9 +379,9 @@ final class Dtw {
         i -= 1;
         continue;
       }
-      final double diag = acc[i - 1][j - 1];
-      final double up = acc[i - 1][j] + warpPenalty;
-      final double left = acc[i][j - 1] + warpPenalty;
+      final double diag = accumulatedAt(i - 1, j - 1);
+      final double up = accumulatedAt(i - 1, j) + warpPenalty;
+      final double left = accumulatedAt(i, j - 1) + warpPenalty;
       if (diag <= up && diag <= left) {
         i -= 1;
         j -= 1;

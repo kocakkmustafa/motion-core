@@ -5,14 +5,19 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   app-specific-word-scan:
     name: App-özgü kelime taraması (core API sızıntı kapısı)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -27,20 +32,27 @@ jobs:
         # test/docs hariç) — bkz. tools/scan_app_specific_words.py başlık notu.
         run: python3 tools/scan_app_specific_words.py
 
+      - name: Hasat yt-dlp güvenlik sözleşmesi (ağsız)
+        run: |
+          python3 tools/harvest_rig/tests/test_yt_dlp_safety.py
+          python3 tools/harvest_rig/tests/test_harvest_path_safety.py
+
   dart-package:
     name: ${{ matrix.package }} (dart test)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        package: [motion_core]
+        package: [motion_core, motion_content]
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
 
@@ -65,9 +77,11 @@ jobs:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
 

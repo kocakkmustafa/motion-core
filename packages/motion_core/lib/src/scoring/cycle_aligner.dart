@@ -122,6 +122,17 @@ final class CycleAligner {
           'searched without wrap-around');
     }
 
+    // Every phase and the stability probe use these same dimensions. Refuse
+    // once, before allocating the phase-cost array or invoking caller costs.
+    final DtwCapacity capacity = dtw.capacityFor(
+      refPeriod,
+      learnerPeriod,
+      dtUs: dtUs,
+    );
+    if (!capacity.allowed) {
+      return CycleAlignment.undetermined(capacity.reason!.code);
+    }
+
     double bestCost = double.infinity;
     int bestPhase = 0;
     DtwResult? bestDtw;

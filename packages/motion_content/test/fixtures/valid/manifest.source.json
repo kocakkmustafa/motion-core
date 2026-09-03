@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "contentVersion": "1.0.0",
+  "appId": "com.example.motion",
+  "minimumCoreContract": "1.0.0",
+  "locales": ["tr", "en"],
+  "courses": [],
+  "lessons": [],
+  "models": [],
+  "assets": []
+}

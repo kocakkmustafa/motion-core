@@ -285,5 +285,40 @@ void main() {
                 contains('2 usable take(s)')))),
       );
     });
+
+    test('DTW capacity refusal reaches the CLI boundary by its exact name', () {
+      final Map<String, Fixture> fixtures = <String, Fixture>{
+        for (int i = 0; i < 3; i++)
+          'take$i': fixtureOf('take$i', seed: 80 + i),
+      };
+      const ReferenceCli cli = ReferenceCli(
+        builder: ReferenceBuilder(
+          dtw: Dtw(maxSequenceLength: 4),
+          minTakes: 3,
+          minSources: 3,
+        ),
+        segmentCycles: false,
+      );
+
+      expect(
+        () => cli.buildArtifact(
+          technique: 'deep_squat',
+          fixturesById: fixtures,
+        ),
+        throwsA(
+          isA<DtwLimitExceeded>()
+              .having(
+                (DtwLimitExceeded e) => e.reason,
+                'reason',
+                DtwLimitReason.sequenceLengthExceeded,
+              )
+              .having(
+                (DtwLimitExceeded e) => '${e.message}',
+                'message',
+                contains(DtwLimitReason.sequenceLengthExceeded.code),
+              ),
+        ),
+      );
+    });
   });
 }

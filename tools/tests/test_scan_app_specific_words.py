@@ -58,6 +58,23 @@ class FindViolationsTest(unittest.TestCase):
             self.assertEqual(line_no, 2)
             self.assertEqual(matched.lower(), "lissom")
 
+    def test_catches_a_reference_in_motion_content_library(self):
+        """The new package must stay inside the scanner's shipped-code scope."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            leaked_path = _write(
+                root,
+                "motion_content/lib/src/leaky_catalog.dart",
+                "const productSpecificCourse = 'ostinato';\n",
+            )
+
+            violations = scanner.find_violations(root=root)
+
+            self.assertEqual(
+                violations,
+                [(leaked_path, 1, "ostinato", "const productSpecificCourse = 'ostinato';")],
+            )
+
     def test_ignores_a_comment_only_mention(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -81,13 +81,19 @@ Uygulamalar bunu **vendor eder** (M-F-94: `PIN_SHA` + `DECLARED_DIFFERENCES` +
 
 | Araç | Lisans | Durum |
 |---|---|---|
-| yt-dlp (sistem binary'si) | Unlicense ✓ | zorunlu (`brew install yt-dlp`) |
+| yt-dlp (sistem binary'si) | Unlicense ✓ | zorunlu (`brew install yt-dlp`), **>= 2026.06.09** |
 | OpenCV / numpy / MediaPipe | Apache-2 ✓ | fixture_pipeline venv'inde hazır |
 | PySceneDetect | BSD-3 ✓ | OPSİYONEL — yerleşik histogram kesme-tahmincisi varsayılan |
 | imagededup | Apache ✓ | OPSİYONEL — yerleşik aHash varsayılan |
 | faster-whisper | MIT ✓ | OPSİYONEL — yoksa aşama "skipped" |
 | ❌ internetarchive | AGPL | bu rig'e GİRMEZ |
 | ❌ SMPL-bağımlı mesh-recovery (4D-Humans/WHAM) | research-only | YASAK-varsayılan |
+
+Rig, ağ girdisini işlemeye başlamadan önce `yt-dlp` sürümünü doğrular ve eski,
+tanınmayan ya da çalışmayan binary'de **fail-closed** durur. Tüm ağ çağrıları
+`--ignore-config --no-plugin-dirs --no-remote-components --no-exec` ile ortam
+yapılandırmasını/eklenti yürütmesini kapatır; URL her zaman `--` sonrasındadır.
+Güncelleme: `brew upgrade yt-dlp`; doğrulama: `yt-dlp --version`.
 
 ## Kaynak havuzları
 
