@@ -135,5 +135,25 @@ void main() {
       expect(a.resolved, isFalse);
       expect(a.reason, contains('two cycles'));
     });
+
+    test('preflights DTW limits before evaluating any phase cost', () {
+      int costCalls = 0;
+      final CycleAlignment a = const CycleAligner(
+        dtw: Dtw(maxSequenceLength: 4),
+      ).align(
+        refStart: 0,
+        refPeriod: 5,
+        learnerLen: 10,
+        learnerPeriod: 5,
+        cost: (int i, int j) {
+          costCalls++;
+          return 0;
+        },
+      );
+
+      expect(a.resolved, isFalse);
+      expect(a.reason, DtwLimitReason.sequenceLengthExceeded.code);
+      expect(costCalls, 0);
+    });
   });
 }

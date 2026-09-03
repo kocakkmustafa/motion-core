@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from yt_dlp_safety import optional_safe_yt_dlp_version
+
 MANIFEST_VERSION = 1
 
 
@@ -153,10 +155,10 @@ def rig_staleness_warning() -> str | None:
     return None
 
 
-def tool_versions() -> dict[str, Any]:
+def tool_versions(*, yt_dlp_version: str | None = None) -> dict[str, Any]:
     """Boru hattındaki araçların sürüm damgaları."""
     versions: dict[str, Any] = {
-        "ytDlp": _tool_version(["yt-dlp", "--version"]),
+        "ytDlp": yt_dlp_version or optional_safe_yt_dlp_version(),
         "ffmpeg": _tool_version(["ffmpeg", "-version"]),
     }
     try:
@@ -222,7 +224,14 @@ class HarvestManifest:
     stages: list[StageRecord] = field(default_factory=list)
 
     @classmethod
-    def start(cls, *, app: str, video_id: str, source_url: str) -> "HarvestManifest":
+    def start(
+        cls,
+        *,
+        app: str,
+        video_id: str,
+        source_url: str,
+        yt_dlp_version: str | None = None,
+    ) -> "HarvestManifest":
         return cls(
             manifest_version=MANIFEST_VERSION,
             app=app,
@@ -233,7 +242,7 @@ class HarvestManifest:
             license=None,
             upload_date=None,
             retrieved_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            tool_versions=tool_versions(),
+            tool_versions=tool_versions(yt_dlp_version=yt_dlp_version),
         )
 
     def absorb_info_json(self, info: dict[str, Any]) -> None:

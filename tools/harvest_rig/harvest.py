@@ -29,6 +29,7 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import cv2
@@ -39,9 +40,33 @@ from manifest import HarvestManifest, rig_staleness_warning  # noqa: E402
 from context_tags import from_rom_mode as ctx_from_rom
 from rom_mode import classify as classify_rom
 from triage import TriageThresholds, triage  # noqa: E402
+from yt_dlp_safety import require_safe_yt_dlp, validate_video_id  # noqa: E402
 
 FIXTURE_PIPELINE = Path(__file__).parent.parent / "fixture_pipeline"
 DEFAULT_POSE_MODEL = FIXTURE_PIPELINE / "models" / "pose_landmarker_full.v1.task"
+
+
+def direct_child_output_path(directory: str | Path, filename: str) -> Path:
+    """Build an output path that resolves to exactly one child of directory."""
+    if not filename or "\\" in filename:
+        raise ValueError("çıktı adı doğrudan alt dosya olmalı")
+    relative = Path(filename)
+    if relative.is_absolute() or len(relative.parts) != 1:
+        raise ValueError("çıktı adı doğrudan alt dosya olmalı")
+
+    root = Path(directory).resolve(strict=False)
+    lexical_candidate = root / relative
+    if lexical_candidate.is_symlink():
+        raise ValueError("çıktı yolu sembolik bağlantı olamaz")
+    candidate = lexical_candidate.resolve(strict=False)
+    if candidate.parent != root:
+        raise ValueError("çıktı yolu hedef dizinin dışına çıkamaz")
+    return lexical_candidate
+
+
+def _video_output_path(directory: str | Path, video_id: object, suffix: str) -> Path:
+    safe_id = validate_video_id(video_id)
+    return direct_child_output_path(directory, f"{safe_id}{suffix}")
 
 
 # --------------------------------------------------------------------------
@@ -49,43 +74,77 @@ DEFAULT_POSE_MODEL = FIXTURE_PIPELINE / "models" / "pose_landmarker_full.v1.task
 # --------------------------------------------------------------------------
 
 def pull(url: str, out_dir: Path, *, app: str) -> HarvestManifest:
+    out_dir = Path(out_dir).resolve(strict=False)
     out_dir.mkdir(parents=True, exist_ok=True)
-    tmpl = str(out_dir / "%(id)s.%(ext)s")
-    cmd = [
-        "yt-dlp",
-        "--write-info-json",
-        "--no-playlist",
-        # 1080p tavan: pose çıkarımı için yeterli, disk/AB yükü yarıya iner.
-        "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
-        "--merge-output-format", "mp4",
-        "-o", tmpl,
-        url,
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"yt-dlp başarısız:\n{proc.stderr[-800:]}")
+    yt_dlp = require_safe_yt_dlp()
+    with tempfile.TemporaryDirectory(prefix=".pull-", dir=str(out_dir)) as tmp:
+        staging = Path(tmp).resolve(strict=True)
+        tmpl = str(direct_child_output_path(staging, "%(id)s.%(ext)s"))
+        cmd = yt_dlp.command([
+            "--write-info-json",
+            "--no-playlist",
+            # 1080p tavan: pose çıkarımı için yeterli, disk/AB yükü yarıya iner.
+            "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
+            "--merge-output-format", "mp4",
+            "-o", tmpl,
+        ], url)
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"yt-dlp başarısız:\n{proc.stderr[-800:]}")
 
-    info_files = sorted(out_dir.glob("*.info.json"),
-                        key=lambda p: p.stat().st_mtime)
-    if not info_files:
-        raise RuntimeError("info.json üretilmedi — provenance'sız klip kabul edilmez")
-    info = json.loads(info_files[-1].read_text(encoding="utf-8"))
+        info_files = sorted(staging.glob("*.info.json"))
+        if len(info_files) != 1 or info_files[0].is_symlink():
+            raise RuntimeError(
+                "bu yt-dlp çağrısı tam bir info.json üretmedi"
+            )
+        info_path = info_files[0]
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+        video_id = validate_video_id(info.get("id"))
+        expected_info = _video_output_path(staging, video_id, ".info.json")
+        if info_path != expected_info:
+            raise RuntimeError(
+                "info.json dosya adı iç video kimliğiyle eşleşmiyor"
+            )
 
-    video_id = info.get("id", "unknown")
-    m = HarvestManifest.start(
-        app=app, video_id=video_id,
-        source_url=info.get("webpage_url", url),
-    )
-    m.absorb_info_json(info)
+        media_files: list[Path] = []
+        for ext in ("mp4", "mkv", "webm"):
+            candidate = _video_output_path(staging, video_id, f".{ext}")
+            if candidate.is_file() and not candidate.is_symlink():
+                media_files.append(candidate)
+        if len(media_files) != 1:
+            raise RuntimeError(
+                "bu yt-dlp çağrısı tam bir desteklenen medya dosyası üretmedi"
+            )
+        staged_media = media_files[0]
 
-    for ext in ("mp4", "mkv", "webm"):
-        cand = out_dir / f"{video_id}.{ext}"
-        if cand.exists():
-            m.local_path = str(cand)
-            break
-    m.record("pull", "ok" if m.local_path else "error",
-             file=Path(m.local_path).name if m.local_path else None)
-    return m
+        final_info = _video_output_path(out_dir, video_id, ".info.json")
+        final_media = _video_output_path(out_dir, video_id, staged_media.suffix)
+        for ext in ("mp4", "mkv", "webm"):
+            existing = _video_output_path(out_dir, video_id, f".{ext}")
+            if existing != final_media and existing.exists():
+                raise RuntimeError(
+                    "kalıcı raw dizininde aynı kimlik için çelişen medya var"
+                )
+        for destination in (final_media, final_info):
+            if destination.exists():
+                raise RuntimeError(
+                    "kalıcı raw dizininde aynı kimlik için çıktı zaten var"
+                )
+
+        m = HarvestManifest.start(
+            app=app,
+            video_id=video_id,
+            source_url=info.get("webpage_url", url),
+            yt_dlp_version=yt_dlp.version,
+        )
+        m.absorb_info_json(info)
+
+        # Metadata is the discovery/commit marker, so publish it last.
+        staged_media.replace(final_media)
+        info_path.replace(final_info)
+        m.local_path = str(final_media)
+        m.record("pull", "ok", file=final_media.name)
+        return m
 
 
 # --------------------------------------------------------------------------
@@ -156,7 +215,7 @@ def register_signature(signature: str, video_id: str, library_index: Path) -> No
 
 def extract(m: HarvestManifest, out_dir: Path, *, variant: str) -> Path:
     assert m.local_path, "extract için indirilmiş dosya gerekir"
-    out_path = out_dir / f"{m.video_id}.{variant}.json"
+    out_path = _video_output_path(out_dir, m.video_id, f".{variant}.json")
     cmd = [
         sys.executable,
         str(FIXTURE_PIPELINE / "extract_landmarks.py"),
@@ -198,7 +257,7 @@ def transcribe(m: HarvestManifest, out_dir: Path) -> Path | None:
     out_dir.mkdir(parents=True, exist_ok=True)
     model = WhisperModel("small", compute_type="int8")
     segments, _info = model.transcribe(m.local_path, vad_filter=True)
-    out_path = out_dir / f"{m.video_id}.transcript.json"
+    out_path = _video_output_path(out_dir, m.video_id, ".transcript.json")
     out_path.write_text(
         json.dumps(
             [{"start": round(s.start, 2), "end": round(s.end, 2),
@@ -420,7 +479,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     m = pull(args.url, raw_dir, app=args.app)
     m.movement = getattr(args, "movement", None)
-    manifest_path = manifest_dir / f"{m.video_id}.json"
+    manifest_path = _video_output_path(manifest_dir, m.video_id, ".json")
     try:
         if not m.local_path:
             m.save(manifest_path)

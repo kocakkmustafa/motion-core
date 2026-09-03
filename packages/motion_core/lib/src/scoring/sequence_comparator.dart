@@ -243,6 +243,27 @@ final class SequenceComparator {
       );
     }
 
+    // Refuse before pose normalization or feature allocation. Dtw.align also
+    // enforces this boundary, but the comparator translates it into its public
+    // named, non-scoring result instead of surfacing an exception to capture
+    // callers.
+    final DtwCapacity capacity = dtw.capacityFor(
+      reference.length,
+      learner.length,
+    );
+    if (!capacity.allowed) {
+      return AttemptEvaluation(
+        shapeScore: 0,
+        coverage: 0,
+        alignment: dtw.align(0, 0, (int i, int j) => 1),
+        jointSummaries: const <JointSummary>[],
+        momentTimings: const <MomentTiming>[],
+        timingSummary: null,
+        reliable: false,
+        unreliableReason: capacity.reason!.code,
+      );
+    }
+
     final List<JointAngleVector> ref = _featurize(reference);
     final List<JointAngleVector> lea = _featurize(learner);
 

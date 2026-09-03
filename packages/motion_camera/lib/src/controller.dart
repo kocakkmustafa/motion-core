@@ -61,9 +61,17 @@ enum CameraFailure {
   /// `start` while a session is already running.
   alreadyRunning('already-running'),
 
-  /// A control call that requires a running session (`stop`, `setPassPlan`)
-  /// arrived while none exists.
+  /// A control call that requires a running session (`setPassPlan`) arrived
+  /// while none exists. `stop` is deliberately idempotent.
   notRunning('not-running'),
+
+  /// Android has no attached, started Activity implementing LifecycleOwner.
+  /// The plugin refuses instead of manufacturing an always-resumed owner.
+  lifecycleUnavailable('lifecycle-unavailable'),
+
+  /// A pending `start` lost ownership because stop, stream cancellation,
+  /// backgrounding, Activity detach, or engine detach tore the session down.
+  sessionInterrupted('session-interrupted'),
 
   /// The device has no camera matching the requested lens.
   noSuchCamera('no-such-camera');
@@ -98,11 +106,9 @@ final class CameraException implements Exception {
 /// and "two silent half-sessions" is a worse failure mode than a named
 /// [CameraFailure.alreadyRunning].
 class MotionCameraController {
-  MotionCameraController({
-    MethodChannel? control,
-    EventChannel? frames,
-  })  : _control = control ?? const MethodChannel('motion_camera/control'),
-        _frames = frames ?? const EventChannel('motion_camera/frames');
+  MotionCameraController({MethodChannel? control, EventChannel? frames})
+    : _control = control ?? const MethodChannel('motion_camera/control'),
+      _frames = frames ?? const EventChannel('motion_camera/frames');
 
   final MethodChannel _control;
   final EventChannel _frames;
@@ -141,6 +147,9 @@ class MotionCameraController {
     return CameraSessionInfo._decode(raw);
   }
 
+  /// Stops capture and invalidates queued native work. Idempotent: calling it
+  /// while already stopped succeeds. If it interrupts a pending [start], that
+  /// start completes with [CameraFailure.sessionInterrupted].
   Future<void> stop() => _invoke<void>('stop');
 
   /// Updates which orientation passes run on coming frames. Cheap; takes
@@ -151,7 +160,7 @@ class MotionCameraController {
   /// The live envelope stream. Malformed events surface as
   /// [FormatException]s in the stream — they are protocol bugs, not frames
   /// to skip.
-  Stream<CameraFrameEnvelope> frames() => _frames
-      .receiveBroadcastStream()
-      .map((Object? event) => CameraFrameEnvelope.decode(event));
+  Stream<CameraFrameEnvelope> frames() => _frames.receiveBroadcastStream().map(
+    (Object? event) => CameraFrameEnvelope.decode(event),
+  );
 }
