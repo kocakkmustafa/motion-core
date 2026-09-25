@@ -2,12 +2,18 @@
 #
 # Format: <path-relative-to-repo-root>:<line-number>:<exact matched line text>
 #
-# Both current entries are developer-facing validator diagnostic strings
+# The first two entries are developer-facing validator diagnostic strings
 # (issues.add(...) in phase_config.dart) that CITE which app's real
 # measured bug motivated a generic structural rule — the rule itself
 # (referenced-metric-must-exist, endpoint-conditions-must-not-overlap)
 # applies identically regardless of which app's config is being validated.
 # That is attribution/provenance, not app-conditioned behavior.
+#
+# The account and entitlement packages deliberately have fixed app-ID sets:
+# a shared identity can read only its app's verified entitlement. These are
+# product boundaries, not exercise logic or content IDs. Any change to the
+# IDs must be reviewed against the database app_id constraint and all five
+# host callbacks before these exact-line exceptions are renewed.
 #
 # This is a content-keyed allowlist, not a line-number suppression: if a
 # listed line's exact text ever changes, this entry stops matching and the
@@ -16,3 +22,9 @@
 # by this file.
 packages/motion_core/lib/src/engine/phase_config.dart:890:'yazılamaz (Gravita metrik sözlüğü kuralı)');
 packages/motion_core/lib/src/engine/phase_config.dart:944:'iki uçta birden sayılır (değişmez #9, Gravita V11)');
+packages/motion_account/lib/src/motion_account_client.dart:5:enum MotionApp { ostinato, gravita, choreia, jablab, lissom }
+packages/motion_entitlements/lib/src/entitlement_status.dart:7:'ostinato',
+packages/motion_entitlements/lib/src/entitlement_status.dart:8:'gravita',
+packages/motion_entitlements/lib/src/entitlement_status.dart:9:'choreia',
+packages/motion_entitlements/lib/src/entitlement_status.dart:10:'jablab',
+packages/motion_entitlements/lib/src/entitlement_status.dart:11:'lissom',

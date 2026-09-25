@@ -72,6 +72,7 @@ jobs:
           - motion_audio
           - motion_store
           - motion_entitlements
+          - motion_account
           - motion_telemetry
     defaults:
       run:
@@ -88,3 +89,23 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  motion-purchase-server:
+    name: Motion account and purchase server (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.7
+
+      - name: Format and type-check Motion functions
+        run: |
+          deno fmt --check supabase/functions
+          deno check supabase/functions/motion-verify-purchase/index.ts supabase/functions/motion-check-membership/index.ts supabase/functions/motion-delete-account/index.ts
+
+      - name: Check account, product and provider boundaries
+        run: deno test --allow-env supabase/functions/_shared/motion_purchase_claim_test.ts supabase/functions/_shared/motion_store_provider_test.ts supabase/functions/_shared/motion_review_access_test.ts

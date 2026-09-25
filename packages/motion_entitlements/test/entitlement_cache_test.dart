@@ -1,42 +1,75 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motion_entitlements/motion_entitlements.dart';
 
+EntitlementStatus _status(String userId, String appId) => EntitlementStatus(
+  state: PurchaseState.entitled,
+  userId: userId,
+  appId: appId,
+  productId: 'monthly',
+  expiresAt: DateTime(2026, 7, 1),
+  lastVerifiedAt: DateTime(2026, 6, 1),
+  source: EntitlementSource.server,
+);
+
 void main() {
   group('InMemoryEntitlementCache', () {
-    test('fail-closed: an unknown product returns null, never a fabricated status', () {
+    test('unknown product returns null', () {
       final cache = InMemoryEntitlementCache();
-      expect(cache.read('never-written'), isNull);
-    });
-
-    test('write then read returns exactly what was written', () {
-      final cache = InMemoryEntitlementCache();
-      final status = EntitlementStatus(
-        state: PurchaseState.entitled,
-        productId: 'jablab.premium.monthly',
-        expiresAt: DateTime(2026, 7, 1),
-        lastVerifiedAt: DateTime(2026, 6, 1),
-        source: EntitlementSource.store,
+      expect(
+        cache.read(userId: 'user-a', appId: 'jablab', productId: 'monthly'),
+        isNull,
       );
-      cache.write(status);
-      expect(cache.read('jablab.premium.monthly'), same(status));
     });
 
-    test('writing again for the same productId replaces the cached value', () {
+    test('same product never crosses account or app boundary', () {
       final cache = InMemoryEntitlementCache();
-      cache.write(EntitlementStatus(
-        state: PurchaseState.entitled,
-        productId: 'gravita.premium.monthly',
-        lastVerifiedAt: DateTime(2026, 6, 1),
-        source: EntitlementSource.store,
-      ));
+      final status = _status('user-a', 'jablab');
+      cache.write(status);
+      expect(
+        cache.read(userId: 'user-a', appId: 'jablab', productId: 'monthly'),
+        same(status),
+      );
+      expect(
+        cache.read(userId: 'user-b', appId: 'jablab', productId: 'monthly'),
+        isNull,
+      );
+      expect(
+        cache.read(userId: 'user-a', appId: 'gravita', productId: 'monthly'),
+        isNull,
+      );
+    });
+
+    test('recheck can revoke one account without touching another', () {
+      final cache = InMemoryEntitlementCache();
+      cache.write(_status('user-a', 'jablab'));
+      final other = _status('user-b', 'jablab');
+      cache.write(other);
       final revoked = EntitlementStatus(
         state: PurchaseState.notEntitled,
-        productId: 'gravita.premium.monthly',
+        userId: 'user-a',
+        appId: 'jablab',
+        productId: 'monthly',
         lastVerifiedAt: DateTime(2026, 6, 2),
         source: EntitlementSource.server,
       );
       cache.write(revoked);
-      expect(cache.read('gravita.premium.monthly'), same(revoked));
+      expect(
+        cache.read(userId: 'user-a', appId: 'jablab', productId: 'monthly'),
+        same(revoked),
+      );
+      expect(
+        cache.read(userId: 'user-b', appId: 'jablab', productId: 'monthly'),
+        same(other),
+      );
+      cache.clearUser('user-a');
+      expect(
+        cache.read(userId: 'user-a', appId: 'jablab', productId: 'monthly'),
+        isNull,
+      );
+      expect(
+        cache.read(userId: 'user-b', appId: 'jablab', productId: 'monthly'),
+        same(other),
+      );
     });
   });
 }
