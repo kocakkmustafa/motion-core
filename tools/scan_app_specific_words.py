@@ -18,11 +18,10 @@ step 3 ("App-specific kelime veya content ID core API'sine girmez"):
     must not force it to be stripped out to pass CI. A bare `//` inside a
     string literal is not treated as a comment start.
   - A small, explicit, content-keyed ALLOWLIST (scan_app_specific_words_
-    allowlist.txt) covers a couple of pre-existing developer-facing
-    validator diagnostic strings that cite which app's bug motivated a
-    generic rule. It is keyed by exact line text, not just line number: if
-    an allowlisted line's text ever changes, the entry stops matching and
-    the hit reappears in CI rather than being silently carried forward.
+    allowlist.txt) covers reviewed validator diagnostics and the fixed
+    Motion account product-ID enum. That enum defines an identity boundary,
+    not app-specific exercise behavior. The allowlist is keyed by exact
+    line text: if it changes, the hit reappears in CI for review.
 
 A hit inside actual code that is NOT in the allowlist — an identifier, a
 branch condition, a new hardcoded string literal used by logic — is exactly

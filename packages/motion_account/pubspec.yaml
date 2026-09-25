@@ -1,0 +1,23 @@
+name: motion_account
+description: Shared Motion account and app-scoped membership client.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  supabase_flutter: 2.17.2
+  url_launcher: 6.3.2
+  motion_entitlements:
+    path: ../motion_entitlements
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  http: 1.6.0

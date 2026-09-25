@@ -1,21 +1,34 @@
 import 'entitlement_status.dart';
 
-/// Local offline-cache of the last known entitlement per product.
-/// Fail-closed: an unread/unknown product returns `null`, never a
-/// fabricated status that could be mistaken for a real (dis)entitlement.
+/// Local cache scoped to a signed-in user, app, and product. An unknown
+/// combination returns null; consumers must still call grantsAccessAt.
 abstract class EntitlementCache {
-  EntitlementStatus? read(String productId);
+  EntitlementStatus? read({
+    required String userId,
+    required String appId,
+    required String productId,
+  });
   void write(EntitlementStatus status);
+  void clearUser(String userId);
 }
 
 class InMemoryEntitlementCache implements EntitlementCache {
-  final _byProductId = <String, EntitlementStatus>{};
+  final _entries = <(String, String, String), EntitlementStatus>{};
 
   @override
-  EntitlementStatus? read(String productId) => _byProductId[productId];
+  EntitlementStatus? read({
+    required String userId,
+    required String appId,
+    required String productId,
+  }) => _entries[(userId, appId, productId)];
 
   @override
   void write(EntitlementStatus status) {
-    _byProductId[status.productId] = status;
+    _entries[(status.userId, status.appId, status.productId)] = status;
+  }
+
+  @override
+  void clearUser(String userId) {
+    _entries.removeWhere((key, _) => key.$1 == userId);
   }
 }

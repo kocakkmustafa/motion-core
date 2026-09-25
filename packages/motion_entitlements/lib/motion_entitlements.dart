@@ -5,7 +5,10 @@ library;
 
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_status.dart';
+export 'src/flutter_purchase_adapter.dart';
 export 'src/purchase_adapter.dart';
+export 'src/purchase_coordinator.dart';
 export 'src/purchase_state.dart';
 export 'src/server_adapter.dart';
 export 'src/store_product_ref.dart';
+export 'src/supabase_server_adapter.dart';
