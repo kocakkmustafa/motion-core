@@ -1,19 +1,180 @@
+import 'dart:convert';
+
 class DiagnosticExportRequest {
-  const DiagnosticExportRequest({required this.userPreviewed, required this.userConfirmed});
+  const DiagnosticExportRequest({
+    required this.userPreviewed,
+    required this.userConfirmed,
+  });
 
   final bool userPreviewed;
   final bool userConfirmed;
 }
 
-/// Diagnostic bundles never leave the device automatically. Fail-closed:
-/// [export] returns the payload only when the caller attests the user has
-/// both previewed the bundle and explicitly confirmed sending it —
-/// otherwise it returns `null`.
-class DiagnosticExporter {
-  const DiagnosticExporter();
+enum DiagnosticPlatform { ios, android, macos }
 
-  String? export(DiagnosticExportRequest request, String payload) {
+enum DiagnosticBuildMode { debug, profile, release }
+
+class DiagnosticVersion {
+  DiagnosticVersion({
+    required this.major,
+    required this.minor,
+    required this.patch,
+    required this.build,
+  }) {
+    _requireBounded('major', major, 999);
+    _requireBounded('minor', minor, 999);
+    _requireBounded('patch', patch, 999);
+    _requireBounded('build', build, 999999);
+  }
+
+  final int major;
+  final int minor;
+  final int patch;
+  final int build;
+
+  static void _requireBounded(String name, int value, int maximum) {
+    if (value < 0 || value > maximum) {
+      throw ArgumentError.value(value, name, 'must be between 0 and $maximum');
+    }
+  }
+}
+
+class DiagnosticCodeCandidate {
+  /// A shaped candidate only; [DiagnosticExportPolicy] authorizes exact codes.
+  const DiagnosticCodeCandidate(this.value);
+
+  final String value;
+}
+
+class SafeDiagnosticBundle {
+  SafeDiagnosticBundle({
+    required this.platform,
+    required this.buildMode,
+    required this.version,
+    required this.code,
+  }) {
+    if (!_safeCodePattern.hasMatch(code.value)) {
+      throw ArgumentError('code must be a safe code token');
+    }
+  }
+
+  final DiagnosticPlatform platform;
+  final DiagnosticBuildMode buildMode;
+  final DiagnosticVersion version;
+  final DiagnosticCodeCandidate code;
+
+  static final _safeCodePattern = RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$');
+}
+
+enum DiagnosticFieldShape { buildMode, code, platform, version }
+
+class DiagnosticExportPolicy {
+  const DiagnosticExportPolicy({
+    required this.allowedCodes,
+    required this.fields,
+  });
+
+  final Set<String> allowedCodes;
+  final Map<String, DiagnosticFieldShape> fields;
+}
+
+enum DiagnosticExportRejectReason {
+  disallowedPolicyValue,
+  invalidVersion,
+  encodedSizeExceeded,
+}
+
+class DiagnosticExportException implements Exception {
+  const DiagnosticExportException(this.reason);
+
+  final DiagnosticExportRejectReason reason;
+
+  @override
+  String toString() => 'DiagnosticExportException(${reason.name})';
+}
+
+/// Diagnostic bundles leave the device only after explicit user action and
+/// exact policy validation. The API has no arbitrary-string payload path.
+class DiagnosticExporter {
+  static const hardMaxEncodedBytes = 4 * 1024;
+  static const hardMaxFields = 16;
+  static const _canonicalFieldShapes = <String, DiagnosticFieldShape>{
+    'buildMode': DiagnosticFieldShape.buildMode,
+    'code': DiagnosticFieldShape.code,
+    'platform': DiagnosticFieldShape.platform,
+    'version': DiagnosticFieldShape.version,
+  };
+
+  DiagnosticExporter({this.maxEncodedBytes = hardMaxEncodedBytes}) {
+    if (maxEncodedBytes < 0 || maxEncodedBytes > hardMaxEncodedBytes) {
+      throw ArgumentError.value(
+        maxEncodedBytes,
+        'maxEncodedBytes',
+        'must be between 0 and $hardMaxEncodedBytes',
+      );
+    }
+  }
+
+  final int maxEncodedBytes;
+
+  String? export(
+    DiagnosticExportRequest request,
+    SafeDiagnosticBundle bundle,
+    DiagnosticExportPolicy policy,
+  ) {
     if (!request.userPreviewed || !request.userConfirmed) return null;
-    return payload;
+    // Validation and serialization must use the same primitive snapshots,
+    // even if callers provide subclasses with stateful getters.
+    final code = bundle.code.value;
+    final platform = bundle.platform;
+    final buildMode = bundle.buildMode;
+    final version = bundle.version;
+    final major = version.major;
+    final minor = version.minor;
+    final patch = version.patch;
+    final build = version.build;
+    if ([major, minor, patch].any((part) => part < 0 || part > 999) ||
+        build < 0 ||
+        build > 999999) {
+      throw const DiagnosticExportException(
+        DiagnosticExportRejectReason.invalidVersion,
+      );
+    }
+    if (!SafeDiagnosticBundle._safeCodePattern.hasMatch(code) ||
+        !_allowsCanonicalFields(Map.of(policy.fields)) ||
+        !Set<String>.of(policy.allowedCodes).contains(code)) {
+      throw const DiagnosticExportException(
+        DiagnosticExportRejectReason.disallowedPolicyValue,
+      );
+    }
+
+    final encoded = jsonEncode({
+      'buildMode': buildMode.name,
+      'code': code,
+      'platform': platform.name,
+      'version': {
+        'build': build,
+        'major': major,
+        'minor': minor,
+        'patch': patch,
+      },
+    });
+    if (utf8.encode(encoded).length > maxEncodedBytes) {
+      throw const DiagnosticExportException(
+        DiagnosticExportRejectReason.encodedSizeExceeded,
+      );
+    }
+    return encoded;
+  }
+
+  bool _allowsCanonicalFields(Map<String, DiagnosticFieldShape> fields) {
+    if (fields.length > hardMaxFields ||
+        fields.length != _canonicalFieldShapes.length) {
+      return false;
+    }
+    for (final canonical in _canonicalFieldShapes.entries) {
+      if (fields[canonical.key] != canonical.value) return false;
+    }
+    return true;
   }
 }

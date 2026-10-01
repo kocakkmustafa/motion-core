@@ -38,6 +38,48 @@ Map<String, TelemetryValue> _contentValidationAttributes({
   ...extra,
 };
 
+// Fixed independent policy: no field is derived from an emitted event.
+const _approvedPolicy = TelemetryAttributePolicy(
+  events: {
+    'onboarding_complete': TelemetryEventAttributePolicy(fields: {}),
+    'device_check_result': TelemetryEventAttributePolicy(fields: {}),
+    'session_started': TelemetryEventAttributePolicy(fields: {}),
+    'value_event': TelemetryEventAttributePolicy(fields: {}),
+    'paywall_viewed': TelemetryEventAttributePolicy(fields: {}),
+    'purchase_state_changed': TelemetryEventAttributePolicy(fields: {}),
+    'restore_state_changed': TelemetryEventAttributePolicy(fields: {}),
+    'custom_metric': TelemetryEventAttributePolicy(fields: {}),
+    'session_completed': TelemetryEventAttributePolicy(
+      fields: {
+        'app_version': TelemetryTokenFieldPolicy(allowedValues: {'1.4.0'}),
+        'is_first_session': TelemetryBoolFieldPolicy(),
+        'duration_bucket': TelemetryDurationFieldPolicy(),
+      },
+    ),
+    'content_validation_result': TelemetryEventAttributePolicy(
+      fields: {
+        'appVersion': TelemetryTokenFieldPolicy(allowedValues: {'1.2.0'}),
+        'buildNumber': TelemetryIntFieldPolicy(min: 0, max: 999999),
+        'schemaVersion': TelemetryIntFieldPolicy(min: 1, max: 999),
+        'contentVersion': TelemetryTokenFieldPolicy(allowedValues: {'1.0.0'}),
+        'result': TelemetryTokenFieldPolicy(
+          allowedValues: {'ready', 'degraded', 'blocked'},
+        ),
+        'errorCode': TelemetryTokenFieldPolicy(
+          allowedValues: {'hashMismatch', 'timeout', 'capability'},
+        ),
+        'contentId': TelemetryTokenFieldPolicy(allowedValues: {'lesson-one'}),
+        'expectedHashPrefix': TelemetryTokenFieldPolicy(
+          allowedValues: {'0123456789ab'},
+        ),
+        'actualHashPrefix': TelemetryTokenFieldPolicy(
+          allowedValues: {'abcdef012345'},
+        ),
+      },
+    ),
+  },
+);
+
 void main() {
   late _RecordingSink sink;
   late InMemoryConsentGate consentGate;
@@ -48,6 +90,7 @@ void main() {
     consentGate = InMemoryConsentGate();
     emitter = TelemetryEmitter(
       allowlist: EventAllowlist.v2,
+      attributePolicy: _approvedPolicy,
       consentGate: consentGate,
       sink: sink,
     );
@@ -121,6 +164,7 @@ void main() {
             },
           },
         ),
+        attributePolicy: _approvedPolicy,
         consentGate: consentGate,
         sink: sink,
       );
@@ -179,6 +223,7 @@ void main() {
               'custom_metric': {'opaque_metric'},
             },
           ),
+          attributePolicy: _approvedPolicy,
           consentGate: consentGate,
           sink: sink,
         );
@@ -246,6 +291,7 @@ void main() {
               'session_completed': {'landmarkSnapshot'},
             },
           ),
+          attributePolicy: _approvedPolicy,
           consentGate: consentGate,
           sink: sink,
         );

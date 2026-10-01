@@ -25,5 +25,8 @@ class TelemetryBool extends TelemetryValue {
 /// millisecond/second value, so timing data stays coarse by construction.
 class TelemetryDurationBucket extends TelemetryValue {
   const TelemetryDurationBucket(this.bucketLabel);
+
+  static const allowedLabels = {'0-5s', '5-15s', '15-60s', '60s+'};
+
   final String bucketLabel;
 }

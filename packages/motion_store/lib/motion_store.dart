@@ -7,6 +7,7 @@ export 'src/atomic_eraser.dart';
 export 'src/export_bundle.dart';
 export 'src/journal.dart';
 export 'src/journal_entry.dart';
+export 'src/journal_export_policy.dart';
 export 'src/migration.dart';
 export 'src/projection_store.dart';
 export 'src/secure_key_adapter.dart';
