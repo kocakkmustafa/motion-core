@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [motion_core, motion_content]
+        package: [motion_core, motion_content, motion_media]
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}
