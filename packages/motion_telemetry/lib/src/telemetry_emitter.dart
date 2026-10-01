@@ -1,6 +1,7 @@
 import 'consent_gate.dart';
 import 'event_allowlist.dart';
 import 'redactor.dart';
+import 'telemetry_attribute_policy.dart';
 import 'telemetry_event.dart';
 import 'telemetry_value.dart';
 
@@ -28,31 +29,44 @@ abstract class TelemetrySink {
 
 /// The single choke point every product-analytics event must pass through.
 /// Fail-closed at every gate, checked in order: event allowlist, consent,
-/// optional per-event attribute allowlist, forbidden-content keys, and safe
-/// scalar value shapes. Accepted attributes and values are snapshotted before
+/// per-event attribute allowlist, forbidden-content keys, closed event schemas,
+/// and an independent exact field/value policy (deny-all by default).
+/// Accepted attributes and values are snapshotted before
 /// [sink] receives them.
 class TelemetryEmitter {
   TelemetryEmitter({
     required this.allowlist,
+    TelemetryAttributePolicy attributePolicy =
+        const TelemetryAttributePolicy.denyAll(),
     required this.consentGate,
     required this.sink,
-  }) : _redactor = Redactor();
+  }) : attributePolicy = TelemetryAttributePolicy.snapshot(attributePolicy),
+       _redactor = Redactor();
 
   final EventAllowlist allowlist;
+  final TelemetryAttributePolicy attributePolicy;
   final ConsentGate consentGate;
   final TelemetrySink sink;
   final Redactor _redactor;
 
   EmitResult emit(TelemetryEvent event) {
-    if (!allowlist.allows(event.name)) {
+    final eventName = event.name;
+    final attributes = event.attributes;
+    if (!allowlist.allows(eventName)) {
       return const EmitResult.rejected(RejectReason.notAllowlisted);
     }
     if (!consentGate.hasConsent(ConsentPurpose.productAnalytics)) {
       return const EmitResult.rejected(RejectReason.noConsent);
     }
+    if (attributes.length > 16) {
+      return const EmitResult.rejected(RejectReason.unsafeValueShape);
+    }
     final safeAttributes = <String, TelemetryValue>{};
-    for (final entry in event.attributes.entries) {
-      if (!allowlist.allowsAttribute(event.name, entry.key)) {
+    for (final entry in attributes.entries) {
+      if (!_safeKeyPattern.hasMatch(entry.key)) {
+        return const EmitResult.rejected(RejectReason.unsafeValueShape);
+      }
+      if (!allowlist.allowsAttribute(eventName, entry.key)) {
         return const EmitResult.rejected(RejectReason.attributeNotAllowlisted);
       }
       if (!_redactor.allowsKey(entry.key)) {
@@ -69,12 +83,22 @@ class TelemetryEmitter {
       }
       safeAttributes[entry.key] = value;
     }
-    if (!_validEventShape(event.name, safeAttributes)) {
+    if (!_validEventShape(eventName, safeAttributes)) {
       return const EmitResult.rejected(RejectReason.invalidEventShape);
+    }
+    final eventPolicy = attributePolicy.events[eventName];
+    if (eventPolicy == null) {
+      return const EmitResult.rejected(RejectReason.unsafeValueShape);
+    }
+    for (final entry in safeAttributes.entries) {
+      final policy = eventPolicy.fields[entry.key];
+      if (policy == null || !_allowsPolicyValue(entry.value, policy)) {
+        return const EmitResult.rejected(RejectReason.unsafeValueShape);
+      }
     }
     sink.send(
       TelemetryEvent(
-        name: event.name,
+        name: eventName,
         attributes: Map<String, TelemetryValue>.unmodifiable(safeAttributes),
       ),
     );
@@ -230,3 +254,24 @@ bool _isSemanticDurationBucket(TelemetryValue value) {
 
 bool _isMatchingString(TelemetryValue? value, RegExp pattern) =>
     value is TelemetryString && pattern.hasMatch(value.value);
+
+final _safeKeyPattern = RegExp(r'^[A-Za-z][A-Za-z0-9_.-]{0,39}$');
+final _safePolicyTokenPattern = RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$');
+
+bool _allowsPolicyValue(TelemetryValue value, TelemetryFieldPolicy policy) =>
+    switch (value) {
+      TelemetryString(:final value) =>
+        policy is TelemetryTokenFieldPolicy &&
+            _safePolicyTokenPattern.hasMatch(value) &&
+            policy.allowedValues.contains(value),
+      TelemetryInt(:final value) =>
+        policy is TelemetryIntFieldPolicy &&
+            value >= -1000000 &&
+            value <= 1000000 &&
+            value >= policy.min &&
+            value <= policy.max,
+      TelemetryBool() => policy is TelemetryBoolFieldPolicy,
+      TelemetryDurationBucket(:final bucketLabel) =>
+        policy is TelemetryDurationFieldPolicy &&
+            TelemetryDurationBucket.allowedLabels.contains(bucketLabel),
+    };

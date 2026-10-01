@@ -4,7 +4,7 @@ description: >-
   family: an append-only provenance journal, a rebuildable projection store,
   fail-closed migration, export/delete and a secure-key adapter interface.
   Holds no cloud-sync decision — everything here is local-first.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:

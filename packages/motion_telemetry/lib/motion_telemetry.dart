@@ -7,6 +7,7 @@ export 'src/consent_gate.dart';
 export 'src/diagnostic_exporter.dart';
 export 'src/event_allowlist.dart';
 export 'src/redactor.dart';
+export 'src/telemetry_attribute_policy.dart';
 export 'src/telemetry_emitter.dart';
 export 'src/telemetry_event.dart';
 export 'src/telemetry_value.dart';
