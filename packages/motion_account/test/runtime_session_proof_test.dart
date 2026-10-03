@@ -214,6 +214,7 @@ class _UserRequests {
 // This public SDK seam owns its outstanding removal calls and release gate.
 class _HeldRemoveStorage extends GotrueAsyncStorage {
   var hold = false;
+  var failRemoval = false;
   final gate = _OwnedHold();
   final _items = <String, String>{};
   final work = <_ObservedWork>[];
@@ -237,6 +238,7 @@ class _HeldRemoveStorage extends GotrueAsyncStorage {
 
   Future<void> _remove(String key) async {
     if (hold) await gate.wait();
+    if (failRemoval) throw StateError('synthetic storage removal failure');
     _items.remove(key);
   }
 
@@ -1560,6 +1562,114 @@ void main() {
     expect(h.cleanupErrors, isEmpty);
     expect(h.clientDisposeRuns, 1);
   });
+
+  // Uses the pinned SDK's own error broadcaster; all HTTP remains synthetic.
+  Future<void> authStreamError(_Harness h) async {
+    // ignore: invalid_use_of_internal_member
+    h.client.auth.notifyException(StateError('synthetic auth stream failure'));
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  testWidgets('explicit successful guest recovers auth stream blocker', (tester) async {
+    final h = await _real(tester, () => _Harness.boot(tester: tester));
+    await tester.pumpWidget(MotionIdentityGate(
+      runtime: h.runtime,
+      child: const MaterialApp(home: Text('GUEST_HISTORY')),
+    ));
+    await _real(tester, () => authStreamError(h));
+    await tester.pump();
+    expect(find.text('GUEST_HISTORY'), findsNothing);
+    await _real(tester, () => tester.tap(find.text('Continue as guest')));
+    await _real(tester, () => h.until(() =>
+        h.client.auth.currentSession == null &&
+        h.runtime.phase.value == MotionIdentityPhase.signedOut));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('GUEST_HISTORY'), findsOneWidget);
+    expect(find.text('Continue as guest'), findsNothing);
+    expect(h.clearedIds, isEmpty);
+  });
+
+  testWidgets('ordinary null signedOut does not recover auth stream blocker', (tester) async {
+    final h = await _real(tester, () => _Harness.boot(tester: tester));
+    await tester.pumpWidget(MotionIdentityGate(
+      runtime: h.runtime,
+      child: const MaterialApp(home: Text('GUEST_HISTORY')),
+    ));
+    await _real(tester, () => authStreamError(h));
+    await tester.pump();
+    await _real(tester, h.signOut);
+    await tester.pump();
+    await tester.pump();
+    expect(h.client.auth.currentSession, isNull);
+    expect(find.text('GUEST_HISTORY'), findsNothing);
+    expect(find.text('Continue as guest'), findsOneWidget);
+    expect(h.clearedIds, isEmpty);
+  });
+
+  testWidgets('failed guest signout keeps blocker even with null actual Session', (tester) async {
+    final h = await _real(tester, () => _Harness.boot(
+      tester: tester, storage: _HeldRemoveStorage(),
+    ));
+    await tester.pumpWidget(MotionIdentityGate(
+      runtime: h.runtime,
+      child: const MaterialApp(home: Text('GUEST_HISTORY')),
+    ));
+    await _real(tester, () => authStreamError(h));
+    await tester.pump();
+    h.storage!.failRemoval = true;
+    await _real(tester, () => tester.tap(find.text('Continue as guest')));
+    await _real(tester, () async {
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pump();
+    await tester.pump();
+    // The SDK clears in-memory Session before awaited storage removal fails.
+    expect(h.client.auth.currentSession, isNull);
+    expect(find.text('GUEST_HISTORY'), findsNothing);
+    expect(find.text('Continue as guest'), findsOneWidget);
+    expect(h.clearedIds, isEmpty);
+    h.storage!.failRemoval = false;
+  });
+
+  for (final supersession in ['error', 'owner', 'dispose', 'gate']) {
+    testWidgets('held guest cannot recover after newer $supersession', (tester) async {
+      final h = await _real(tester, () => _Harness.boot(
+        tester: tester, storage: _HeldRemoveStorage(),
+      ));
+      await tester.pumpWidget(MotionIdentityGate(
+        runtime: h.runtime,
+        child: const MaterialApp(home: Text('GUEST_HISTORY')),
+      ));
+      await _real(tester, () => authStreamError(h));
+      await tester.pump();
+      h.storage!.hold = true;
+      await _real(tester, () => tester.tap(find.text('Continue as guest')));
+      await _real(tester, h.storageEntered);
+      if (supersession == 'error') {
+        await _real(tester, () => authStreamError(h));
+      } else if (supersession == 'owner') {
+        h.requests.hold = true;
+        await _real(tester, () => h.recover(_session(_bob)));
+      } else if (supersession == 'dispose') {
+        h.runtime.dispose();
+      } else {
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+      await _real(tester, () async {
+        h.storage!.release();
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('GUEST_HISTORY'), findsNothing);
+      if (supersession == 'owner') {
+        expect(h.client.auth.currentSession?.user.id, _bob);
+        expect(h.runtime.isCurrentSessionVerified, isFalse);
+      }
+      expect(h.clearedIds, isEmpty);
+    });
+  }
 
   testWidgets('gate requires cold ticket reset after eventless same UUID acceptance', (tester) async {
     final h = await _real(tester, () => _Harness.boot(tester: tester));

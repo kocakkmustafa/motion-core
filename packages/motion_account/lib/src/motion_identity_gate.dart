@@ -53,6 +53,7 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
   String? _scopeOwner;
   bool _recovery = false;
   bool _authUnavailable = false;
+  Object? _guestRecovery;
   bool _closed = false;
   Object? _retirementFrame;
 
@@ -100,6 +101,7 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
       (state) => _handleAuth(runtime, state),
       onError: (Object _, StackTrace __) {
         if (!_isBound(runtime) || runtime.isDisposed) return;
+        _guestRecovery = null; // A newer error supersedes any pending recovery.
         _authUnavailable = true;
         _changed(runtime);
       },
@@ -107,6 +109,7 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
   }
 
   void _unbind() {
+    _guestRecovery = null;
     final listener = _listener;
     if (listener != null) _changes?.removeListener(listener);
     _changes = null;
@@ -302,8 +305,21 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                           TextButton(
                             onPressed: () async {
                               if (!_isBound(runtime) || runtime.isDisposed) return;
+                              final recovery = Object();
+                              _guestRecovery = recovery;
                               try {
                                 await runtime.continueAsGuest();
+                                // Only this explicit, successfully completed guest
+                                // action can recover a stream failure. A null auth
+                                // event alone is not successful sign-out proof.
+                                if (!_isBound(runtime) || runtime.isDisposed ||
+                                    !identical(_guestRecovery, recovery) ||
+                                    runtime.account.supabase.auth.currentSession != null ||
+                                    runtime.phase.value != MotionIdentityPhase.signedOut ||
+                                    runtime.isPasswordRecovery) return;
+                                _guestRecovery = null;
+                                _authUnavailable = false;
+                                _changed(runtime);
                               } catch (_) {
                                 // No network/logout result supplies deletion proof.
                               }
