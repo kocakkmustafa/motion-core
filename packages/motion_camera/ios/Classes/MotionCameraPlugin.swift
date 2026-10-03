@@ -3,16 +3,16 @@ import Flutter
 import MediaPipeTasksVision
 import UIKit
 
-/// ⚠️ COMPILED, NOT YET RUN — first compiled against MediaPipeTasksVision
-/// 0.10.21 on 2026-07-30 (J-071: two real breaks found and fixed by reading
-/// the pod's own headers). Device liveness (a real session emitting
+/// ⚠️ CURRENT OWNED BRIDGE NOT YET COMPILED OR RUN — the older bridge first
+/// compiled against MediaPipeTasksVision 0.10.21 on 2026-07-30 (J-071).
+/// Host helper tests do not compile this framework bridge. Device liveness
+/// (a real session emitting
 /// envelopes) remains a separate, named step — "derleniyor ≠ çalışıyor";
-/// until §7.3-7.7 run on hardware this is a compiling bridge, not a proven
-/// one.
+/// Current framework compilation and §7.3-7.7 hardware acceptance remain open.
 ///
 /// Contract: docs/70-KAMERA-KOPRUSU-SOZLESMESI.md. Responsibilities of this
 /// layer, and nothing more:
-///  - own the AVCaptureSession and the PoseLandmarker (.video mode)
+///  - own the AVCaptureSession and two orientation PoseLandmarker VIDEO graphs
 ///  - latest-wins backpressure: never queue frames, count what was discarded
 ///  - run the passes the current PassPlan asks for on the SAME pixel buffer;
 ///    inverted pass = MPImage(pixelBuffer:orientation: .down) (0.10.21's
@@ -26,6 +26,8 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
   private var control: FlutterMethodChannel?
   private var frames: FlutterEventChannel?
   private var frameSink: FlutterEventSink?
+  private var frameSinkOwner: String?
+  private var frameSinkGeneration: UInt64?
   private var applicationStateObserver: NSObjectProtocol?
 
   private let sessionQueue = DispatchQueue(label: "motion_camera.session")
@@ -33,7 +35,17 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
 
   private var captureSession: AVCaptureSession?
   private var videoOutput: AVCaptureVideoDataOutput?
-  private var landmarker: PoseLandmarker?
+  private var poseTasks: OrientedCaptureTasks<PoseLandmarker>?
+  private let lifecycle = CaptureLifecycle()
+  private final class RetiredCapture {
+    let session: AVCaptureSession?
+    var tasks: OrientedCaptureTasks<PoseLandmarker>?
+    init(session: AVCaptureSession?, tasks: OrientedCaptureTasks<PoseLandmarker>?) {
+      self.session = session
+      self.tasks = tasks
+    }
+  }
+  private var closingResources: RetiredCapture?
   private var modelString = ""
   private var plan = "upright"
 
@@ -101,15 +113,42 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
-    case "start":
+    case "start", "startOwned":
       start(call, result: result)
     case "stop":
       stop(result: result)
-    case "setPassPlan":
+    case "stopOwned":
+      guard let owner = ownedArgument(call) else {
+        result(FlutterError(code: "bad-arguments", message: "ownerId missing", details: nil))
+        return
+      }
+      tearDown(ownerId: owner, scoped: true) { [weak self] closed in
+        guard let self else { return }
+        result(closed ? self.lifecycle.observation(ownerId: owner) : self.closeError())
+      }
+    case "readback":
+      guard let owner = ownedArgument(call),
+            let args = call.arguments as? [String: Any],
+            let nonce = args["nonce"] as? NSNumber, nonce.intValue > 0 else {
+        result(FlutterError(code: "bad-arguments", message: "ownerId/nonce missing", details: nil))
+        return
+      }
+      result(lifecycle.observation(ownerId: owner, nonce: nonce.intValue))
+    case "setPassPlan", "setPassPlanOwned":
       guard let args = call.arguments as? [String: Any],
-            let newPlan = args["plan"] as? String else {
+            let newPlan = args["plan"] as? String,
+            ["upright", "inverted", "dual"].contains(newPlan) else {
         result(FlutterError(code: "bad-arguments", message: "plan missing", details: nil))
         return
+      }
+      if call.method == "setPassPlanOwned" {
+        guard let owner = ownedArgument(call),
+              let requestedGeneration = args["generation"] as? NSNumber,
+              lifecycle.currentOwner() == owner,
+              lifecycle.isCurrent(requestedGeneration.uint64Value) else {
+          result(FlutterError(code: "session-interrupted", message: "capture owner retired", details: nil))
+          return
+        }
       }
       slotLock.lock()
       let canUpdatePlan = sessionActive && captureSession != nil
@@ -119,7 +158,9 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
         result(FlutterError(code: "not-running", message: "no active session", details: nil))
         return
       }
-      result(nil)
+      if call.method == "setPassPlanOwned", let owner = ownedArgument(call) {
+        result(lifecycle.observation(ownerId: owner))
+      } else { result(nil) }
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -127,12 +168,25 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
 
   // MARK: - Session lifecycle
 
+  private func ownedArgument(_ call: FlutterMethodCall) -> String? {
+    guard let args = call.arguments as? [String: Any],
+          let owner = args["ownerId"] as? String,
+          !owner.isEmpty, owner.count <= 128 else { return nil }
+    return owner
+  }
+
+  private func closeError() -> FlutterError {
+    FlutterError(code: "close-uncertain", message: "capture/model closure is uncertain", details: nil)
+  }
+
   private func start(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    slotLock.lock()
-    let alreadyActive = sessionActive
-    slotLock.unlock()
-    guard !alreadyActive else {
-      result(FlutterError(code: "already-running", message: "a session is active", details: nil))
+    if let code = lifecycle.startRefusalCode() {
+      result(FlutterError(code: code, message: "capture is active or closing", details: nil))
+      return
+    }
+    let ownerId = call.method == "startOwned" ? ownedArgument(call) : nil
+    if call.method == "startOwned", ownerId == nil {
+      result(FlutterError(code: "bad-arguments", message: "ownerId missing", details: nil))
       return
     }
     guard UIApplication.shared.applicationState == .active else {
@@ -146,7 +200,8 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
           let modelPath = args["modelPath"] as? String,
           let modelId = args["modelId"] as? String,
           let lens = args["lens"] as? String,
-          let initialPlan = args["plan"] as? String else {
+          let initialPlan = args["plan"] as? String,
+          ["upright", "inverted", "dual"].contains(initialPlan) else {
       result(FlutterError(code: "bad-arguments", message: "start arguments incomplete", details: nil))
       return
     }
@@ -163,11 +218,15 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
 
     let options = PoseLandmarkerOptions()
     options.baseOptions.modelAssetPath = modelPath
-    options.runningMode = .video  // sync per-frame: required for dual-pass on one buffer
+    options.runningMode = .video
     options.numPoses = 1
-    let candidateLandmarker: PoseLandmarker
+    let candidateTasks: OrientedCaptureTasks<PoseLandmarker>
     do {
-      candidateLandmarker = try PoseLandmarker(options: options)
+      // Each VIDEO graph owns tracking/timestamp state for one orientation.
+      // Both receive the original capture PTS; no artificial timestamp offset.
+      candidateTasks = try OrientedCaptureTasks(
+        upright: PoseLandmarker(options: options),
+        inverted: PoseLandmarker(options: options))
     } catch {
       result(FlutterError(
         code: "model-load-failed",
@@ -217,7 +276,14 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     }
 
     let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
-    let sessionInfo: [String: Any] = [
+    let currentGeneration: UInt64
+    do { currentGeneration = try lifecycle.begin(ownerId: ownerId) }
+    catch {
+      output.setSampleBufferDelegate(nil, queue: nil)
+      result(closeError())
+      return
+    }
+    var sessionInfo: [String: Any] = [
       "w": Int(min(dims.width, dims.height)),
       "h": Int(max(dims.width, dims.height)),
       // CMSampleBuffer PTS rides the host clock (mach_absolute_time family):
@@ -225,14 +291,18 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       "clock": "monotonic",
       "library": Self.libraryTag,
     ]
+    if let ownerId {
+      sessionInfo["protocol"] = 1
+      sessionInfo["ownerId"] = ownerId
+      sessionInfo["generation"] = currentGeneration
+    }
 
     slotLock.lock()
-    generation &+= 1
-    let currentGeneration = generation
+    generation = currentGeneration
     sessionActive = true
     captureSession = session
     videoOutput = output
-    landmarker = candidateLandmarker
+    poseTasks = candidateTasks
     modelString = "\(Self.libraryTag)+\(modelId)"
     plan = initialPlan
     pendingBuffer = nil
@@ -263,8 +333,8 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
   }
 
   private func stop(result: @escaping FlutterResult) {
-    tearDown {
-      result(nil)
+    tearDown { [weak self] closed in
+      result(closed ? nil : self?.closeError())
     }
   }
 
@@ -276,7 +346,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       && pending?.generation == generation
     if canComplete { pendingStart = nil }
     slotLock.unlock()
-    if canComplete { pending?.result(info) }
+    if canComplete && lifecycle.markRunning(generation) { pending?.result(info) }
   }
 
   private func failStart(generation: UInt64, code: String, message: String) {
@@ -296,7 +366,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     slotLock.lock()
     let current = sessionActive && generation == candidate
     slotLock.unlock()
-    return current
+    return current && lifecycle.isCurrent(candidate)
   }
 
   /// Shared, idempotent teardown for stop, stream cancellation, application
@@ -304,17 +374,28 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
   /// native resources are released, so queued callbacks fail closed.
   private func tearDown(
     cancelPendingStart: Bool = true,
-    completion: (() -> Void)? = nil
+    ownerId: String? = nil,
+    scoped: Bool = false,
+    completion: ((Bool) -> Void)? = nil
   ) {
+    // The helper retains the shared completion before resource fields are
+    // cleared. Repeated stop/cancel/background calls can never ACK early.
+    let ownsBarrier = lifecycle.requestClose(ownerId: ownerId, scoped: scoped) { closed in
+      guard let completion else { return }
+      if Thread.isMainThread { completion(closed) }
+      else { DispatchQueue.main.async { completion(closed) } }
+    }
+    guard ownsBarrier else { return }
     slotLock.lock()
-    generation &+= 1
     sessionActive = false
     let session = captureSession
     let output = videoOutput
     let pending = pendingStart
+    let retired = RetiredCapture(session: session, tasks: poseTasks)
+    closingResources = retired
     captureSession = nil
     videoOutput = nil
-    landmarker = nil
+    poseTasks = nil
     pendingStart = nil
     pendingBuffer = nil
     pendingGeneration = generation
@@ -323,14 +404,25 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     slotLock.unlock()
 
     output?.setSampleBufferDelegate(nil, queue: nil)
-    if let session {
-      sessionQueue.async {
-        if session.isRunning { session.stopRunning() }
-        guard let completion else { return }
-        DispatchQueue.main.async(execute: completion)
+    // Teardown itself owns the resource lifetime, including engine detach.
+    // Retain the plugin until the physical stop, model drain, and completion
+    // finish; a weak capture could skip stopRunning after registrar release.
+    sessionQueue.async {
+      if let session = retired.session, session.isRunning { session.stopRunning() }
+      let captureClosed = retired.session?.isRunning != true
+      // Accepted inference was enqueued while holding slotLock. This barrier
+      // therefore runs after every detect holding a task reference. The pinned
+      // iOS API has no public close(); releasing the final task pair here uses
+      // its ARC destruction contract, after physical stopRunning readback.
+      self.inferenceQueue.async {
+        if captureClosed { retired.tasks = nil }
+        DispatchQueue.main.async {
+          if captureClosed { self.closingResources = nil }
+          // On failure keep the resources and sticky uncertain state. No new
+          // session is permitted while closure cannot be confirmed.
+          self.lifecycle.finishClose(success: captureClosed)
+        }
       }
-    } else {
-      completeOnMain(completion)
     }
 
     if cancelPendingStart, let pending {
@@ -346,15 +438,6 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     }
   }
 
-  private func completeOnMain(_ completion: (() -> Void)?) {
-    guard let completion else { return }
-    if Thread.isMainThread {
-      completion()
-    } else {
-      DispatchQueue.main.async(execute: completion)
-    }
-  }
-
   // MARK: - Inference
 
   private func drainSlot() {
@@ -363,7 +446,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
           inferenceBusyGeneration == nil,
           let buffer = pendingBuffer,
           pendingGeneration == generation,
-          let currentLandmarker = landmarker else {
+          let currentTasks = poseTasks else {
       slotLock.unlock()
       return
     }
@@ -375,8 +458,8 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     pendingBuffer = nil
     droppedSinceLastEmit = 0
     inferenceBusyGeneration = generation
-    slotLock.unlock()
-
+    // Publish work before releasing the lock, so teardown's inference barrier
+    // cannot overtake a task reference captured by this accepted frame.
     inferenceQueue.async { [weak self] in
       guard let self else { return }
       if self.isCurrentGeneration(generation) {
@@ -385,7 +468,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
           tUs: tUs,
           dropped: dropped,
           plan: currentPlan,
-          landmarker: currentLandmarker,
+          tasks: currentTasks,
           modelString: currentModelString,
           generation: generation)
       }
@@ -397,6 +480,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       self.slotLock.unlock()
       if shouldDrain { self.drainSlot() }  // a frame may have landed while busy
     }
+    slotLock.unlock()
   }
 
   private func infer(
@@ -404,7 +488,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     tUs: Int64,
     dropped: Int,
     plan: String,
-    landmarker: PoseLandmarker,
+    tasks: OrientedCaptureTasks<PoseLandmarker>,
     modelString: String,
     generation: UInt64
   ) {
@@ -418,6 +502,10 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       "clock": "monotonic",
       "dropped": dropped,
     ]
+    if let owner = lifecycle.currentOwner() {
+      envelope["ownerId"] = owner
+      envelope["generation"] = generation
+    }
 
     func run(rotated: Bool) -> FlutterStandardTypedData? {
       guard isCurrentGeneration(generation) else { return nil }
@@ -438,7 +526,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
           orientation: rotated ? .down : .up)
       else { return nil }
       guard
-        let result = try? landmarker.detect(
+        let result = try? tasks.task(inverted: rotated).detect(
           videoFrame: image,
           timestampInMilliseconds: Int(tUs / 1000)),
         let pose = result.landmarks.first
@@ -470,6 +558,10 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       guard self.isCurrentGeneration(generation) else { return }
+      if let sinkOwner = self.frameSinkOwner {
+        guard sinkOwner == self.lifecycle.currentOwner(),
+              self.frameSinkGeneration == generation else { return }
+      }
       self.frameSink?(envelope)
     }
   }
@@ -514,12 +606,54 @@ extension MotionCameraPlugin: FlutterStreamHandler {
   public func onListen(
     withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink
   ) -> FlutterError? {
+    if let args = arguments as? [String: Any] {
+      guard let owner = args["ownerId"] as? String,
+            let requestedGeneration = args["generation"] as? NSNumber,
+            lifecycle.currentOwner() == owner,
+            lifecycle.isCurrent(requestedGeneration.uint64Value) else {
+        return FlutterError(code: "session-interrupted", message: "stream owner retired", details: nil)
+      }
+      frameSinkOwner = owner
+      frameSinkGeneration = requestedGeneration.uint64Value
+    } else {
+      frameSinkOwner = nil
+      frameSinkGeneration = nil
+    }
     frameSink = events
     return nil
   }
 
   public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    if let args = arguments as? [String: Any] {
+      guard let owner = args["ownerId"] as? String,
+            let requestedGeneration = args["generation"] as? NSNumber else {
+        return FlutterError(code: "bad-arguments", message: "stream owner missing", details: nil)
+      }
+      // A retired stream cancellation must not clear a successor's sink.
+      if frameSinkOwner == owner && frameSinkGeneration == requestedGeneration.uint64Value {
+        frameSink = nil
+        frameSinkOwner = nil
+        frameSinkGeneration = nil
+      }
+      if lifecycle.currentOwner() == owner && lifecycle.isCurrent(requestedGeneration.uint64Value) {
+        tearDown(ownerId: owner, scoped: true)
+      }
+      return nil
+    }
+    // Flutter cancels a replaced listener with nil arguments. Use the stored
+    // identity of that listener instead of stopping the global successor.
+    if let owner = frameSinkOwner {
+      let listenerGeneration = frameSinkGeneration
+      frameSink = nil
+      frameSinkOwner = nil
+      frameSinkGeneration = nil
+      if let listenerGeneration, lifecycle.currentOwner() == owner,
+         lifecycle.isCurrent(listenerGeneration) { tearDown(ownerId: owner, scoped: true) }
+      return nil
+    }
     frameSink = nil
+    frameSinkOwner = nil
+    frameSinkGeneration = nil
     tearDown()
     return nil
   }

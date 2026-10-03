@@ -46,6 +46,16 @@ begin
     null;
   end;
 
+  if exists (
+    select 1
+    from (values ('public.motion_profiles'), ('public.motion_entitlements'),
+      ('public.motion_deleted_account_receipts')) as targets(table_name)
+    cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) as rights(privilege)
+    where not has_table_privilege('service_role', targets.table_name, rights.privilege)
+  ) then
+    raise exception 'server CRUD privilege boundary failed';
+  end if;
+
   if has_table_privilege('anon', 'public.motion_profiles', 'SELECT')
     or has_table_privilege('anon', 'public.motion_entitlements', 'SELECT')
     or has_column_privilege('authenticated',

@@ -58,28 +58,51 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     _lastUserId = widget.account.currentUser?.id;
     _refreshMembership();
     _loadDisplayName();
-    _authSubscription = widget.account.authChanges.listen((state) {
-      if (!mounted) return;
-      final userId = widget.account.currentUser?.id;
-      final accountChanged = userId != _lastUserId;
-      _lastUserId = userId;
-      setState(() {
-        if (state.event == AuthChangeEvent.passwordRecovery) {
-          _recovering = true;
-        } else if (state.event == AuthChangeEvent.signedIn ||
-            state.event == AuthChangeEvent.signedOut ||
-            state.event == AuthChangeEvent.userUpdated) {
-          _recovering = false;
-        }
-        _message = null;
+    _authSubscription = widget.account.authChanges.listen(
+      (state) {
+        if (!mounted) return;
+        final userId = widget.account.currentUser?.id;
+        final accountChanged = userId != _lastUserId;
+        _lastUserId = userId;
+        setState(() {
+          if (state.event == AuthChangeEvent.passwordRecovery) {
+            _recovering = true;
+          } else if (state.event == AuthChangeEvent.signedIn ||
+              state.event == AuthChangeEvent.signedOut ||
+              state.event == AuthChangeEvent.userUpdated) {
+            _recovering = false;
+          }
+          _message = null;
+          if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
+            _refreshMembership();
+          }
+        });
         if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
-          _refreshMembership();
+          _loadDisplayName();
         }
-      });
-      if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
-        _loadDisplayName();
-      }
-    });
+      },
+      onError: (Object _, StackTrace _) {
+        if (!mounted) return;
+        // A refresh error is not a deletion or a new verified identity. Stop
+        // publishing pending profile/membership observations; keep the form.
+        _profileRequestGeneration++;
+        setState(() {
+          _membership = null;
+          _message = _t(
+            'Hesabın yenilenemedi. Lütfen tekrar dene.',
+            'Could not refresh your account. Please retry.',
+          );
+        });
+      },
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MotionAccountPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialPasswordRecovery != widget.initialPasswordRecovery) {
+      _recovering = widget.initialPasswordRecovery;
+    }
   }
 
   @override
@@ -220,41 +243,49 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   }
 
   Future<void> _confirmDeletion() async {
+    final account = widget.account;
     final clear = widget.clearLocalData;
-    if (clear == null) return;
+    final userId = account.currentUser?.id;
+    final initiatingSession = account.supabase.auth.currentSession;
+    if (clear == null || userId == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_t('Motion hesabını sil', 'Delete Motion account')),
-        content: Text(
-          _t(
-            'Ortak hesabın ve beş uygulamadaki üyelik hakların silinir. '
-                'Ardından bu uygulamadaki yerel geçmiş temizlenir. '
-                'Mağaza aboneliğini Apple veya Google hesabından ayrıca iptal etmelisin.',
-            'This deletes your shared account and access in all five apps, '
-                'then erases local history in this app. '
-                'Cancel any store subscription separately in your Apple or Google account.',
+      builder: (dialogContext) {
+        String t(String tr, String en) =>
+            Localizations.localeOf(dialogContext).languageCode == 'tr' ? tr : en;
+        return AlertDialog(
+          title: Text(t('Motion hesabını sil', 'Delete Motion account')),
+          content: Text(
+            t(
+              'Ortak hesabın ve beş uygulamadaki üyelik hakların silinir. '
+                  'Ardından bu uygulamadaki yerel geçmiş temizlenir. '
+                  'Mağaza aboneliğini Apple veya Google hesabından ayrıca iptal etmelisin.',
+              'This deletes your shared account and access in all five apps, '
+                  'then erases local history in this app. '
+                  'Cancel any store subscription separately in your Apple or Google account.',
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_t('Vazgeç', 'Cancel')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_t('Hesabı sil', 'Delete account')),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(t('Vazgeç', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(t('Hesabı sil', 'Delete account')),
+            ),
+          ],
+        );
+      },
     );
-    if (confirmed != true || !mounted) return;
-    final userId = widget.account.currentUser?.id;
-    if (userId == null) return;
+    if (confirmed != true ||
+        !mounted ||
+        !identical(widget.account.supabase, account.supabase) ||
+        !identical(account.supabase.auth.currentSession, initiatingSession) ||
+        account.currentUser?.id != userId)
+      return;
     await _run(
-      () => widget.account.deleteCommonAccount(
-        afterRemoteDelete: (_) => clear(userId),
-      ),
+      () => account.deleteCommonAccount(afterRemoteDelete: clear),
     );
   }
 

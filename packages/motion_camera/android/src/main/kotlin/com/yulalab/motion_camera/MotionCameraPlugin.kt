@@ -10,6 +10,8 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -17,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions
@@ -29,11 +32,11 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicLong
 
 /**
- * ⚠️ PROVISIONAL — written against tasks-vision 0.10.29 (M-L-02 pin) but NOT
- * yet compiled or run on a device. Liveness (a real session emitting
+ * ⚠️ CURRENT OWNED BRIDGE NOT YET COMPILED OR RUN — source targets
+ * tasks-vision 0.10.29 (M-L-02). Host helper tests do not compile this bridge.
+ * Historical 0.1.2 compilation does not validate this change. Liveness (a real session emitting
  * envelopes) is a separate, named step; until it happens this file is design
  * made concrete, not a working bridge (beyan ≠ canlı).
  *
@@ -59,6 +62,8 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private lateinit var control: MethodChannel
     private lateinit var frames: EventChannel
     private var frameSink: EventChannel.EventSink? = null
+    private var frameSinkOwner: String? = null
+    private var frameSinkGeneration: Long? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var inferenceExecutor = Executors.newSingleThreadExecutor()
@@ -68,12 +73,23 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var activityLifecycleOwner: LifecycleOwner? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalysis: ImageAnalysis? = null
-    private var landmarker: PoseLandmarker? = null
-    private var pendingLandmarker: PoseLandmarker? = null
+    private var camera: Camera? = null
+    private var bindingAttempted = false
+    private var poseTasks: OrientedCaptureTasks<PoseLandmarker>? = null
+    private var pendingPoseTasks: OrientedCaptureTasks<PoseLandmarker>? = null
+    private val loadingTasks = mutableListOf<PoseLandmarker>()
+    private val lifecycle = CaptureLifecycle()
+    private data class RetiredCapture(
+        val camera: Camera?,
+        val provider: ProcessCameraProvider?,
+        val analysis: ImageAnalysis?,
+        val markers: List<PoseLandmarker>,
+    )
+    private var closingResources: RetiredCapture? = null
+    private var closeFailure: Exception? = null
     private var modelString = ""
     @Volatile private var plan = "upright"
     @Volatile private var clockDomain = "unknown"
-    private val generationCounter = AtomicLong(0)
     @Volatile private var activeGeneration = 0L
     @Volatile private var sessionActive = false
     @Volatile private var droppedGeneration = 0L
@@ -154,18 +170,45 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "start" -> start(call, result)
+            "start", "startOwned" -> start(call, result)
             "stop" -> stop(result)
-            "setPassPlan" -> {
+            "stopOwned" -> {
+                val ownerId = ownedArgument(call)
+                if (ownerId == null) {
+                    result.error("bad-arguments", "ownerId missing", null); return
+                }
+                tearDown(ownerId = ownerId, scoped = true) { closed ->
+                    if (closed) result.success(lifecycle.observation(ownerId))
+                    else result.error("close-uncertain", closeFailure?.message ?: "capture/model closure is uncertain", null)
+                }
+            }
+            "readback" -> {
+                val ownerId = ownedArgument(call)
+                val nonce = call.argument<Number>("nonce")?.toInt()
+                if (ownerId == null || nonce == null || nonce <= 0) {
+                    result.error("bad-arguments", "ownerId/nonce missing", null); return
+                }
+                result.success(lifecycle.observation(ownerId, nonce))
+            }
+            "setPassPlan", "setPassPlanOwned" -> {
                 val newPlan = call.argument<String>("plan")
-                if (newPlan == null) {
+                if (newPlan !in listOf("upright", "inverted", "dual")) {
                     result.error("bad-arguments", "plan missing", null); return
+                }
+                val ownerId = ownedArgument(call)
+                if (call.method == "setPassPlanOwned") {
+                    val generation = call.argument<Number>("generation")?.toLong()
+                    if (ownerId == null || generation == null ||
+                        lifecycle.currentOwner() != ownerId || !lifecycle.isCurrent(generation)) {
+                        result.error("session-interrupted", "capture owner retired", null); return
+                    }
                 }
                 if (!sessionActive || cameraProvider == null) {
                     result.error("not-running", "no active session", null); return
                 }
-                plan = newPlan
-                result.success(null)
+                plan = newPlan!!
+                if (call.method == "setPassPlanOwned") result.success(lifecycle.observation(ownerId!!))
+                else result.success(null)
             }
             else -> result.notImplemented()
         }
@@ -173,15 +216,23 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     // ── Session lifecycle ──────────────────────────────────────────────────
 
+    private fun ownedArgument(call: MethodCall): String? =
+        call.argument<String>("ownerId")?.takeIf { it.isNotEmpty() && it.length <= 128 }
+
     private fun start(call: MethodCall, result: MethodChannel.Result) {
-        if (sessionActive) {
-            result.error("already-running", "a session is active", null); return
+        lifecycle.startRefusalCode()?.let {
+            result.error(it, "capture is active or closing", null); return
+        }
+        val ownerId = if (call.method == "startOwned") ownedArgument(call) else null
+        if (call.method == "startOwned" && ownerId == null) {
+            result.error("bad-arguments", "ownerId missing", null); return
         }
         val modelPath = call.argument<String>("modelPath")
         val modelId = call.argument<String>("modelId")
         val lens = call.argument<String>("lens")
         val initialPlan = call.argument<String>("plan")
-        if (modelPath == null || modelId == null || lens == null || initialPlan == null) {
+        if (modelPath == null || modelId == null || lens == null ||
+            initialPlan !in listOf("upright", "inverted", "dual")) {
             result.error("bad-arguments", "start arguments incomplete", null); return
         }
 
@@ -205,35 +256,41 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             ); return
         }
 
-        val candidateLandmarker = try {
-            PoseLandmarker.createFromOptions(
-                context,
-                PoseLandmarker.PoseLandmarkerOptions.builder()
-                    .setBaseOptions(
-                        BaseOptions.builder().setModelAssetPath(modelPath).build()
-                    )
-                    // VIDEO mode: sync per-frame, required for dual-pass on one image.
-                    .setRunningMode(RunningMode.VIDEO)
-                    .setNumPoses(1)
-                    .build()
-            )
-        } catch (e: Exception) {
-            result.error(
-                "model-load-failed",
-                "PoseLandmarker rejected $modelPath: ${e.message}", null
-            ); return
+        val generation = try { lifecycle.begin(ownerId) }
+        catch (e: CaptureLifecycle.Refusal) {
+            result.error(e.code, "capture cannot begin", null); return
         }
-
-        val generation = generationCounter.incrementAndGet()
         activeGeneration = generation
         sessionActive = true
         droppedGeneration = generation
         droppedSinceLastEmit = 0
         inferenceBusyGeneration = 0
-        pendingLandmarker = candidateLandmarker
         pendingStart = PendingStart(generation, result)
         modelString = "$LIBRARY_TAG+$modelId"
-        plan = initialPlan
+        plan = initialPlan!!
+
+        val candidateTasks = try {
+            fun createTask(): PoseLandmarker = PoseLandmarker.createFromOptions(
+                context,
+                PoseLandmarker.PoseLandmarkerOptions.builder()
+                    .setBaseOptions(
+                        BaseOptions.builder().setModelAssetPath(modelPath).build()
+                    )
+                    // Each orientation owns a separate VIDEO tracking graph.
+                    .setRunningMode(RunningMode.VIDEO)
+                    .setNumPoses(1)
+                    .build()
+            ).also { loadingTasks.add(it) }
+            OrientedCaptureTasks(createTask(), createTask()).also {
+                pendingPoseTasks = it
+                loadingTasks.clear()
+            }
+        } catch (e: Exception) {
+            failStart(generation,
+                "model-load-failed",
+                "PoseLandmarker rejected $modelPath: ${e.message}"
+            ); return
+        }
 
         val selector = if (lens == "back") CameraSelector.DEFAULT_BACK_CAMERA
         else CameraSelector.DEFAULT_FRONT_CAMERA
@@ -259,12 +316,14 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     analyze(proxy, generation)
                 }
 
-                val camera = provider.bindToLifecycle(owner, selector, analysis)
                 cameraProvider = provider
                 imageAnalysis = analysis
-                landmarker = candidateLandmarker
-                if (pendingLandmarker === candidateLandmarker) {
-                    pendingLandmarker = null
+                bindingAttempted = true
+                val camera = provider.bindToLifecycle(owner, selector, analysis)
+                this.camera = camera
+                poseTasks = candidateTasks
+                if (pendingPoseTasks === candidateTasks) {
+                    pendingPoseTasks = null
                 }
                 // Report the clock domain instead of assuming it: vendor camera
                 // HALs are allowed to timestamp from an arbitrary zero.
@@ -285,13 +344,18 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 val res = analysis.resolutionInfo?.resolution
                 completeStart(
                     generation,
-                    mapOf(
+                    buildMap<String, Any> {
                         // Portrait-normalized like iOS: min/max of the pair.
-                        "w" to (res?.let { minOf(it.width, it.height) } ?: 0),
-                        "h" to (res?.let { maxOf(it.width, it.height) } ?: 0),
-                        "clock" to clockDomain,
-                        "library" to LIBRARY_TAG,
-                    ),
+                        put("w", res?.let { minOf(it.width, it.height) } ?: 0)
+                        put("h", res?.let { maxOf(it.width, it.height) } ?: 0)
+                        put("clock", clockDomain)
+                        put("library", LIBRARY_TAG)
+                        if (ownerId != null) {
+                            put("protocol", 1)
+                            put("ownerId", ownerId)
+                            put("generation", generation)
+                        }
+                    },
                 )
             } catch (e: Exception) {
                 failStart(
@@ -306,6 +370,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private fun completeStart(generation: Long, info: Map<String, Any>) {
         val pending = pendingStart
         if (!isCurrentGeneration(generation) || pending?.generation != generation) return
+        if (!lifecycle.markRunning(generation)) return
         pendingStart = null
         pending.result.success(info)
     }
@@ -319,12 +384,14 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     private fun stop(result: MethodChannel.Result) {
-        tearDown()
-        result.success(null)
+        tearDown { closed ->
+            if (closed) result.success(null)
+            else result.error("close-uncertain", closeFailure?.message ?: "capture/model closure is uncertain", null)
+        }
     }
 
     private fun isCurrentGeneration(generation: Long): Boolean =
-        sessionActive && activeGeneration == generation
+        sessionActive && activeGeneration == generation && lifecycle.isCurrent(generation)
 
     /**
      * The one teardown path for explicit stop, stream cancellation, Activity
@@ -332,28 +399,108 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
      * first: already queued analyzer/inference/main-thread callbacks become
      * harmless before any native resource is released.
      */
-    private fun tearDown(cancelPendingStart: Boolean = true) {
+    private fun tearDown(cancelPendingStart: Boolean = true,
+                         ownerId: String? = null, scoped: Boolean = false,
+                         completion: (Boolean) -> Unit = {}) {
+        // Register before clearing fields. All repeated/in-flight stops share
+        // the physical CameraState.CLOSED + every landmarker.close() barrier.
+        if (!lifecycle.requestClose(ownerId, scoped) { closed ->
+            if (Looper.myLooper() == Looper.getMainLooper()) completion(closed)
+            else mainHandler.post { completion(closed) }
+        }) return
         sessionActive = false
-        activeGeneration = generationCounter.incrementAndGet()
+        activeGeneration = 0
 
         val pending = pendingStart
         pendingStart = null
 
-        runCatching { imageAnalysis?.clearAnalyzer() }
-        val analysis = imageAnalysis
+        val retired = RetiredCapture(
+            camera, cameraProvider, imageAnalysis,
+            (poseTasks?.all().orEmpty() + pendingPoseTasks?.all().orEmpty() + loadingTasks).distinct(),
+        )
+        closingResources = retired
+        val wasBinding = bindingAttempted
+        camera = null
         imageAnalysis = null
-        cameraProvider?.let { provider ->
-            if (analysis != null) runCatching { provider.unbind(analysis) }
-        }
         cameraProvider = null
+        bindingAttempted = false
+        poseTasks = null
+        pendingPoseTasks = null
+        loadingTasks.clear()
 
-        val markers = listOfNotNull(landmarker, pendingLandmarker).distinct()
-        landmarker = null
-        pendingLandmarker = null
-        markers.forEach { marker ->
-            // Serialized after any in-flight detectForVideo call.
-            inferenceExecutor.execute { marker.close() }
+        var failed = false
+        var captureClosed = false
+        var modelsClosed = false
+        var finished = false
+        var cameraObserver: Observer<CameraState>? = null
+        lateinit var timeout: Runnable
+        fun finishIfReady() {
+            if (finished || !modelsClosed || (!captureClosed && !failed)) return
+            finished = true
+            mainHandler.removeCallbacks(timeout)
+            cameraObserver?.let { retired.camera?.cameraInfo?.cameraState?.removeObserver(it) }
+            if (!failed && captureClosed) closingResources = null
+            // Never swallow unbind/close/timeout failure and advertise closure.
+            lifecycle.finishClose(!failed && captureClosed)
         }
+        timeout = Runnable {
+            if (!finished) {
+                closeFailure = closeFailure ?: IllegalStateException("native capture/model close timed out")
+                failed = true; modelsClosed = true; finishIfReady()
+            }
+        }
+        mainHandler.postDelayed(timeout, 10_000)
+        try {
+            retired.analysis?.clearAnalyzer()
+            retired.analysis?.let { retired.provider?.unbind(it) }
+            if (retired.analysis != null && retired.provider?.isBound(retired.analysis) == true) {
+                throw IllegalStateException("analysis remained bound after unbind")
+            }
+            if (retired.camera == null) {
+                // No bind attempted means no capture existed. A failed bind
+                // without a Camera readback is uncertain, rather than proof.
+                captureClosed = !wasBinding
+                if (wasBinding) {
+                    closeFailure = IllegalStateException("failed bind has no physical Camera readback")
+                    failed = true
+                }
+            } else {
+                val observer = Observer<CameraState> { state ->
+                    if (state?.type == CameraState.Type.CLOSED) {
+                        captureClosed = true
+                        finishIfReady()
+                    }
+                }
+                cameraObserver = observer
+                retired.camera.cameraInfo.cameraState.observeForever(observer)
+            }
+        } catch (e: Exception) {
+            closeFailure = closeFailure ?: e
+            failed = true
+        }
+        try {
+            inferenceExecutor.execute {
+                var modelFailure: Exception? = null
+                // Serialized after in-flight detect. Attempt both close calls
+                // even if the first fails; the failure remains sticky.
+                retired.markers.forEach { marker ->
+                    try { marker.close() } catch (e: Exception) { modelFailure = modelFailure ?: e }
+                }
+                mainHandler.post {
+                    if (modelFailure != null) {
+                        closeFailure = closeFailure ?: modelFailure
+                        failed = true
+                    }
+                    modelsClosed = true
+                    finishIfReady()
+                }
+            }
+        } catch (e: Exception) {
+            closeFailure = closeFailure ?: e
+            failed = true
+            modelsClosed = true
+        }
+        finishIfReady()
 
         droppedGeneration = activeGeneration
         droppedSinceLastEmit = 0
@@ -434,7 +581,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         generation: Long,
     ) {
         if (!isCurrentGeneration(generation)) return
-        val lm = landmarker ?: return
+        val tasks = poseTasks ?: return
         val started = SystemClock.elapsedRealtimeNanos()
         val image = BitmapImageBuilder(bitmap).build()
 
@@ -448,7 +595,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             val processing = ImageProcessingOptions.builder()
                 .setRotationDegrees(degrees).build()
             val result = try {
-                lm.detectForVideo(image, processing, tUs / 1000)
+                tasks.task(inverted).detectForVideo(image, processing, tUs / 1000)
             } catch (e: Exception) {
                 return null
             }
@@ -475,13 +622,23 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         envelope["model"] = modelString
         envelope["clock"] = clockDomain
         envelope["dropped"] = dropped
-        if (plan == "upright" || plan == "dual") envelope["up"] = run(inverted = false)
-        if (plan == "inverted" || plan == "dual") envelope["inv"] = run(inverted = true)
+        lifecycle.currentOwner()?.let {
+            envelope["ownerId"] = it
+            envelope["generation"] = generation
+        }
+        try {
+            if (plan == "upright" || plan == "dual") envelope["up"] = run(inverted = false)
+            if (plan == "inverted" || plan == "dual") envelope["inv"] = run(inverted = true)
+        } finally {
+            image.close()
+        }
         envelope["infUs"] =
             ((SystemClock.elapsedRealtimeNanos() - started) / 1000).toInt()
 
         mainHandler.post {
             if (!isCurrentGeneration(generation)) return@post
+            if (frameSinkOwner != null &&
+                (frameSinkOwner != lifecycle.currentOwner() || frameSinkGeneration != generation)) return@post
             frameSink?.success(envelope)
         }
     }
@@ -489,11 +646,51 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     // ── Event channel ──────────────────────────────────────────────────────
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        if (arguments is Map<*, *>) {
+            val ownerId = arguments["ownerId"] as? String
+            val generation = (arguments["generation"] as? Number)?.toLong()
+            if (ownerId == null || generation == null || lifecycle.currentOwner() != ownerId ||
+                !lifecycle.isCurrent(generation)) {
+                events?.error("session-interrupted", "stream owner retired", null)
+                return
+            }
+            frameSinkOwner = ownerId
+            frameSinkGeneration = generation
+        } else {
+            frameSinkOwner = null
+            frameSinkGeneration = null
+        }
         frameSink = events
     }
 
     override fun onCancel(arguments: Any?) {
+        if (arguments is Map<*, *>) {
+            val ownerId = arguments["ownerId"] as? String ?: return
+            val generation = (arguments["generation"] as? Number)?.toLong() ?: return
+            if (frameSinkOwner == ownerId && frameSinkGeneration == generation) {
+                frameSink = null
+                frameSinkOwner = null
+                frameSinkGeneration = null
+            }
+            if (lifecycle.currentOwner() == ownerId && lifecycle.isCurrent(generation)) {
+                tearDown(ownerId = ownerId, scoped = true)
+            }
+            return
+        }
+        // Flutter cancels a replaced listener with null arguments. Retain
+        // that listener's identity rather than stopping the global successor.
+        frameSinkOwner?.let { ownerId ->
+            val listenerGeneration = frameSinkGeneration
+            frameSink = null
+            frameSinkOwner = null
+            frameSinkGeneration = null
+            if (listenerGeneration != null && lifecycle.currentOwner() == ownerId &&
+                lifecycle.isCurrent(listenerGeneration)) tearDown(ownerId = ownerId, scoped = true)
+            return
+        }
         frameSink = null
+        frameSinkOwner = null
+        frameSinkGeneration = null
         tearDown()
     }
 }

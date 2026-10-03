@@ -4,7 +4,7 @@ description: >-
   stream latency calibration, pitch/onset/chord primitives and a bounded
   transient frame buffer. Holds no instrument curriculum — no notion of
   "correct" playing, only measured signal.
-version: 0.1.0
+version: 0.1.1
 publish_to: none
 
 environment:

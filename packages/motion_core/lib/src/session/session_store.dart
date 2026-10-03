@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -73,42 +74,42 @@ final class SessionRecord {
   bool get isScoredClass => lessonClass == 'scored';
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'lessonId': lessonId,
-        'completedAt': completedAt.toUtc().toIso8601String(),
-        'workedSeconds': workedSeconds,
-        'unitsCompleted': unitsCompleted,
-        'plannedUnits': plannedUnits,
-        'unitLabel': unitLabel,
-        'lessonClass': lessonClass,
-        if (unmeasuredUnits != 0) 'unmeasuredUnits': unmeasuredUnits,
-        if (unmeasuredReason != null) 'unmeasuredReason': unmeasuredReason,
-      };
+    'lessonId': lessonId,
+    'completedAt': completedAt.toUtc().toIso8601String(),
+    'workedSeconds': workedSeconds,
+    'unitsCompleted': unitsCompleted,
+    'plannedUnits': plannedUnits,
+    'unitLabel': unitLabel,
+    'lessonClass': lessonClass,
+    if (unmeasuredUnits != 0) 'unmeasuredUnits': unmeasuredUnits,
+    if (unmeasuredReason != null) 'unmeasuredReason': unmeasuredReason,
+  };
 
   factory SessionRecord.fromJson(Map<String, dynamic> j) => SessionRecord(
-        lessonId: j['lessonId'] as String,
-        completedAt: DateTime.parse(j['completedAt'] as String),
-        workedSeconds: (j['workedSeconds'] as num).toInt(),
-        unitsCompleted: (j['unitsCompleted'] as num).toInt(),
-        plannedUnits: (j['plannedUnits'] as num).toInt(),
-        unitLabel: j['unitLabel'] as String,
-        lessonClass: j['lessonClass'] as String,
-        unmeasuredUnits: (j['unmeasuredUnits'] as num?)?.toInt() ?? 0,
-        unmeasuredReason: j['unmeasuredReason'] as String?,
-      );
+    lessonId: j['lessonId'] as String,
+    completedAt: DateTime.parse(j['completedAt'] as String),
+    workedSeconds: (j['workedSeconds'] as num).toInt(),
+    unitsCompleted: (j['unitsCompleted'] as num).toInt(),
+    plannedUnits: (j['plannedUnits'] as num).toInt(),
+    unitLabel: j['unitLabel'] as String,
+    lessonClass: j['lessonClass'] as String,
+    unmeasuredUnits: (j['unmeasuredUnits'] as num?)?.toInt() ?? 0,
+    unmeasuredReason: j['unmeasuredReason'] as String?,
+  );
 
   /// JabLab's v1 line shape (rounds vocabulary, no class/label fields).
   /// `lessonClass` maps to `''` — which the least-privilege rule reads as
   /// not-scored, matching what those surfaces actually showed (facts, never
   /// marks). Full migration happens on JabLab's adoption turn.
   factory SessionRecord.fromV1Json(Map<String, dynamic> j) => SessionRecord(
-        lessonId: j['lessonId'] as String,
-        completedAt: DateTime.parse(j['completedAt'] as String),
-        workedSeconds: (j['workedSeconds'] as num).toInt(),
-        unitsCompleted: (j['roundsCompleted'] as num).toInt(),
-        plannedUnits: (j['plannedRounds'] as num).toInt(),
-        unitLabel: 'round',
-        lessonClass: '',
-      );
+    lessonId: j['lessonId'] as String,
+    completedAt: DateTime.parse(j['completedAt'] as String),
+    workedSeconds: (j['workedSeconds'] as num).toInt(),
+    unitsCompleted: (j['roundsCompleted'] as num).toInt(),
+    plannedUnits: (j['plannedRounds'] as num).toInt(),
+    unitLabel: 'round',
+    lessonClass: '',
+  );
 }
 
 /// Session-history store — interface deliberately narrow (append, read
@@ -138,6 +139,50 @@ abstract interface class SessionStore {
   Future<int> unreadableRecords();
 }
 
+/// One host-owned lifetime for every store handle belonging to a local owner.
+/// Retirement closes access synchronously. Await [retireAndDrain] before
+/// deleting confirmed-erased owner files, so dispatched filesystem operations
+/// cannot recreate them after deletion. Retirement itself never deletes data.
+final class SessionStoreWriteLease {
+  bool _active = true;
+  final Set<Future<void>> _pending = {};
+  Future<void>? _retirement;
+
+  bool get isActive => _active;
+
+  Future<void> retireAndDrain() {
+    _active = false;
+    return _retirement ??= Future.wait(_pending.toList()).then((_) {});
+  }
+
+  void _checkActive() {
+    if (!_active) throw const SessionStoreRetiredException();
+  }
+
+  Future<T> _run<T>(Future<T> Function() action) async {
+    _checkActive();
+    // Register before invoking caller-owned filesystem code: a reentrant
+    // retirement must also wait for this operation's eventual settlement.
+    final settled = Completer<void>();
+    _pending.add(settled.future);
+    try {
+      final value = await action();
+      _checkActive();
+      return value;
+    } finally {
+      _pending.remove(settled.future);
+      settled.complete();
+    }
+  }
+}
+
+final class SessionStoreRetiredException implements Exception {
+  const SessionStoreRetiredException();
+
+  @override
+  String toString() => 'SessionStoreRetiredException';
+}
+
 /// Append-only JSONL store (family ruling: no third-party DB — a session
 /// log is an event stream with no query load; a DB brings schema migrations
 /// and a platform dependency for a need nobody has measured. The Hive gotcha
@@ -147,7 +192,8 @@ abstract interface class SessionStore {
 /// belongs to the CALLER (Gravita's promotion condition #1: the measured
 /// correction that unblocked two ports).
 final class JsonlSessionStore implements SessionStore {
-  JsonlSessionStore(this._file);
+  JsonlSessionStore(this._file, {SessionStoreWriteLease? writeLease})
+    : writeLease = writeLease ?? SessionStoreWriteLease();
 
   /// Line schema THIS writer emits. v1 lines (rounds vocabulary) are still
   /// read via [SessionRecord.fromV1Json]; unknown versions are SKIPPED, not
@@ -155,32 +201,74 @@ final class JsonlSessionStore implements SessionStore {
   static const int schemaVersion = 2;
 
   final File _file;
+  final SessionStoreWriteLease writeLease;
+
+  // Atomic rename protects one write from interruption, not simultaneous
+  // read-modify-write operations. Share the queue across handles of one path.
+  static final Map<String, Future<void>> _writeTails = {};
+
+  Future<void> retireAndDrain() => writeLease.retireAndDrain();
 
   @override
-  Future<void> append(SessionRecord record) async {
-    final String line = jsonEncode(<String, dynamic>{
-      'v': schemaVersion,
-      ...record.toJson(),
-    });
+  Future<void> append(SessionRecord record) => writeLease._run(
+    () => _serializeWrite(() async {
+      writeLease._checkActive();
+      final String line = jsonEncode(<String, dynamic>{
+        'v': schemaVersion,
+        ...record.toJson(),
+      });
 
-    final String existing =
-        await _file.exists() ? await _file.readAsString() : '';
-    final String next = existing.isEmpty ? '$line\n' : '$existing$line\n';
+      final exists = await _file.exists();
+      writeLease._checkActive();
+      final String existing = exists ? await _file.readAsString() : '';
+      writeLease._checkActive();
+      final String next = existing.isEmpty ? '$line\n' : '$existing$line\n';
 
-    // Atomic tmp+rename: a direct append killed mid-write (the OS may kill
-    // a mobile app at any moment) leaves a half line that breaks the next
-    // read. POSIX rename is atomic — old file or new file, nothing between.
-    final File tmp = File('${_file.path}.tmp');
-    await tmp.parent.create(recursive: true);
-    await tmp.writeAsString(next, flush: true);
-    await tmp.rename(_file.path);
+      // Atomic tmp+rename: a direct append killed mid-write (the OS may kill
+      // a mobile app at any moment) leaves a half line that breaks the next
+      // read. POSIX rename is atomic — old file or new file, nothing between.
+      final File tmp = File('${_file.path}.tmp');
+      var temporaryStarted = false;
+      try {
+        await tmp.parent.create(recursive: true);
+        writeLease._checkActive();
+        temporaryStarted = true;
+        await tmp.writeAsString(next, flush: true);
+        writeLease._checkActive();
+        await tmp.rename(_file.path);
+        writeLease._checkActive();
+      } finally {
+        if (temporaryStarted && await tmp.exists()) await tmp.delete();
+      }
+    }),
+  );
+
+  Future<void> _serializeWrite(Future<void> Function() action) {
+    final path = Uri.file(_file.absolute.path).normalizePath().toFilePath();
+    final previous = _writeTails[path] ?? Future<void>.value();
+    final operation = previous.then((_) => action());
+    // A failed write is reported to its caller but must not poison the queue.
+    final settled = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    _writeTails[path] = settled;
+    unawaited(
+      settled.then((_) {
+        if (identical(_writeTails[path], settled)) _writeTails.remove(path);
+      }),
+    );
+    return operation;
   }
 
   @override
   Future<List<SessionRecord>> recent({int? limit}) async {
     final List<SessionRecord> all = (await _readAll()).records;
-    all.sort((SessionRecord a, SessionRecord b) =>
-        b.completedAt.compareTo(a.completedAt));
+    writeLease._checkActive();
+    all.sort(
+      (SessionRecord a, SessionRecord b) =>
+          b.completedAt.compareTo(a.completedAt),
+    );
     if (limit == null || limit >= all.length) return all;
     return all.sublist(0, limit);
   }
@@ -191,69 +279,79 @@ final class JsonlSessionStore implements SessionStore {
     for (final SessionRecord r in (await _readAll()).records) {
       if (r.lessonId == lessonId) total += r.workedSeconds;
     }
+    writeLease._checkActive();
     return total;
   }
 
   @override
-  Future<int> unreadableRecords() async => (await _readAll()).unreadable;
-
-  Future<({List<SessionRecord> records, int unreadable})> _readAll() async {
-    // MUTABLE list is mandatory: recent() sorts in place. Returning
-    // `const []` broke the empty-history path — the FIRST LAUNCH — in the
-    // original app (a real defect its tests caught; pinned here for good).
-    // M-F-251 (Gravita'nın simülatör avı): `File.exists()` DİZİN için false
-    // döner — yol var-ama-dosya-değilken "hiç yazılmamış" dalına girmek,
-    // var olan ama okunamayan geçmişi `ok` diye okutur (yanlış-ok sınıfı).
-    // Yol-tipi açıkça sorulur: notFound = ilk açılış; dosya-dışı her şey
-    // AÇILAMAZ ve yüksek sesle söylenir — tüketicilerin mevcut
-    // unavailable-yolu (açılış istisnası) tam bunun için var.
-    final FileSystemEntityType pathType =
-        await FileSystemEntity.type(_file.path);
-    if (pathType == FileSystemEntityType.notFound) {
-      // Missing file is EMPTY history, not lost history: nothing was ever
-      // written, so nothing is unreadable. First launch must read as ok/0.
-      return (records: <SessionRecord>[], unreadable: 0);
-    }
-    if (pathType != FileSystemEntityType.file) {
-      throw FileSystemException(
-        'session store yolu okunabilir bir dosya değil ($pathType) — '
-        'bu ilk-açılış DEĞİL, açılamayan bir geçmiştir (unavailable yolu)',
-        _file.path,
-      );
-    }
-    final List<SessionRecord> out = <SessionRecord>[];
-    int skipped = 0;
-    for (final String raw in (await _file.readAsString()).split('\n')) {
-      final String line = raw.trim();
-      if (line.isEmpty) continue;
-      // A CORRUPT LINE NEVER WIPES HISTORY: declaring months of records
-      // unreadable over one bad line loses the same data twice. Skip the
-      // line, read the rest.
-      //
-      // BUT NEVER SILENTLY (M-F-228 / JabLab J-092): skipped lines are
-      // COUNTED and carried to the surface. The resilience decision is
-      // right; hiding the resilience is the "you did less" lie.
-      try {
-        final Map<String, dynamic> j =
-            (jsonDecode(line) as Map).cast<String, dynamic>();
-        final int v = (j['v'] as num?)?.toInt() ?? 0;
-        if (v == schemaVersion) {
-          out.add(SessionRecord.fromJson(j));
-        } else if (v == 1) {
-          // v1 is MIGRATED, not lost — readable history is never counted
-          // as unreadable (the over-strict twin: counting readable lines
-          // would fabricate loss where none exists).
-          out.add(SessionRecord.fromV1Json(j));
-        } else {
-          // Unknown version IS a loss for this reader: the line may be
-          // intact, but this version cannot read it — for the user the
-          // result is the same, an incomplete summary.
-          skipped++;
-        }
-      } on Object catch (_) {
-        skipped++;
-      }
-    }
-    return (records: out, unreadable: skipped);
+  Future<int> unreadableRecords() async {
+    final result = await _readAll();
+    writeLease._checkActive();
+    return result.unreadable;
   }
+
+  Future<({List<SessionRecord> records, int unreadable})> _readAll() =>
+      writeLease._run(() async {
+        // MUTABLE list is mandatory: recent() sorts in place. Returning
+        // `const []` broke the empty-history path — the FIRST LAUNCH — in the
+        // original app (a real defect its tests caught; pinned here for good).
+        // M-F-251 (Gravita'nın simülatör avı): `File.exists()` DİZİN için false
+        // döner — yol var-ama-dosya-değilken "hiç yazılmamış" dalına girmek,
+        // var olan ama okunamayan geçmişi `ok` diye okutur (yanlış-ok sınıfı).
+        // Yol-tipi açıkça sorulur: notFound = ilk açılış; dosya-dışı her şey
+        // AÇILAMAZ ve yüksek sesle söylenir — tüketicilerin mevcut
+        // unavailable-yolu (açılış istisnası) tam bunun için var.
+        final FileSystemEntityType pathType = await FileSystemEntity.type(
+          _file.path,
+        );
+        writeLease._checkActive();
+        if (pathType == FileSystemEntityType.notFound) {
+          // Missing file is EMPTY history, not lost history: nothing was ever
+          // written, so nothing is unreadable. First launch must read as ok/0.
+          return (records: <SessionRecord>[], unreadable: 0);
+        }
+        if (pathType != FileSystemEntityType.file) {
+          throw FileSystemException(
+            'session store yolu okunabilir bir dosya değil ($pathType) — '
+            'bu ilk-açılış DEĞİL, açılamayan bir geçmiştir (unavailable yolu)',
+            _file.path,
+          );
+        }
+        final List<SessionRecord> out = <SessionRecord>[];
+        int skipped = 0;
+        final contents = await _file.readAsString();
+        writeLease._checkActive();
+        for (final String raw in contents.split('\n')) {
+          final String line = raw.trim();
+          if (line.isEmpty) continue;
+          // A CORRUPT LINE NEVER WIPES HISTORY: declaring months of records
+          // unreadable over one bad line loses the same data twice. Skip the
+          // line, read the rest.
+          //
+          // BUT NEVER SILENTLY (M-F-228 / JabLab J-092): skipped lines are
+          // COUNTED and carried to the surface. The resilience decision is
+          // right; hiding the resilience is the "you did less" lie.
+          try {
+            final Map<String, dynamic> j = (jsonDecode(line) as Map)
+                .cast<String, dynamic>();
+            final int v = (j['v'] as num?)?.toInt() ?? 0;
+            if (v == schemaVersion) {
+              out.add(SessionRecord.fromJson(j));
+            } else if (v == 1) {
+              // v1 is MIGRATED, not lost — readable history is never counted
+              // as unreadable (the over-strict twin: counting readable lines
+              // would fabricate loss where none exists).
+              out.add(SessionRecord.fromV1Json(j));
+            } else {
+              // Unknown version IS a loss for this reader: the line may be
+              // intact, but this version cannot read it — for the user the
+              // result is the same, an incomplete summary.
+              skipped++;
+            }
+          } on Object catch (_) {
+            skipped++;
+          }
+        }
+        return (records: out, unreadable: skipped);
+      });
 }

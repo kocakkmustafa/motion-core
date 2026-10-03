@@ -98,6 +98,9 @@ class DiagnosticExportException implements Exception {
 class DiagnosticExporter {
   static const hardMaxEncodedBytes = 4 * 1024;
   static const hardMaxFields = 16;
+
+  /// Configuration limit for exact diagnostic-code policy enumeration.
+  static const hardMaxPolicyCodes = 64;
   static const _canonicalFieldShapes = <String, DiagnosticFieldShape>{
     'buildMode': DiagnosticFieldShape.buildMode,
     'code': DiagnosticFieldShape.code,
@@ -105,7 +108,8 @@ class DiagnosticExporter {
     'version': DiagnosticFieldShape.version,
   };
 
-  DiagnosticExporter({this.maxEncodedBytes = hardMaxEncodedBytes}) {
+  DiagnosticExporter({int maxEncodedBytes = hardMaxEncodedBytes})
+    : _maxEncodedBytes = maxEncodedBytes {
     if (maxEncodedBytes < 0 || maxEncodedBytes > hardMaxEncodedBytes) {
       throw ArgumentError.value(
         maxEncodedBytes,
@@ -115,7 +119,8 @@ class DiagnosticExporter {
     }
   }
 
-  final int maxEncodedBytes;
+  final int _maxEncodedBytes;
+  int get maxEncodedBytes => _maxEncodedBytes;
 
   String? export(
     DiagnosticExportRequest request,
@@ -141,8 +146,7 @@ class DiagnosticExporter {
       );
     }
     if (!SafeDiagnosticBundle._safeCodePattern.hasMatch(code) ||
-        !_allowsCanonicalFields(Map.of(policy.fields)) ||
-        !Set<String>.of(policy.allowedCodes).contains(code)) {
+        !_allowsPolicy(policy, code)) {
       throw const DiagnosticExportException(
         DiagnosticExportRejectReason.disallowedPolicyValue,
       );
@@ -159,12 +163,37 @@ class DiagnosticExporter {
         'patch': patch,
       },
     });
-    if (utf8.encode(encoded).length > maxEncodedBytes) {
+    if (utf8.encode(encoded).length > _maxEncodedBytes) {
       throw const DiagnosticExportException(
         DiagnosticExportRejectReason.encodedSizeExceeded,
       );
     }
     return encoded;
+  }
+
+  bool _allowsPolicy(DiagnosticExportPolicy policy, String code) {
+    try {
+      // Shape checks visit only the four fixed keys after checking length.
+      // Copying the input first defeats the memory cap on arbitrary maps.
+      return _allowsCanonicalFields(policy.fields) &&
+          _allowsEnumeratedCode(policy.allowedCodes, code);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _allowsEnumeratedCode(Set<String> codes, String code) {
+    final declaredCount = codes.length;
+    if (declaredCount < 0 || declaredCount > hardMaxPolicyCodes) return false;
+    var visited = 0;
+    var found = false;
+    // Caller-owned contains() can claim membership absent from the policy.
+    // Count iteration independently, including when length is dishonest.
+    for (final approved in codes) {
+      if (++visited > hardMaxPolicyCodes) return false;
+      if (approved == code) found = true;
+    }
+    return visited == declaredCount && found;
   }
 
   bool _allowsCanonicalFields(Map<String, DiagnosticFieldShape> fields) {

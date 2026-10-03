@@ -31,21 +31,26 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   StreamSubscription<StorePurchaseUpdate>? _subscription;
   StreamSubscription<AuthState>? _authSubscription;
   late final String? _openingUserId;
+  late final Session? _openingSession;
   List<StoreProductRef> _offers = const [];
   bool _busy = true;
   bool _active = false;
   bool _anyActive = false;
+  bool _authStreamFailed = false;
   String? _message;
 
   String get _appId => widget.account.app.name;
   bool get _sameUser =>
+      !_authStreamFailed &&
       _openingUserId != null &&
+      identical(widget.account.supabase.auth.currentSession, _openingSession) &&
       widget.account.currentUser?.id == _openingUserId;
 
   @override
   void initState() {
     super.initState();
     _openingUserId = widget.account.currentUser?.id;
+    _openingSession = widget.account.supabase.auth.currentSession;
     _store =
         widget.purchaseAdapter ??
         FlutterPurchaseAdapter(
@@ -54,7 +59,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
         );
     _coordinator = PurchaseCoordinator(
       appId: _appId,
-      currentUserId: () => widget.account.currentUser?.id ?? '',
+      currentUserId: () => _sameUser ? _openingUserId! : '',
       store: _store,
       server:
           widget.serverAdapter ??
@@ -75,16 +80,34 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
         });
       },
     );
-    _authSubscription = widget.account.authChanges.listen((_) {
-      if (!mounted || _sameUser) return;
-      setState(() {
-        _offers = const [];
-        _active = false;
-        _anyActive = false;
-        _busy = false;
-        _message = null;
-      });
-    });
+    _authSubscription = widget.account.authChanges.listen(
+      (_) {
+        if (!mounted || _authStreamFailed || _sameUser) return;
+        setState(() {
+          _offers = const [];
+          _active = false;
+          _anyActive = false;
+          _busy = false;
+          _message = null;
+        });
+      },
+      onError: (Object _, StackTrace _) {
+        if (!mounted) return;
+        setState(() {
+          // Cached same-UUID auth events do not reauthorize this page. The host
+          // must retry verified identity and open a new membership lifetime.
+          _authStreamFailed = true;
+          _offers = const [];
+          _active = false;
+          _anyActive = false;
+          _busy = false;
+          _message = _t(
+            'Hesabın yenilenemedi. Hesabını tekrar doğrulayıp üyelik ekranını yeniden aç.',
+            'Could not refresh your account. Reopen membership after retrying your account.',
+          );
+        });
+      },
+    );
     unawaited(_load());
   }
 
@@ -196,7 +219,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     });
     try {
       await _store.restore();
-      if (!mounted) return;
+      if (!mounted || !_sameUser) return;
       setState(() {
         _busy = false;
         _message = _t(

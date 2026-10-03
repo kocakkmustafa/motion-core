@@ -14,6 +14,8 @@ String _source(String relativePath) {
 }
 
 void main() {
+  // Source wiring checks only. The host helper harness and physical/plugin
+  // acceptance are separate; these strings execute no CameraX/AVFoundation.
   test(
     'Android is bound to the real Activity lifecycle and rejects stale work',
     () {
@@ -34,20 +36,22 @@ void main() {
         source,
         contains('if (!isCurrentGeneration(generation)) return@post'),
       );
+      expect(source, contains('lifecycle.requestClose(ownerId, scoped)'));
       expect(
         source,
-        matches(
-          RegExp(r'override fun onCancel\([^}]+tearDown\(', dotAll: true),
-        ),
+        contains('lifecycle.finishClose(!failed && captureClosed)'),
+      );
+      expect(source, contains('CameraState.Type.CLOSED'));
+      expect(source, contains('marker.close()'));
+      expect(source, contains('tearDown(ownerId = ownerId, scoped = true)'));
+      expect(
+        source,
+        contains('OrientedCaptureTasks(createTask(), createTask())'),
       );
       expect(
         source,
-        matches(
-          RegExp(
-            r'private fun stop\(result: MethodChannel\.Result\) \{\s*'
-            r'tearDown\(\)\s*result\.success\(null\)',
-            dotAll: true,
-          ),
+        contains(
+          'tasks.task(inverted).detectForVideo(image, processing, tUs / 1000)',
         ),
       );
     },
@@ -72,17 +76,12 @@ void main() {
     );
     expect(
       source,
-      matches(RegExp(r'onCancel\(withArguments[^}]+tearDown\(', dotAll: true)),
+      contains('lifecycle.requestClose(ownerId: ownerId, scoped: scoped)'),
     );
-    expect(
-      source,
-      matches(
-        RegExp(
-          r'private func stop\(result: @escaping FlutterResult\) \{\s*'
-          r'tearDown\s*\{\s*result\(nil\)\s*\}',
-          dotAll: true,
-        ),
-      ),
-    );
+    expect(source, contains('lifecycle.finishClose(success: captureClosed)'));
+    expect(source, contains('retired.session?.isRunning != true'));
+    expect(source, contains('retired.tasks = nil'));
+    expect(source, contains('tearDown(ownerId: owner, scoped: true)'));
+    expect(source, contains('tasks.task(inverted: rotated).detect('));
   });
 }

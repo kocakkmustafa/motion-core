@@ -96,6 +96,11 @@ class TelemetryEmitter {
         return const EmitResult.rejected(RejectReason.unsafeValueShape);
       }
     }
+    // Caller-owned getters may revoke consent while values are snapshotted.
+    // No external value access remains between this check and dispatch.
+    if (!consentGate.hasConsent(ConsentPurpose.productAnalytics)) {
+      return const EmitResult.rejected(RejectReason.noConsent);
+    }
     sink.send(
       TelemetryEvent(
         name: eventName,
@@ -126,6 +131,13 @@ const _contentValidationRequiredFields = {
   'schemaVersion',
   'contentVersion',
   'result',
+};
+const _contentValidationAllowedFields = {
+  ..._contentValidationRequiredFields,
+  'errorCode',
+  'contentId',
+  'expectedHashPrefix',
+  'actualHashPrefix',
 };
 const _contentErrorCodes = {
   'parse',
@@ -160,6 +172,11 @@ bool _validEventShape(
     return _validSessionCompletedShape(attributes);
   }
   if (eventName != _contentValidationEvent) return attributes.isEmpty;
+  if (attributes.keys.any(
+    (key) => !_contentValidationAllowedFields.contains(key),
+  )) {
+    return false;
+  }
   if (!attributes.keys.toSet().containsAll(_contentValidationRequiredFields)) {
     return false;
   }

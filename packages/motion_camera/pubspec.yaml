@@ -4,7 +4,7 @@ description: >-
   Streams 33-landmark frames on a monotonic clock into motion_core's
   PoseSourceDriver contract. Pinned: iOS MediaPipeTasksVision 0.10.21,
   Android tasks-vision 0.10.29 (M-L-02). The core never sees images.
-version: 0.1.2
+version: 0.2.0
 publish_to: none
 
 environment:

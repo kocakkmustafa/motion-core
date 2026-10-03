@@ -11,16 +11,17 @@ const _alice = '11111111-1111-1111-1111-111111111111';
 const _bob = '22222222-2222-2222-2222-222222222222';
 const _product = 'com.yulalab.ostinato.motionplus.monthly';
 
-String _session([String userId = _alice]) => jsonEncode({
-  'access_token': 'local-test-token',
-  'token_type': 'bearer',
-  'user': {
-    'id': userId,
-    'aud': 'authenticated',
-    'created_at': '2026-09-24T00:00:00Z',
-    'app_metadata': <String, dynamic>{},
-  },
-});
+String _session([String userId = _alice, String token = 'local-test-token']) =>
+    jsonEncode({
+      'access_token': token,
+      'token_type': 'bearer',
+      'user': {
+        'id': userId,
+        'aud': 'authenticated',
+        'created_at': '2026-09-24T00:00:00Z',
+        'app_metadata': <String, dynamic>{},
+      },
+    });
 
 StorePurchaseEvidence _evidence() => const StorePurchaseEvidence(
   platform: StorePlatform.ios,
@@ -46,6 +47,44 @@ http.Response _verified({String userId = _alice, String state = 'active'}) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final silent in [false, true]) {
+    test(
+      'same-token purchase response rejects ${silent ? 'silent recovery' : 'initial session'} replacement',
+      () async {
+        final entered = Completer<void>();
+        final response = Completer<http.Response>();
+        final client = SupabaseClient(
+          'https://motion.example.invalid',
+          'public-test-key',
+          authOptions: const AuthClientOptions(autoRefreshToken: false),
+          httpClient: MockClient((_) {
+            entered.complete();
+            return response.future;
+          }),
+        );
+        addTearDown(client.dispose);
+        await client.auth.setInitialSession(_session());
+        final initiating = client.auth.currentSession;
+        final verifying = SupabasePurchaseServerAdapter(
+          client,
+        ).verify(_evidence());
+        await entered.future;
+        if (silent) {
+          await client.auth.recoverSession(_session());
+        } else {
+          await client.auth.setInitialSession(_session());
+        }
+        expect(identical(client.auth.currentSession, initiating), isFalse);
+        expect(
+          client.auth.currentSession?.accessToken,
+          initiating?.accessToken,
+        );
+        response.complete(_verified());
+        expect(await verifying, isNull);
+      },
+    );
+  }
 
   test(
     'authenticated purchase evidence reaches the Motion Edge Function',
@@ -120,6 +159,76 @@ void main() {
     await client.auth.setInitialSession(_session());
     final verifying = SupabasePurchaseServerAdapter(client).verify(_evidence());
     await client.auth.setInitialSession(_session(_bob));
+    pending.complete(_verified());
+    expect(await verifying, isNull);
+    client.dispose();
+  });
+
+  test('purchase dispatch keeps its initiating account token', () async {
+    String? authorization;
+    final client = SupabaseClient(
+      'https://motion.example.invalid',
+      'public-test-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((request) async {
+        authorization =
+            request.headers['Authorization'] ??
+            request.headers['authorization'];
+        return _verified(
+          userId: authorization == 'Bearer alice-session' ? _alice : _bob,
+        );
+      }),
+    );
+    await client.auth.setInitialSession(_session(_alice, 'alice-session'));
+    final verifying = SupabasePurchaseServerAdapter(client).verify(_evidence());
+    await client.auth.setInitialSession(_session(_bob, 'bob-session'));
+    expect(await verifying, isNull);
+    expect(authorization, 'Bearer alice-session');
+    client.dispose();
+  });
+
+  test('purchase response cannot survive an A-B-A account switch', () async {
+    final dispatched = Completer<void>();
+    final pending = Completer<http.Response>();
+    final client = SupabaseClient(
+      'https://motion.example.invalid',
+      'public-test-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((_) {
+        dispatched.complete();
+        return pending.future;
+      }),
+    );
+    await client.auth.setInitialSession(_session(_alice, 'alice-session'));
+    final verifying = SupabasePurchaseServerAdapter(client).verify(_evidence());
+    await dispatched.future;
+    await client.auth.setInitialSession(_session(_bob, 'bob-session'));
+    await client.auth.setInitialSession(
+      _session(_alice, 'replacement-session'),
+    );
+    pending.complete(_verified());
+    expect(await verifying, isNull);
+    client.dispose();
+  });
+
+  test('purchase response cannot survive a new session for its UUID', () async {
+    final dispatched = Completer<void>();
+    final pending = Completer<http.Response>();
+    final client = SupabaseClient(
+      'https://motion.example.invalid',
+      'public-test-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((_) {
+        dispatched.complete();
+        return pending.future;
+      }),
+    );
+    await client.auth.setInitialSession(_session(_alice, 'alice-session'));
+    final verifying = SupabasePurchaseServerAdapter(client).verify(_evidence());
+    await dispatched.future;
+    await client.auth.setInitialSession(
+      _session(_alice, 'replacement-session'),
+    );
     pending.complete(_verified());
     expect(await verifying, isNull);
     client.dispose();

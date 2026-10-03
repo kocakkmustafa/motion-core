@@ -1,3 +1,25 @@
+## 0.2.0 — 2026-10-02 — yerel kaynak, native kabul açık
+
+`CameraCaptureLease` ve ek `startOwned/stopOwned/readback/setPassPlanOwned`
+protokolü eklendi. İzin/model beklemesinden önce oluşturulan lease hemen retire
+edilebilir; denied/stale owner successor'ı durdurmaz. Kapanış tek native stream
+subscription'ını da drain eder, native ACK ardından yeni nonce ile exact owner
+readback ister. Eski global `start/stop/frames/setPassPlan` API'leri korunur;
+route sahipliği için yeni lease'e tüketici geçişi gerekir. Yeni failure enum
+değerleri `ownedProtocolUnavailable` ve `closeUncertain` exhaustive switch'lerde
+ele alınmalıdır; eski plugin'e sessiz fallback yoktur.
+
+İki platformun stop/cancel/lifecycle yolu tek fiziksel/model close completion
+paylaşır; hata sticky uncertain olur. Android CameraState.CLOSED/unbind ve bütün
+landmarker.close çağrıları beklenir. iOS stopRunning readback ve inference drain
+ardından pinin public close API'si olmadığı için son model referansları bırakılır.
+Dual pass ayrı VIDEO graph'larıyla aynı gerçek capture timestamp'ini kullanır.
+
+Swift ve Kotlin gerçek helper kaynakları host harness'te ayrı ayrı 7 senaryo/40
+assertion geçti. Bu değişmiş plugin dosyaları henüz pinli framework/plugin build,
+MediaPipe çalışması veya fiziksel cihaz kabulü görmedi; geçmiş 0.1.2 compile
+kanıtı bu kaynağa aktarılmaz. Production medya gate kapalı kalır.
+
 ## 0.1.2 — 2026-09-03
 
 Kamera lifecycle sahipliği fail-closed hale getirildi. Android sentetik

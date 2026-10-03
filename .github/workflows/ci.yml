@@ -108,4 +108,4 @@ jobs:
           deno check supabase/functions/motion-verify-purchase/index.ts supabase/functions/motion-check-membership/index.ts supabase/functions/motion-delete-account/index.ts
 
       - name: Check account, product and provider boundaries
-        run: deno test --allow-env supabase/functions/_shared/motion_purchase_claim_test.ts supabase/functions/_shared/motion_store_provider_test.ts supabase/functions/_shared/motion_review_access_test.ts
+        run: deno test --allow-env supabase/functions/_shared/motion_purchase_claim_test.ts supabase/functions/_shared/motion_store_provider_test.ts supabase/functions/_shared/motion_review_access_test.ts supabase/functions/tests/deletion_contract_test.ts

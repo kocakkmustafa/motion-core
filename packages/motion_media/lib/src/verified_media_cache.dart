@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
@@ -596,8 +597,18 @@ class VerifiedMediaCache {
             chunk.length > asset.kind.maxBytes - received) {
           throw StateError('Media stream exceeded its declared byte count');
         }
-        await output.writeFrom(chunk);
-        received += chunk.length;
+        // Snapshot validated values so caller-owned lists cannot change during
+        // the asynchronous write. Uint8List conversion alone would truncate.
+        final bytes = Uint8List(chunk.length);
+        for (var i = 0; i < bytes.length; i++) {
+          final value = chunk[i];
+          if (value < 0 || value > 255) {
+            throw StateError('Media stream contained a non-byte integer');
+          }
+          bytes[i] = value;
+        }
+        await output.writeFrom(bytes);
+        received += bytes.length;
       }
       _checkCancellation(cancellation);
       if (received != asset.expectedBytes) {

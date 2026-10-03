@@ -157,7 +157,7 @@ void main() {
         httpClient: MockClient((request) async {
           if (request.url.path.endsWith('/motion-delete-account')) {
             return http.Response(
-              '{"deleted":true}',
+              '{"deleted":true,"userId":"$_userId"}',
               200,
               headers: {'content-type': 'application/json'},
             );
@@ -216,6 +216,7 @@ void main() {
     expect(runtime.userId.value, isNull);
     await tester.tap(find.text('Continue as guest'));
     await tester.pump();
+    await tester.pump(); // Distinct Auth event retires the old scope for one frame.
     expect(find.text('GUEST_ONLY'), findsOneWidget);
     expect(runtime.userId.value, isNull);
     expect(client.auth.currentUser, isNull);

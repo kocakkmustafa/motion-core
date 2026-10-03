@@ -1,4 +1,5 @@
 import 'journal_entry.dart';
+import 'journal_export_policy.dart';
 
 /// Append-only provenance log: entries are never edited or removed once
 /// written. Individual delete/redaction lives at a higher layer (see
@@ -15,7 +16,15 @@ abstract class AppendOnlyJournal {
   Future<List<JournalEntry>> readSince(String cursor);
 }
 
-class InMemoryJournal implements AppendOnlyJournal {
+/// A storage-level bounded prefix read. Implementations must apply [limit]
+/// before materializing history, preserve append order, and return the entire
+/// prefix up to [limit]. Export requests one extra entry to detect overflow.
+/// This capability is separate so legacy projection readers remain compatible.
+abstract interface class BoundedJournalReader {
+  Future<List<JournalEntry>> readForExport({required int limit});
+}
+
+class InMemoryJournal implements AppendOnlyJournal, BoundedJournalReader {
   final _entries = <JournalEntry>[];
 
   @override
@@ -25,6 +34,17 @@ class InMemoryJournal implements AppendOnlyJournal {
 
   @override
   Future<List<JournalEntry>> readAll() async => List.unmodifiable(_entries);
+
+  @override
+  Future<List<JournalEntry>> readForExport({required int limit}) async {
+    RangeError.checkValueInInterval(
+      limit,
+      0,
+      JournalExportLimits.hardMaxEntries + 1,
+      'limit',
+    );
+    return List.unmodifiable(_entries.take(limit));
+  }
 
   @override
   Future<List<JournalEntry>> readSince(String cursor) async {
