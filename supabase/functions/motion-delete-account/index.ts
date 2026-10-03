@@ -40,6 +40,11 @@ Deno.serve(async (request: Request) => {
   if (authError || !data.user) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
+  // Older pinned Core clients omit the expected UUID. The verified token is
+  // always the authority; a supplied UUID only prevents account-switch races.
+  if ("expectedUserId" in body && body.expectedUserId !== data.user.id) {
+    return Response.json({ error: "account_changed" }, { status: 409 });
+  }
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -50,5 +55,5 @@ Deno.serve(async (request: Request) => {
   if (deleteError) {
     return Response.json({ error: "deletion_failed" }, { status: 500 });
   }
-  return Response.json({ deleted: true });
+  return Response.json({ deleted: true, userId: data.user.id });
 });

@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/services.dart';
 
 import 'frame_envelope.dart';
 import 'pass_plan.dart';
+
+part 'capture_lease.dart';
 
 /// Which physical camera to open.
 enum CameraLens { front, back }
@@ -16,6 +21,8 @@ final class CameraSessionInfo {
     required this.height,
     required this.clockDomain,
     required this.libraryTag,
+    this.ownerId,
+    this.generation,
   });
 
   /// Capture size after sensor-rotation normalization — the same `w×h`
@@ -30,6 +37,10 @@ final class CameraSessionInfo {
   /// modelId into each envelope's `model` string.
   final String libraryTag;
 
+  /// Present only in the owned protocol; legacy sessions have no lease identity.
+  final String? ownerId;
+  final int? generation;
+
   static CameraSessionInfo _decode(Object? raw) {
     final Map<Object?, Object?> map = raw as Map<Object?, Object?>;
     final String clock = map['clock'] as String;
@@ -42,7 +53,30 @@ final class CameraSessionInfo {
         _ => throw FormatException('unrecognized clock domain "$clock"'),
       },
       libraryTag: map['library'] as String,
+      ownerId: map['ownerId'] as String?,
+      generation: map['generation'] as int?,
     );
+  }
+
+  static CameraSessionInfo _decodeOwned(Object? raw, String ownerId) {
+    if (raw is! Map<Object?, Object?> ||
+        raw['protocol'] != 1 ||
+        raw['ownerId'] != ownerId ||
+        raw['generation'] is! int ||
+        (raw['generation']! as int) <= 0 ||
+        raw['w'] is! int ||
+        (raw['w']! as int) <= 0 ||
+        raw['h'] is! int ||
+        (raw['h']! as int) <= 0 ||
+        (raw['clock'] != 'monotonic' && raw['clock'] != 'unknown') ||
+        raw['library'] is! String ||
+        (raw['library']! as String).isEmpty) {
+      throw const CameraException(
+        CameraFailure.ownedProtocolUnavailable,
+        'native start did not return exact owned session facts',
+      );
+    }
+    return _decode(raw);
   }
 }
 
@@ -72,6 +106,12 @@ enum CameraFailure {
   /// A pending `start` lost ownership because stop, stream cancellation,
   /// backgrounding, Activity detach, or engine detach tore the session down.
   sessionInterrupted('session-interrupted'),
+
+  /// The plugin does not implement exact ownership/closure readback.
+  ownedProtocolUnavailable('owned-protocol-unavailable'),
+
+  /// Native closure, or its bounded response, could not be confirmed.
+  closeUncertain('close-uncertain'),
 
   /// The device has no camera matching the requested lens.
   noSuchCamera('no-such-camera');
@@ -106,12 +146,118 @@ final class CameraException implements Exception {
 /// and "two silent half-sessions" is a worse failure mode than a named
 /// [CameraFailure.alreadyRunning].
 class MotionCameraController {
-  MotionCameraController({MethodChannel? control, EventChannel? frames})
-    : _control = control ?? const MethodChannel('motion_camera/control'),
-      _frames = frames ?? const EventChannel('motion_camera/frames');
+  MotionCameraController({
+    MethodChannel? control,
+    EventChannel? frames,
+    this.controlTimeout = const Duration(seconds: 15),
+  }) : _control = control ?? const MethodChannel('motion_camera/control'),
+       _frames = frames ?? const EventChannel('motion_camera/frames') {
+    if (controlTimeout <= Duration.zero ||
+        controlTimeout > const Duration(seconds: 30)) {
+      throw ArgumentError.value(controlTimeout, 'controlTimeout');
+    }
+  }
 
   final MethodChannel _control;
   final EventChannel _frames;
+  final Duration controlTimeout;
+  bool _ownedQuarantined = false;
+  static int _readbackNonce = 0;
+
+  /// Create before requesting permission or materializing the model. Retiring
+  /// this lease invalidates late work and never invokes a global legacy stop.
+  CameraCaptureLease createCaptureLease() => CameraCaptureLease._(this);
+
+  Future<Object?> _invokeOwned(String method, Map<String, Object> args) async {
+    try {
+      return await _invoke<Object?>(method, args).timeout(controlTimeout);
+    } on MissingPluginException {
+      throw const CameraException(
+        CameraFailure.ownedProtocolUnavailable,
+        'the native plugin has no owned capture protocol',
+      );
+    } on TimeoutException {
+      _ownedQuarantined = true;
+      throw const CameraException(
+        CameraFailure.closeUncertain,
+        'owned native control did not settle within its bound',
+      );
+    }
+  }
+
+  /// Exact owner protocol. Applications normally call [CameraCaptureLease.start].
+  Future<CameraSessionInfo> startOwned({
+    required String ownerId,
+    required String modelPath,
+    required String modelId,
+    CameraLens lens = CameraLens.front,
+    PassPlan initialPlan = PassPlan.uprightOnly,
+  }) async {
+    if (_ownedQuarantined) {
+      throw const CameraException(
+        CameraFailure.closeUncertain,
+        'an earlier owned closure remains uncertain',
+      );
+    }
+    _checkOwnerId(ownerId);
+    final raw = await _invokeOwned('startOwned', {
+      'ownerId': ownerId,
+      'modelPath': modelPath,
+      'modelId': modelId,
+      'lens': lens.name,
+      'plan': initialPlan.wireName,
+    });
+    return CameraSessionInfo._decodeOwned(raw, ownerId);
+  }
+
+  /// Stops only this owner. ACK must be followed by a new [readback] request.
+  Future<CameraNativeReadback> stopOwned({required String ownerId}) async {
+    _checkOwnerId(ownerId);
+    return CameraNativeReadback._decode(
+      await _invokeOwned('stopOwned', {'ownerId': ownerId}),
+    );
+  }
+
+  /// A new nonce makes an old ACK unusable as a fresh native observation.
+  Future<CameraNativeReadback> readback({
+    required String ownerId,
+    required int nonce,
+  }) async {
+    _checkOwnerId(ownerId);
+    if (nonce <= 0) throw ArgumentError.value(nonce, 'nonce');
+    return CameraNativeReadback._decode(
+      await _invokeOwned('readback', {'ownerId': ownerId, 'nonce': nonce}),
+    );
+  }
+
+  Future<void> setPassPlanOwned({
+    required String ownerId,
+    required int generation,
+    required PassPlan plan,
+  }) async {
+    _checkOwnerId(ownerId);
+    final state = CameraNativeReadback._decode(
+      await _invokeOwned('setPassPlanOwned', {
+        'ownerId': ownerId,
+        'generation': generation,
+        'plan': plan.wireName,
+      }),
+    );
+    if (state.ownerId != ownerId ||
+        state.generation != generation ||
+        state.state != CameraCaptureState.running) {
+      throw const CameraException(
+        CameraFailure.sessionInterrupted,
+        'pass plan update lost its exact capture owner',
+      );
+    }
+  }
+
+  static void _checkOwnerId(String ownerId) {
+    if (ownerId.isEmpty || ownerId.length > 128) {
+      throw ArgumentError.value(ownerId, 'ownerId');
+    }
+  }
 
   Future<T> _invoke<T>(String method, [Object? args]) async {
     try {
@@ -163,4 +309,91 @@ class MotionCameraController {
   Stream<CameraFrameEnvelope> frames() => _frames.receiveBroadcastStream().map(
     (Object? event) => CameraFrameEnvelope.decode(event),
   );
+
+  Stream<CameraFrameEnvelope> _ownedFrames(String ownerId, int generation) =>
+      _OwnedFrameTransport(_frames, controlTimeout, <String, Object>{
+        'ownerId': ownerId,
+        'generation': generation,
+      }).stream;
+}
+
+/// EventChannel's convenience broadcast stream discards the Future returned by
+/// its async onCancel callback and reports listen/cancel errors to FlutterError.
+/// Owned closure needs both RPC replies and their failures, so its one raw
+/// subscription uses an explicitly awaitable single-subscription controller.
+final class _OwnedFrameTransport {
+  _OwnedFrameTransport(this._channel, this._timeout, this._arguments) {
+    _methods = MethodChannel(
+      _channel.name,
+      _channel.codec,
+      _channel.binaryMessenger,
+    );
+    _events = StreamController<CameraFrameEnvelope>(
+      onListen: _listen,
+      onCancel: _cancel,
+    );
+  }
+
+  final EventChannel _channel;
+  final Duration _timeout;
+  final Map<String, Object> _arguments;
+  late final MethodChannel _methods;
+  late final StreamController<CameraFrameEnvelope> _events;
+  Future<void>? _listenReply;
+  bool _cancelled = false;
+
+  Stream<CameraFrameEnvelope> get stream => _events.stream;
+
+  void _listen() {
+    _channel.binaryMessenger.setMessageHandler(_channel.name, (data) async {
+      if (_cancelled) return null;
+      try {
+        if (data == null) {
+          throw const CameraException(
+            CameraFailure.closeUncertain,
+            'owned frame stream ended before lease retirement',
+          );
+        }
+        _events.add(
+          CameraFrameEnvelope.decode(_channel.codec.decodeEnvelope(data)),
+        );
+      } catch (error, stack) {
+        _events.addError(error, stack);
+      }
+      return null;
+    });
+    final reply = _methods
+        .invokeMethod<void>('listen', _arguments)
+        .timeout(_timeout);
+    _listenReply = reply;
+    // Observe failure immediately, while retaining the same failed reply for
+    // cancellation. A failed/timed-out listen still needs an exact cancel.
+    unawaited(
+      reply.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          if (!_cancelled) _events.addError(error, stack);
+        },
+      ),
+    );
+  }
+
+  Future<void> _cancel() async {
+    _cancelled = true;
+    // Clear only at cancellation entry. A late reply/error continuation must
+    // never clear a successor's Dart handler after this lease timed out.
+    _channel.binaryMessenger.setMessageHandler(_channel.name, null);
+    Object? listenFailure;
+    StackTrace? listenStack;
+    try {
+      await _listenReply;
+    } catch (error, stack) {
+      listenFailure = error;
+      listenStack = stack;
+    }
+    await _methods.invokeMethod<void>('cancel', _arguments).timeout(_timeout);
+    if (listenFailure != null) {
+      Error.throwWithStackTrace(listenFailure, listenStack!);
+    }
+  }
 }

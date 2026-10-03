@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'motion_camera'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Native camera → MediaPipe pose bridge for the Yula Motion family.'
   s.description      = <<-DESC
 Streams 33-landmark pose frames from the camera into motion_core's
@@ -12,6 +12,9 @@ upgrades are deliberate, never automatic.
   s.author           = { 'Yula Lab' => 'dev@yulalab.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
+  s.resource_bundles = {
+    'motion_camera_privacy' => ['Resources/PrivacyInfo.xcprivacy']
+  }
   s.dependency 'Flutter'
   # M-L-02 pin — exact, not pessimistic (~>): a silent 0.10.x bump is a model
   # behavior change and must arrive as a deliberate family decision.

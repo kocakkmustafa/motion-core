@@ -52,7 +52,7 @@ class _ThrowingProjector implements JournalExportProjector {
   }
 }
 
-class _FixedJournal implements AppendOnlyJournal {
+class _FixedJournal implements AppendOnlyJournal, BoundedJournalReader {
   _FixedJournal(this.entries);
 
   final List<JournalEntry> entries;
@@ -63,6 +63,10 @@ class _FixedJournal implements AppendOnlyJournal {
 
   @override
   Future<List<JournalEntry>> readAll() async => entries;
+
+  @override
+  Future<List<JournalEntry>> readForExport({required int limit}) async =>
+      List.unmodifiable(entries.take(limit));
 
   @override
   Future<List<JournalEntry>> readSince(String cursor) async => entries;

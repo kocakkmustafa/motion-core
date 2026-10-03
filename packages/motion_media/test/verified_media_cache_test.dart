@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:motion_media/src/verified_media_cache.dart';
@@ -45,6 +46,58 @@ void main() {
     await second.close();
     expect(sourceCalls, 1);
     expect(closeCalls, 2);
+    expect(cache.isQuarantined, isFalse);
+  });
+
+  test('non-byte integers cannot alias verified bytes', () async {
+    final cache = VerifiedMediaCache(root: root);
+    final good = <int>[0, 255];
+    final asset = _asset('integer_alias', good);
+    var initialized = false;
+    for (final malformed in <List<int>>[
+      <int>[256, 255],
+      <int>[0, -1],
+      <int>[0, 511],
+    ]) {
+      var cancelled = false;
+      final controller = StreamController<List<int>>(
+        onCancel: () => cancelled = true,
+      );
+      controller.add(malformed);
+      await expectLater(
+        cache.open(
+          asset: asset,
+          source: () => controller.stream,
+          initialize: (_) async => initialized = true,
+          dispose: () async {},
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(initialized, isFalse);
+      expect(cancelled, isTrue);
+      await controller.close();
+      expect(await root.list().toList(), isEmpty);
+      expect(cache.isQuarantined, isFalse);
+    }
+    final lease = await _open(cache, asset, good);
+    expect(await lease.file.readAsBytes(), good);
+    await lease.close();
+  });
+
+  test('boundary bytes accept typed, empty and split chunks', () async {
+    final cache = VerifiedMediaCache(root: root);
+    final good = <int>[0, 255];
+    final lease = await cache.open(
+      asset: _asset('boundary_bytes', good),
+      source: () => Stream<List<int>>.fromIterable(<List<int>>[
+        <int>[],
+        Uint8List.fromList(<int>[0]),
+        <int>[255],
+      ]),
+      initialize: (file) async => expect(await file.readAsBytes(), good),
+      dispose: () async {},
+    );
+    await lease.close();
     expect(cache.isQuarantined, isFalse);
   });
 

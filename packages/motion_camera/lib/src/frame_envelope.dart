@@ -46,6 +46,8 @@ final class CameraFrameEnvelope {
     required this.clockDomain,
     required this.inferenceUs,
     required this.dropped,
+    this.ownerId,
+    this.generation,
     required Map<BodyOrientation, PoseFrame?> passes,
   }) : _passes = passes;
 
@@ -53,6 +55,8 @@ final class CameraFrameEnvelope {
   final FrameSize size;
   final String modelVersion;
   final ClockDomain clockDomain;
+  final String? ownerId;
+  final int? generation;
 
   /// Measured wall time spent in inference for this frame, µs (sum over the
   /// passes that ran). Measured on the native side, never estimated here.
@@ -75,8 +79,9 @@ final class CameraFrameEnvelope {
   PoseFrame? pass(BodyOrientation orientation) {
     if (!_passes.containsKey(orientation)) {
       throw StateError(
-          'pass ${orientation.name} was not run for frame t=$tUs — '
-          'the pass plan and the engine expectation have diverged');
+        'pass ${orientation.name} was not run for frame t=$tUs — '
+        'the pass plan and the engine expectation have diverged',
+      );
     }
     return _passes[orientation];
   }
@@ -86,8 +91,9 @@ final class CameraFrameEnvelope {
   static PoseFrame _unpack(Float32List data, int tUs, String modelVersion) {
     if (data.length != _floatsPerFrame) {
       throw FormatException(
-          'landmark buffer has ${data.length} floats, expected '
-          '$_floatsPerFrame (33 × [x, y, z, vis])');
+        'landmark buffer has ${data.length} floats, expected '
+        '$_floatsPerFrame (33 × [x, y, z, vis])',
+      );
     }
     final List<PoseLandmark> landmarks = List<PoseLandmark>.generate(
       Lm.count,
@@ -99,7 +105,11 @@ final class CameraFrameEnvelope {
       ),
       growable: false,
     );
-    return PoseFrame(tUs: tUs, landmarks: landmarks, modelVersion: modelVersion);
+    return PoseFrame(
+      tUs: tUs,
+      landmarks: landmarks,
+      modelVersion: modelVersion,
+    );
   }
 
   /// Decodes one event-channel payload. Fails loudly on malformed input:
@@ -124,13 +134,13 @@ final class CameraFrameEnvelope {
     ]) {
       if (!event.containsKey(key)) continue;
       final Object? raw = event[key];
-      passes[o] =
-          raw == null ? null : _unpack(raw as Float32List, tUs, model);
+      passes[o] = raw == null ? null : _unpack(raw as Float32List, tUs, model);
     }
     if (passes.isEmpty) {
       throw const FormatException(
-          'envelope carries no passes — the native layer must run at least '
-          'one orientation per emitted frame');
+        'envelope carries no passes — the native layer must run at least '
+        'one orientation per emitted frame',
+      );
     }
     return CameraFrameEnvelope(
       tUs: tUs,
@@ -139,6 +149,8 @@ final class CameraFrameEnvelope {
       clockDomain: domain,
       inferenceUs: event['infUs'] as int,
       dropped: event['dropped'] as int,
+      ownerId: event['ownerId'] as String?,
+      generation: event['generation'] as int?,
       passes: passes,
     );
   }

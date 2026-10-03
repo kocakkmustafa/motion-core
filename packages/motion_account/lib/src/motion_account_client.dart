@@ -78,11 +78,22 @@ class MotionAccountClient {
     Future<void> Function(String userId)? afterRemoteDelete,
   }) async {
     final user = _requireUser();
+    final initiatingSession = _supabase.auth.currentSession;
+    final token = initiatingSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sign in required');
+    }
     final response = await _supabase.functions.invoke(
       'motion-delete-account',
-      body: {'confirmation': 'DELETE'},
+      // Encoding and dispatch may yield while another auth callback arrives.
+      // This authorization belongs to the account that requested deletion.
+      headers: {'Authorization': 'Bearer $token'},
+      body: {'confirmation': 'DELETE', 'expectedUserId': user.id},
     );
-    if (response.data is! Map || response.data['deleted'] != true) {
+    if (response.status != 200 ||
+        response.data is! Map ||
+        response.data['deleted'] != true ||
+        response.data['userId'] != user.id) {
       throw StateError('Account deletion was not confirmed by the server');
     }
     Object? localCleanupError;
@@ -91,11 +102,15 @@ class MotionAccountClient {
     } catch (error) {
       localCleanupError = error;
     } finally {
-      try {
-        await _supabase.auth.signOut(scope: SignOutScope.local);
-      } catch (_) {
-        // GoTrue may reject /logout after the server deleted the user.
-        // The receipt retries any failed local cleanup on the next launch.
+      if (currentUser?.id == user.id &&
+          identical(_supabase.auth.currentSession, initiatingSession) &&
+          _supabase.auth.currentSession?.accessToken == token) {
+        try {
+          await _supabase.auth.signOut(scope: SignOutScope.local);
+        } catch (_) {
+          // GoTrue may reject /logout after the server deleted the user.
+          // The receipt retries any failed local cleanup on the next launch.
+        }
       }
     }
     if (localCleanupError != null) {
@@ -130,12 +145,20 @@ class MotionAccountClient {
   /// database row never becomes an implicit success during an outage.
   Future<MotionMembershipStatus> membershipStatus() async {
     final userId = _requireUser().id;
+    final initiatingSession = _supabase.auth.currentSession;
+    final token = initiatingSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sign in required');
+    }
     final response = await _supabase.functions.invoke(
       'motion-check-membership',
+      headers: {'Authorization': 'Bearer $token'},
       body: {'appId': app.name},
     );
     final result = response.data;
     if (currentUser?.id != userId ||
+        !identical(_supabase.auth.currentSession, initiatingSession) ||
+        _supabase.auth.currentSession?.accessToken != token ||
         response.status != 200 ||
         result is! Map ||
         result['active'] is! bool ||

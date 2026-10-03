@@ -19,35 +19,69 @@ class JournalExporter {
     JournalExportPolicy policy = const JournalExportPolicy.denyAll(),
     JournalExportLimits? limits,
   }) : policy = JournalExportPolicy.snapshot(policy),
-       limits = limits ?? JournalExportLimits();
+       _limits = JournalExportLimits.snapshot(limits ?? JournalExportLimits());
 
   final JournalExportProjector projector;
   final JournalExportPolicy policy;
-  final JournalExportLimits limits;
+  final JournalExportLimits _limits;
+  JournalExportLimits get limits => _limits;
 
   Future<ExportBundle> export(AppendOnlyJournal journal) async {
-    final entries = await journal.readAll();
-    if (entries.length > limits.maxEntries) {
+    if (journal is! BoundedJournalReader) {
+      throw const JournalExportException(
+        JournalExportRejectReason.unboundedJournal,
+      );
+    }
+    final prefix = await (journal as BoundedJournalReader).readForExport(
+      limit: _limits.maxEntries + 1,
+    );
+    final entryCount = prefix.length;
+    if (entryCount > _limits.maxEntries) {
       throw const JournalExportException(
         JournalExportRejectReason.tooManyEntries,
       );
     }
+    final entries = List<JournalEntry>.generate(
+      entryCount,
+      (index) => prefix[index],
+      growable: false,
+    );
 
-    final safeEntries = <_ProjectedEntry>[];
-    for (final entry in entries) {
-      safeEntries.add(_project(entry));
-    }
-
-    final journalJson = _toJson(safeEntries);
-    final journalCsv = _toCsv(safeEntries);
-    final encodedBytes =
-        utf8.encode(journalJson).length + utf8.encode(journalCsv).length;
-    if (encodedBytes > limits.maxEncodedBytes) {
+    const csvHeader = 'id,type,createdAt,schemaVersion\n';
+    final json = StringBuffer('[');
+    final csv = StringBuffer(csvHeader);
+    // Reserve both JSON brackets and the CSV header before visiting entries.
+    var encodedBytes = 2 + csvHeader.length;
+    if (encodedBytes > _limits.maxEncodedBytes) {
       throw const JournalExportException(
         JournalExportRejectReason.encodedSizeExceeded,
       );
     }
-    return ExportBundle(journalJson: journalJson, journalCsv: journalCsv);
+    var first = true;
+    for (final entry in entries) {
+      final projected = _project(entry);
+      final jsonRow = _toJsonEntry(projected);
+      final csvRow = _toCsvRow(projected);
+      final addedBytes =
+          utf8.encode(jsonRow).length +
+          utf8.encode(csvRow).length +
+          (first ? 0 : 1);
+      if (addedBytes > _limits.maxEncodedBytes - encodedBytes) {
+        throw const JournalExportException(
+          JournalExportRejectReason.encodedSizeExceeded,
+        );
+      }
+      encodedBytes += addedBytes;
+      if (!first) json.write(',');
+      json.write(jsonRow);
+      csv.write(csvRow);
+      first = false;
+    }
+    json.write(']');
+    return ExportBundle(
+      journalJson: json.toString(),
+      journalCsv: csv.toString(),
+    );
   }
 
   _ProjectedEntry _project(JournalEntry entry) {
@@ -81,35 +115,50 @@ class JournalExporter {
 
     Map<String, JournalExportCandidateValue> projected;
     try {
-      projected = Map.of(projector.project(entry));
+      projected = projector.project(entry);
     } catch (_) {
       throw const JournalExportException(
         JournalExportRejectReason.projectorFailure,
       );
     }
-    if (projected.length > limits.maxFieldsPerEntry) {
+    try {
+      if (projected.length > _limits.maxFieldsPerEntry) {
+        throw const JournalExportException(
+          JournalExportRejectReason.tooManyFields,
+        );
+      }
+
+      final payload = SplayTreeMap<String, Object?>();
+      var fieldCount = 0;
+      for (final field in projected.entries) {
+        if (++fieldCount > _limits.maxFieldsPerEntry) {
+          throw const JournalExportException(
+            JournalExportRejectReason.tooManyFields,
+          );
+        }
+        if (!_isSafeKey(field.key)) {
+          throw const JournalExportException(
+            JournalExportRejectReason.unsafeFieldKey,
+          );
+        }
+        final fieldPolicy = entryPolicy.fields[field.key];
+        if (fieldPolicy == null) {
+          throw const JournalExportException(
+            JournalExportRejectReason.disallowedProjectedKey,
+          );
+        }
+        payload[field.key] = _validateValue(field.value, fieldPolicy);
+      }
+      return _ProjectedEntry(entry: metadata, payload: payload);
+    } on JournalExportException {
+      rethrow;
+    } catch (_) {
+      // Lazy map/value access is caller-owned projection code too. Return
+      // only a closed reason, never its arbitrary exception text.
       throw const JournalExportException(
-        JournalExportRejectReason.tooManyFields,
+        JournalExportRejectReason.projectorFailure,
       );
     }
-
-    final payload = SplayTreeMap<String, Object?>();
-    for (final field in projected.entries) {
-      if (!_isSafeKey(field.key)) {
-        throw const JournalExportException(
-          JournalExportRejectReason.unsafeFieldKey,
-        );
-      }
-      final fieldPolicy = entryPolicy.fields[field.key];
-      if (fieldPolicy == null) {
-        throw const JournalExportException(
-          JournalExportRejectReason.disallowedProjectedKey,
-        );
-      }
-      payload[field.key] = _validateValue(field.value, fieldPolicy);
-    }
-
-    return _ProjectedEntry(entry: metadata, payload: payload);
   }
 
   Object _validateValue(
@@ -160,28 +209,18 @@ class JournalExporter {
     throw const JournalExportException(JournalExportRejectReason.unsafeValue);
   }
 
-  String _toJson(List<_ProjectedEntry> entries) => jsonEncode([
-    for (final e in entries)
-      {
-        'id': e.entry.id,
-        'type': e.entry.type,
-        'payload': e.payload,
-        'createdAt': e.entry.createdAt.toIso8601String(),
-        'schemaVersion': e.entry.schemaVersion,
-      },
-  ]);
+  String _toJsonEntry(_ProjectedEntry e) => jsonEncode({
+    'id': e.entry.id,
+    'type': e.entry.type,
+    'payload': e.payload,
+    'createdAt': e.entry.createdAt.toIso8601String(),
+    'schemaVersion': e.entry.schemaVersion,
+  });
 
-  String _toCsv(List<_ProjectedEntry> entries) {
-    final buffer = StringBuffer('id,type,createdAt,schemaVersion\n');
-    for (final e in entries) {
-      buffer.writeln(
-        '${_csvField(e.entry.id)},${_csvField(e.entry.type)},'
-        '${_csvField(e.entry.createdAt.toIso8601String())},'
-        '${e.entry.schemaVersion}',
-      );
-    }
-    return buffer.toString();
-  }
+  String _toCsvRow(_ProjectedEntry e) =>
+      '${_csvField(e.entry.id)},${_csvField(e.entry.type)},'
+      '${_csvField(e.entry.createdAt.toIso8601String())},'
+      '${e.entry.schemaVersion}\n';
 
   String _csvField(String value) {
     final escaped = value.replaceAll('"', '""');

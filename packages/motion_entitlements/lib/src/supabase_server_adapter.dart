@@ -16,9 +16,14 @@ class SupabasePurchaseServerAdapter implements ServerAdapter {
   @override
   Future<EntitlementStatus?> verify(StorePurchaseEvidence evidence) async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null || userId.isEmpty) return null;
+    final initiatingSession = supabase.auth.currentSession;
+    final token = initiatingSession?.accessToken;
+    if (userId == null || userId.isEmpty || token == null || token.isEmpty) {
+      return null;
+    }
     final response = await supabase.functions.invoke(
       'motion-verify-purchase',
+      headers: {'Authorization': 'Bearer $token'},
       body: {
         'store': switch (evidence.platform) {
           StorePlatform.ios => 'apple',
@@ -31,7 +36,10 @@ class SupabasePurchaseServerAdapter implements ServerAdapter {
           'transactionId': evidence.transactionId,
       },
     );
-    if (response.status != 200 || supabase.auth.currentUser?.id != userId) {
+    if (response.status != 200 ||
+        supabase.auth.currentUser?.id != userId ||
+        !identical(supabase.auth.currentSession, initiatingSession) ||
+        supabase.auth.currentSession?.accessToken != token) {
       return null;
     }
     final data = response.data;

@@ -120,6 +120,13 @@ class JournalExportLimits {
     );
   }
 
+  factory JournalExportLimits.snapshot(JournalExportLimits limits) =>
+      JournalExportLimits(
+        maxEntries: limits.maxEntries,
+        maxFieldsPerEntry: limits.maxFieldsPerEntry,
+        maxEncodedBytes: limits.maxEncodedBytes,
+      );
+
   final int maxEntries;
   final int maxFieldsPerEntry;
   final int maxEncodedBytes;
@@ -140,6 +147,7 @@ class JournalExportLimits {
 }
 
 enum JournalExportRejectReason {
+  unboundedJournal,
   unsafeIdentifier,
   disallowedEntryType,
   disallowedProjectedKey,

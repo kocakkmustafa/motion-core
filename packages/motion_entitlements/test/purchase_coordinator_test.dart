@@ -62,9 +62,10 @@ EntitlementStatus _verified({
   String appId = motionPlusScope,
   String productId = 'com.yulalab.jablab.motionplus.monthly',
   EntitlementSource source = EntitlementSource.server,
+  PurchaseState state = PurchaseState.entitled,
   DateTime? expiresAt,
 }) => EntitlementStatus(
-  state: PurchaseState.entitled,
+  state: state,
   userId: userId,
   appId: appId,
   productId: productId,
@@ -143,10 +144,14 @@ void main() {
   });
 
   test('store assertion, wrong product and wrong user fail closed', () async {
+    final previous = _verified();
+    cache.write(previous);
     for (final status in [
       _verified(source: EntitlementSource.store),
       _verified(productId: 'another-product'),
       _verified(userId: 'user-b'),
+      _verified(appId: 'lissom'),
+      _verified(state: PurchaseState.recoverableError),
     ]) {
       final server = _Server((_) async => status);
       expect(await coordinator(server).verifyAndComplete(_event()), isNull);
@@ -158,9 +163,38 @@ void main() {
         appId: motionPlusScope,
         productId: 'com.yulalab.jablab.motionplus.monthly',
       ),
-      isNull,
+      same(previous),
     );
   });
+
+  test(
+    'unavailable verification preserves cache and pending store work',
+    () async {
+      final previous = _verified();
+      cache.write(previous);
+      expect(
+        await coordinator(
+          _Server((_) async => null),
+        ).verifyAndComplete(_event()),
+        isNull,
+      );
+      await expectLater(
+        coordinator(
+          _Server((_) async => throw StateError('provider unavailable')),
+        ).verifyAndComplete(_event()),
+        throwsStateError,
+      );
+      expect(
+        cache.read(
+          userId: 'user-a',
+          appId: motionPlusScope,
+          productId: 'com.yulalab.jablab.motionplus.monthly',
+        ),
+        same(previous),
+      );
+      expect(store.completed, isEmpty);
+    },
+  );
 
   test(
     'verified expired restore completes without unlocking a course',
@@ -174,12 +208,14 @@ void main() {
       );
       expect(store.completed, ['local-1']);
       expect(
-        cache.read(
-          userId: 'user-a',
-          appId: motionPlusScope,
-          productId: 'com.yulalab.jablab.motionplus.monthly',
-        ),
-        isNull,
+        cache
+            .read(
+              userId: 'user-a',
+              appId: motionPlusScope,
+              productId: 'com.yulalab.jablab.motionplus.monthly',
+            )
+            ?.grantsAccessAt(_now, userId: 'user-a', appId: 'jablab'),
+        isFalse,
       );
     },
   );
@@ -187,6 +223,8 @@ void main() {
   test(
     'account switch while verification is in flight cannot grant purchase',
     () async {
+      final previous = _verified();
+      cache.write(previous);
       final response = Completer<EntitlementStatus?>();
       final server = _Server((_) => response.future);
       final pending = coordinator(server).verifyAndComplete(_event());
@@ -201,8 +239,68 @@ void main() {
           appId: motionPlusScope,
           productId: 'com.yulalab.jablab.motionplus.monthly',
         ),
-        isNull,
+        same(previous),
       );
     },
   );
+
+  for (final terminal in ['revoked', 'expired']) {
+    test(
+      'verified $terminal restore removes only its cached active right',
+      () async {
+        const product = 'com.yulalab.jablab.individual.monthly';
+        const otherProduct = 'com.yulalab.lissom.individual.monthly';
+        cache.write(_verified(appId: 'jablab', productId: product));
+        final otherUser = _verified(
+          userId: 'user-b',
+          appId: 'jablab',
+          productId: product,
+        );
+        final otherApp = _verified(appId: 'lissom', productId: otherProduct);
+        cache.write(otherUser);
+        cache.write(otherApp);
+        final server = _Server(
+          (_) async => EntitlementStatus(
+            state: terminal == 'revoked'
+                ? PurchaseState.notEntitled
+                : PurchaseState.entitled,
+            userId: 'user-a',
+            appId: 'jablab',
+            productId: product,
+            expiresAt: terminal == 'expired'
+                ? _now
+                : _now.add(const Duration(days: 30)),
+            lastVerifiedAt: _now,
+            source: EntitlementSource.server,
+          ),
+        );
+        expect(
+          await coordinator(server).verifyAndComplete(
+            _event(kind: StorePurchaseKind.restored, productId: product),
+          ),
+          isNull,
+        );
+        expect(
+          cache
+                  .read(userId: 'user-a', appId: 'jablab', productId: product)
+                  ?.grantsAccessAt(_now, userId: 'user-a', appId: 'jablab') ??
+              false,
+          isFalse,
+        );
+        expect(
+          cache.read(userId: 'user-b', appId: 'jablab', productId: product),
+          same(otherUser),
+        );
+        expect(
+          cache.read(
+            userId: 'user-a',
+            appId: 'lissom',
+            productId: otherProduct,
+          ),
+          same(otherApp),
+        );
+        expect(store.completed, ['local-1']);
+      },
+    );
+  }
 }
