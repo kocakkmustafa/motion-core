@@ -1,16 +1,13 @@
-# CLAUDE.md — motion-core
+# CLAUDE.md — Motion Core
 
-## 🔒 KOD KİLİDİ
-Çekirdek kod, İLK app'in kurucu tetiğiyle birlikte yazılır ("<app>'e başlayalım"). O güne kadar yalnız docs/.
+Ortak şirket/ürün/servis/durum bağlamı için önce [YULAlab ortak girişini](../../../AGENTS.md) oku. Teknik yöntemi model seçer; bu dosya işlem yetkisi üretmez. Yerel ürün ve güvenlik bilgileri aşağıdadır.
 
-## Sözleşme
-- `docs/00-AILE-MIMARISI.md` = 4 ürün için BAĞLAYICI (kapsam direktifi §1.1 dahil: sesli antrenör-vaadi çekirdek; V1 = sıra, tavan değil).
-- Bu repo YALNIZ enstrüman/beceri-bağımsız altyapı taşır: app'e özgü kural/progresyon/içerik app reposuna gider; buraya app mantığı SIZMAZ.
-- Sürümleme: semver + CHANGELOG; app'ler pinli sürüm tüketir (pub git-dependency, tag'li). Breaking değişiklik = 4 app'in DEFTER'ine kayıt + kurucu haberi.
-- Test: her modül replay/fixture ile; app'lerden bağımsız yeşil kalır.
+Beş uygulamanın (Gravita, Lissom, JabLab, Ostinato, Choreia) ortak altyapısı; ayrı mağaza ürünü değildir.
 
-## Danışmanlar
-`motion-cv-engineer` (birincil) · `movement-science-advisor` · fps bütçeleri: `game-tech-engineer`.
+## Mevcut ürün sözleşmesi
 
-## Bağlam zinciri
-`../VENTURE.md` → `../workspace/` (aile koordinasyon defterleri) → bu dosya → docs/.
+- [Aile mimarisi](docs/00-AILE-MIMARISI.md) mevcut ortak ürün/API sözleşmesi kaynağıdır; tarihsel dört-app satırları güncel beş tüketici yerine geçmez.
+- Core enstrüman/beceri-bağımsız altyapı taşır; app'e özgü kural/progresyon/içerik app reposundadır. Ortak hesap, app-specific entitlement ve güvenlik/erişim sınırları korunur.
+- Mevcut sürümleme semver + CHANGELOG ve pinli tüketimdir. Breaking değişiklik beş tüketicinin kaynak/pin ve kabul kanıtıyla izlenir; kullanıcı yetkisi dosyadaki geçmişten çıkarılmaz.
+- Modüllerin ve beş tüketicinin gerçek kabulü birbirinden ayrılır; teknik doğrulama yöntemi modele aittir.
+- Eski ilk-app/kod kilidi tarihsel başlangıç koşuludur; yeni iş güncel kullanıcı kapsamı ve ortak PROJECTS'ten başlar.
