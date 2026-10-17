@@ -1,0 +1,114 @@
+Motion — kullanıcı video teslim şartnamesi · 17 Ekim 2026
+
+Amaç ve mevcut sınır
+Tam öğretim hedefi korunuyor. Video; (1) kullanıcıya gösterilecek ders medyası,
+(2) ölçüm kalibrasyonu için veri veya (3) açılmamış test verisi olabilir.
+Bu üç kullanımın izinleri ve kabulü ayrıdır. Henüz video teslim edilmedi;
+eğitim, fiziksel uygunluk, doğruluk veya cihaz kabulü tamamlanmış değildir.
+
+En küçük ilk teslim
+Zaten bildiğin ve rahatça yapabildiğin TEK mevcut başlangıç hareketi için
+10–20 saniyelik özgün MP4/MOV gönder: ürün + alan + hareket/ders adıyla.
+Örneğin Gravita bodyweight_squat veya JabLab jab. Bu ilk klip yalnız teknik
+kabul/pilot kalibrasyon içindir; bağımsız doğruluk testi değildir.
+İleri beceri, yeni yük veya kasıtlı tehlikeli/hatalı hareket çekme.
+
+Ortak çekim
+- Orijinal dosya; kurgu, hız değişimi, filtre, yapay kare, aynalama ve üzerine
+  yazı/müzik ekleme yok. Rotasyon bilgisini koru; sağ/solu gerçek kişiye göre yaz.
+- En az 720p, 30 fps; 1080p uygun. Hızlı boks için cihazın doğal 60 fps çekimi
+  tercih edilir. 10–30 saniye, tek görev/tek kesintisiz take; bu ilk kabul aracı
+  teknik olarak 5–90 saniyeyi sınar. Daha çok süre tek başına yeterlilik değildir.
+- Telefon sabit; kişi ve ilgili eklemler hareket boyunca kadrajda. Önden ve
+  yandan gerekiyorsa ayrı take çek; aynı çekimin açıları aynı veri grubunda kalır.
+- Aydınlık ve net görüntü; aşırı hareket bulanıklığı, kesilen el/ayak veya
+  görünmeyen ekipmanı gizleme. Böyle bölümler unobservable diye etiketlenir.
+- Başlangıç ve bitişte kısa hareketsiz bölüm bırak. Birden çok kişi görünmesin.
+
+Ürüne göre içerik / açı / etiket
+Gravita — Bodyweight: tam beden yandan; yön/iki taraf gerekli görevde önden
+ek take. DB/KB: beden ve ekipman/giriş-çıkış görünür. Barbell, halka ve el desteği
+alanlarının kesin ilk kurs/varyantı henüz seçilmedi; bu üçü için yeni hareket
+öğretimi/çekim reçetesi bu paketle onaylanmıyor. Etiket: hareket, varyant,
+ekipman, taraf, tekrar başlangıç/tepe/bitiş veya hold başlangıç/bitiş.
+Ters duruş çıkarımı için mevcut S2 yönelim şartı korunur.
+
+Lissom — Beş yoga yolunda ders ve uyarlamayı tam adlandır. Tüm beden, seçilen
+önden/yandan açı, kullanılan sandalye/destek ve giriş-çıkış görünür olsun.
+Mevcut ölçüm motoru ROM/batarya ölçer; beş yoga kursunu sınıflandıran canlı
+bir model değildir. Yoga gösterimi onun doğruluk etiketi yerine geçmez.
+
+JabLab — Beş alanda teknik/alt varyant/gerçek sağ-sol belirtilsin. Gard ve
+tam hareket görülen önden ve yandan ayrı take. Boks jab mevcut canlı hattın
+ilk kalibrasyon adayıdır. Diğer dört alanın yazılı dersleri otomatik tanıma
+modeli sayılmaz. Etiket: gard, uzanma, tepe, dönüş, gözlenemeyen bölüm;
+idle ve başka zararsız hareketler ayrı negatif kontrol olabilir.
+
+Ostinato — Çalgı/tel düzeni veya vokal görevini belirt. Duruş için yandan
+üst beden; el tekniği için eller ve ilgili tuş/telleri gösteren ayrı yakın açı.
+Ses kalibrasyonu için videoyla senkron özgün çalgı/ses, en az 44.1 kHz;
+arka parça, gürültü bastırma efekti, clipping ve hız değişimi yok. Etiket:
+insanın belirlediği nota/akor, onset/offset, sus, akort/tel düzeni, belirsizlik.
+Modelin kendi tahmini doğru etiket olamaz. Kaba pose noktaları parmak/tuş
+temasını çözmez; bu görev için ayrı mimari kararı gerekir.
+
+Choreia — Tam beden/ayaklar, gerçek yön ve ayna bilgisi; adım/sayı/temas veya
+destek geçişi insan tarafından zamanla etiketlensin. Sessiz çekim yalnız
+hareket referansı olabilir; müzik-vuruş uyumu kanıtı değildir. Zamanlama için
+kendi özgün click/metronom veya hakları belgeli ses gerekir; müzik lisansı
+görüntü sahipliğinden ayrı. Katalogdaki bütün stiller çalışır scorer değildir.
+
+Her dosyanın yanında tek metadata kaydı
+İlk teslimde senin yazman yeterli olanlar: ürün/hareket/ders, açı ve gerçek
+sağ-sol, telefon modeli/OS, kimlerin göründüğü ve hangi kullanımlara izin
+verildiği. Dosya hashleri, teknik değerler ve kurs SHA eşlemesini biz yerelde
+üreteceğiz; ilk pilot için JSON hazırlaman veya Git bilgisi bilmen gerekmiyor.
+Pseudonymous participant_id; session_id; source_recording_id; clip_id;
+ürün/alan/hareket/ders; kesin kurs dosyası SHA256; özgün dosya SHA256/boyutu;
+açı/gerçek sağ-sol/rotasyon; cihaz modeli, OS ve kamera (seri numarası değil);
+süre/fps/çözünürlük/ses durumu; saniyeli insan etiketleri ve annotator_id.
+Görülemeyen veya yorumu belirsiz bölüm açık işaretlenir, paydadan silinmez.
+Mevcut extractor kare indeksi/fps zamanı üretir. Gerçek PTS kontrolünde değişken
+kare aralığı çıkarsa dosyayı değiştirme; zamanlama kalibrasyonu durdurulur,
+PTS koruyan uyumlu extractor genişlemesi ayrı öneri olarak ele alınır.
+Kırpma, yeniden kodlama ve farklı açı aynı source_recording_id ailesine bağlanır.
+
+İzin / mahremiyet
+Çekilen kişinin model kalibrasyonu/eğitimi, değerlendirme ve uygulamada
+gösterim izinleri ayrı ayrı kaydedilsin; izin metni yerelde özel kalsın,
+kayda yalnız dosya yolu/hash referansı girsin. Yüz gizlemek tek başına anonimlik
+garantisi değildir. Arka planda üçüncü kişi, ekran, adres veya özel bilgi
+bulunmasın; dosya/GPS ve kişisel ayrıntı kontrolünü teslimden önce yap.
+Kendi görüntün dışında müzik, ekrandaki içerik ve başka kişilerin haklarını
+var sayma. Ham videolar Git'e veya dış servise bu işlemle yüklenmez.
+
+Eğitim / validation / test ayrımı
+Önce kişi, oturum ve kaynak çekim gruplarını ayır; sonra kare çıkar.
+Aynı kişinin, oturumun, kaynak çekimin, alternatif açının, kurgunun veya
+türevinin bölümleri farklı split'e giremez. Bu kural beş ürün arasında da geçerli.
+Senin gösterimlerin reference/calibration grubuna girerse aynı kişi bağımsız
+testte yer alamaz. Yalnız tek kişinin videosu ile kişiden bağımsız doğruluk
+iddiası üretilemez. Validation ve test için farklı kişiler/gruplar gerekir;
+oran veya klip sayısı tek başına kabul sağlamaz, hedef/koşul kapsamı ayrıca seçilir.
+Güvenli negatifler: boş kadraj, kısmi kadraj, idle, başka hareket, sessizlik ve
+ortam gürültüsü. Tehlikeli form hatası yapman istenmiyor.
+Test için önceden ayrılan farklı kişi/oturum/cihaz örnekleri eşik ve model
+seçiminde kullanılmaz. Artifact, extractor/kurallar ve validation raporu
+dondurulur; test bir kez açılır. Açılan testte ayar yapılırsa yeni bağımsız
+holdout gerekir; aynı veriye yeni dosya adı vermek yeni test oluşturmaz.
+
+Cihaz doğrulaması
+Video replay ile aynı model/hash, rotasyon, zaman damgası ve metrikler
+karşılaştırılır; ardından gerçek telefonda kadraj, izin reddi, arka plan/dönüş,
+frame drop, gözlenebilirlik, sürdürülebilir hız/ısı ve ses gecikmesi ölçülür.
+Simülatör bu kamera/ses/fiziksel doğruluk kanıtının yerine geçmez.
+Mevcut uygulama assetleri full-v1 SHA256 ile eşlendi. Extractor'ın tarihsel
+heavy varsayılanı kullanılmaz; telefon eşliği için full varyantı açık seçilir.
+En küçük cihaz adımı: testte kullanacağın telefonun model/OS bilgisini belirt
+ve mevcut resmi eşlemesiyle Mac'e bağla. Listeleme şu turda Apple servis
+zaman aşımı / Android soket OS reddi nedeniyle sonuç vermedi; ayar değişmedi.
+
+Bu paket yeni model indirme/eğitme, yeni scorer, bulut GPU, harici video yükleme,
+credential, CI/deploy, mağaza işlemi veya uzman onayı yapmaz. Yerel kabul aracı
+teknik metadata/hash/split sözleşmesini sınar; öğretim kalitesi ve hakların
+gerçekliğini otomatik sertifikalandırmaz.

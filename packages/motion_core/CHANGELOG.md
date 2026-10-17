@@ -1,3 +1,13 @@
+## 0.13.0 — 2026-10-17 — Provider contract v1
+
+- Additive MotionProviderManifest/Requirement and explicit in-memory selection.
+  Exact input space, ABI, model/calibration hashes and app-reviewed acceptance
+  gate each capability; unsupported and calibrationRequired remain non-ready.
+- Replay declarations cannot enter production selection. Incompatible candidates
+  preserve the active provider; explicit rollback checks current receipts again.
+- No existing pose, camera, account or assessment API changed. No consumer pin
+  changed. This is metadata/selection infrastructure, not model accuracy proof.
+
 ## 0.9.0 — 2026-07-30 — SessionStore çekirdek-terfisi (üçler kuralı)
 
 - `SessionRecord`/`SessionStore`/`JsonlSessionStore` çekirdekte (M-F-193
