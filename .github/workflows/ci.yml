@@ -37,6 +37,19 @@ jobs:
           python3 tools/harvest_rig/tests/test_yt_dlp_safety.py
           python3 tools/harvest_rig/tests/test_harvest_path_safety.py
 
+
+      - name: Capture intake regressions (synthetic, offline)
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/fixture_pipeline/tests -p 'test_first_party_capture*.py' -v
+
+      - name: Install locked schema checker (no lifecycle scripts)
+        run: npm ci --prefix tools/fixture_pipeline/tests/schema --ignore-scripts --no-audit --no-fund
+
+      - name: Capture schema contract (local references only)
+        run: node tools/fixture_pipeline/tests/schema/check.cjs
+
   dart-package:
     name: ${{ matrix.package }} (dart test)
     runs-on: ubuntu-latest
