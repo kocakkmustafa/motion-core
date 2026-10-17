@@ -1,0 +1,1642 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "full_teaching_goal_preserved": true,
+  "scope": "Offline intake/evaluation preparation only; no app runtime API, Core pins, model weights or course changes.",
+  "areas": [
+    {
+      "app": "gravita",
+      "area": "bodyweight",
+      "title": "Yerde vücut ağırlığı kuvveti",
+      "courses": [
+        {
+          "path": "content/courses/calisthenics.v1.json",
+          "id": "calisthenics-foundations",
+          "version": "1.0.0",
+          "units": 56,
+          "sha256": "15930d335f377c9f48e1c7285f1c44e25973b9cccb3167fa99cc9b8599889502",
+          "bytes": 276531,
+          "lesson_ids": [
+            "cal-01",
+            "cal-02",
+            "cal-03",
+            "cal-04",
+            "cal-05",
+            "cal-06",
+            "cal-07",
+            "cal-08",
+            "cal-09",
+            "cal-10",
+            "cal-11",
+            "cal-12",
+            "cal-13",
+            "cal-14",
+            "cal-15",
+            "cal-16",
+            "cal-17",
+            "cal-18",
+            "cal-19",
+            "cal-20",
+            "cal-21",
+            "cal-22",
+            "cal-23",
+            "cal-24",
+            "cal-25",
+            "cal-26",
+            "cal-27",
+            "cal-28",
+            "cal-29",
+            "cal-30",
+            "cal-31",
+            "cal-32",
+            "cal-33",
+            "cal-34",
+            "cal-35",
+            "cal-36",
+            "cal-37",
+            "cal-38",
+            "cal-39",
+            "cal-40",
+            "cal-41",
+            "cal-42",
+            "cal-43",
+            "cal-44",
+            "cal-45",
+            "cal-46",
+            "cal-47",
+            "cal-48",
+            "cal-49",
+            "cal-50",
+            "cal-51",
+            "cal-52",
+            "cal-53",
+            "cal-54",
+            "cal-55",
+            "cal-56"
+          ]
+        }
+      ],
+      "current_baseline": "a4c7639a07b8d7a481ea8caab7f5a488145525c6",
+      "existing_architecture": "Existing pinned pose extractor → app movement JSON / rep, hold, multi-phase FSM and confidence/identity gates. Calibrate metric/phase/reference parameters on first-party clips; an optional identity/rejection classifier remains a separate research proposal, not a new backbone.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "6a7ec44c8b9e36d8fdd024c271bb176e5b82c999fa9b22d16926b00343593601"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/rep_engine.dart",
+          "sha256": "6ff6ba9185b0560cc04bd5674751dd1295befadde5817dd941f0fe0f0f92d8cb"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/hold_engine.dart",
+          "sha256": "684a7336eb8a11da2344ab5f83fc21b0eeb5f32a4015984311720a9ca57caf70"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/movement_config.dart",
+          "sha256": "1b49f44a8b3926479f9fdd793347ebc5ca49fe4f30a4005847936eb604d6ef56"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "gravita",
+      "area": "dbkb",
+      "title": "DB/KB temelleri",
+      "courses": [
+        {
+          "path": "content/courses/dbkb-written.v1.json",
+          "id": "dbkb-written-foundations",
+          "version": "1.0.0",
+          "units": 12,
+          "sha256": "3b270b3bb340f313ebe8229bc2399253b83bf54e2a0229a63b8c2f0735ce3582",
+          "bytes": 63527,
+          "lesson_ids": [
+            "dbkb-01",
+            "dbkb-02",
+            "dbkb-03",
+            "dbkb-04",
+            "dbkb-05",
+            "dbkb-06",
+            "dbkb-07",
+            "dbkb-08",
+            "dbkb-09",
+            "dbkb-10",
+            "dbkb-11",
+            "dbkb-12"
+          ]
+        },
+        {
+          "path": "content/courses/dbkb-handling.v1.json",
+          "id": "dbkb-controlled-handling",
+          "version": "1.0.0",
+          "units": 11,
+          "sha256": "ebc137e9c0f41d789435f2300aa9ab5821318eeaf4e46ed9a4fe2d014c92c8cf",
+          "bytes": 145060,
+          "lesson_ids": [
+            "dbkbh-scope",
+            "dbkbh-a",
+            "dbkbh-bkb",
+            "dbkbh-bdb",
+            "dbkbh-c",
+            "dbkbh-d",
+            "dbkbh-e",
+            "dbkbh-f",
+            "dbkbh-g",
+            "dbkbh-h",
+            "dbkbh-i"
+          ]
+        },
+        {
+          "path": "content/courses/dbkb-transitions.v1.json",
+          "id": "dbkb-supported-transitions",
+          "version": "1.0.0",
+          "units": 2,
+          "sha256": "27aff671d91c56ccf6f342ce873f2cc6d4f43b0e6ca1189683a74868dbdf1d61",
+          "bytes": 49106,
+          "lesson_ids": [
+            "dbkbt-supported-goblet",
+            "dbkbt-single-kb-floor-press"
+          ]
+        }
+      ],
+      "current_baseline": "a4c7639a07b8d7a481ea8caab7f5a488145525c6",
+      "existing_architecture": "Existing pinned pose extractor → app movement JSON / rep, hold, multi-phase FSM and confidence/identity gates. Calibrate metric/phase/reference parameters on first-party clips; an optional identity/rejection classifier remains a separate research proposal, not a new backbone.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "6a7ec44c8b9e36d8fdd024c271bb176e5b82c999fa9b22d16926b00343593601"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/rep_engine.dart",
+          "sha256": "6ff6ba9185b0560cc04bd5674751dd1295befadde5817dd941f0fe0f0f92d8cb"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/hold_engine.dart",
+          "sha256": "684a7336eb8a11da2344ab5f83fc21b0eeb5f32a4015984311720a9ca57caf70"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/movement_config.dart",
+          "sha256": "1b49f44a8b3926479f9fdd793347ebc5ca49fe4f30a4005847936eb604d6ef56"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "gravita",
+      "area": "barbell",
+      "title": "Barbell kuvvet temelleri",
+      "courses": [],
+      "current_baseline": "a4c7639a07b8d7a481ea8caab7f5a488145525c6",
+      "existing_architecture": "Existing pinned pose extractor → app movement JSON / rep, hold, multi-phase FSM and confidence/identity gates. Calibrate metric/phase/reference parameters on first-party clips; an optional identity/rejection classifier remains a separate research proposal, not a new backbone.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "6a7ec44c8b9e36d8fdd024c271bb176e5b82c999fa9b22d16926b00343593601"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/rep_engine.dart",
+          "sha256": "6ff6ba9185b0560cc04bd5674751dd1295befadde5817dd941f0fe0f0f92d8cb"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/hold_engine.dart",
+          "sha256": "684a7336eb8a11da2344ab5f83fc21b0eeb5f32a4015984311720a9ca57caf70"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/movement_config.dart",
+          "sha256": "1b49f44a8b3926479f9fdd793347ebc5ca49fe4f30a4005847936eb604d6ef56"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Dedicated beginner course/initial variant not selected; retain proposal-only scope. For inversion inference S2 remains mandatory; S1 alone prohibited.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "gravita",
+      "area": "rings",
+      "title": "Bar/halkada destek ve çekiş",
+      "courses": [],
+      "current_baseline": "a4c7639a07b8d7a481ea8caab7f5a488145525c6",
+      "existing_architecture": "Existing pinned pose extractor → app movement JSON / rep, hold, multi-phase FSM and confidence/identity gates. Calibrate metric/phase/reference parameters on first-party clips; an optional identity/rejection classifier remains a separate research proposal, not a new backbone.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "6a7ec44c8b9e36d8fdd024c271bb176e5b82c999fa9b22d16926b00343593601"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/rep_engine.dart",
+          "sha256": "6ff6ba9185b0560cc04bd5674751dd1295befadde5817dd941f0fe0f0f92d8cb"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/hold_engine.dart",
+          "sha256": "684a7336eb8a11da2344ab5f83fc21b0eeb5f32a4015984311720a9ca57caf70"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/movement_config.dart",
+          "sha256": "1b49f44a8b3926479f9fdd793347ebc5ca49fe4f30a4005847936eb604d6ef56"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Dedicated beginner course/initial variant not selected; retain proposal-only scope. For inversion inference S2 remains mandatory; S1 alone prohibited.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "gravita",
+      "area": "hands",
+      "title": "El desteği denge ve düz kol hazırlığı",
+      "courses": [],
+      "current_baseline": "a4c7639a07b8d7a481ea8caab7f5a488145525c6",
+      "existing_architecture": "Existing pinned pose extractor → app movement JSON / rep, hold, multi-phase FSM and confidence/identity gates. Calibrate metric/phase/reference parameters on first-party clips; an optional identity/rejection classifier remains a separate research proposal, not a new backbone.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "6a7ec44c8b9e36d8fdd024c271bb176e5b82c999fa9b22d16926b00343593601"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/rep_engine.dart",
+          "sha256": "6ff6ba9185b0560cc04bd5674751dd1295befadde5817dd941f0fe0f0f92d8cb"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/hold_engine.dart",
+          "sha256": "684a7336eb8a11da2344ab5f83fc21b0eeb5f32a4015984311720a9ca57caf70"
+        },
+        {
+          "path": "packages/gravita_engine/lib/src/movement_config.dart",
+          "sha256": "1b49f44a8b3926479f9fdd793347ebc5ca49fe4f30a4005847936eb604d6ef56"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Dedicated beginner course/initial variant not selected; retain proposal-only scope. For inversion inference S2 remains mandatory; S1 alone prohibited.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "lissom",
+      "area": "hatha",
+      "title": "Hatha",
+      "courses": [
+        {
+          "path": "config/courses/hatha.v1.json",
+          "id": "lissom.hatha.foundations",
+          "version": "1.0.1",
+          "units": 60,
+          "sha256": "be597ebcb4d9a3ae05410e2b33752b061bdc4ad1aea49896ae978733b7405a3c",
+          "bytes": 270935,
+          "lesson_ids": [
+            "h01",
+            "h02",
+            "h03",
+            "h04",
+            "h05",
+            "h06",
+            "h07",
+            "h08",
+            "h09",
+            "h10",
+            "h11",
+            "h12",
+            "h13",
+            "h14",
+            "h15",
+            "h16",
+            "h17",
+            "h18",
+            "h19",
+            "h20",
+            "h21",
+            "h22",
+            "h23",
+            "h24",
+            "h25",
+            "h26",
+            "h27",
+            "h28",
+            "h29",
+            "h30",
+            "h31",
+            "h32",
+            "h33",
+            "h34",
+            "h35",
+            "h36",
+            "h37",
+            "h38",
+            "h39",
+            "h40",
+            "h41",
+            "h42",
+            "h43",
+            "h44",
+            "h45",
+            "h46",
+            "h47",
+            "h48",
+            "h49",
+            "h50",
+            "h51",
+            "h52",
+            "h53",
+            "h54",
+            "h55",
+            "h56",
+            "h57",
+            "h58",
+            "h59",
+            "h60"
+          ]
+        }
+      ],
+      "current_baseline": "8c732ec61a9010d8dbf98163719bcee30a9eeb67",
+      "existing_architecture": "Existing full-pose → metric bridge → ROM/assessment battery. Calibrate visibility, camera-plane and measurement repeatability against human annotations. Five yoga courses are not wired to a yoga-pose classifier; adding course pose/transition assessment needs a separate task/metric/runtime design proposal.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "ec93c716c9c3ee14fa51eed5a2ca068b2aa53666798107f66cb7e0fc36078159"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/live_evaluator.dart",
+          "sha256": "90e72fe76d4eddc5649faccf851dd0c2f2b885adfd1089d9aae200e9f0c2b0f9"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/metric_bridge.dart",
+          "sha256": "b79449519dda727e65de1d5b5d26c48290564c70d377db6bb1ab718aa9439693"
+        },
+        {
+          "path": "config/tests/lissom-assessment.v1.json",
+          "sha256": "e272d4a8a5753ff4ae5f30081c3ce32f6a336746b028df7c2e9c77c4eacb36db"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Yoga course scoring/runtime binding absent; ROM battery is a different task.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "lissom",
+      "area": "chair",
+      "title": "Sandalye/ofis",
+      "courses": [
+        {
+          "path": "config/courses/chair-office.v1.json",
+          "id": "lissom.chair-office.beginner",
+          "version": "1.0.0",
+          "units": 12,
+          "sha256": "c32f5d4f05606f2fa0f9c9a1ac48297bc61a917f3793e39ad1dfb377f9f1426c",
+          "bytes": 76934,
+          "lesson_ids": [
+            "c01",
+            "c02",
+            "c03",
+            "c04",
+            "c05",
+            "c06",
+            "c07",
+            "c08",
+            "c09",
+            "c10",
+            "c11",
+            "c12"
+          ]
+        }
+      ],
+      "current_baseline": "8c732ec61a9010d8dbf98163719bcee30a9eeb67",
+      "existing_architecture": "Existing full-pose → metric bridge → ROM/assessment battery. Calibrate visibility, camera-plane and measurement repeatability against human annotations. Five yoga courses are not wired to a yoga-pose classifier; adding course pose/transition assessment needs a separate task/metric/runtime design proposal.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "ec93c716c9c3ee14fa51eed5a2ca068b2aa53666798107f66cb7e0fc36078159"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/live_evaluator.dart",
+          "sha256": "90e72fe76d4eddc5649faccf851dd0c2f2b885adfd1089d9aae200e9f0c2b0f9"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/metric_bridge.dart",
+          "sha256": "b79449519dda727e65de1d5b5d26c48290564c70d377db6bb1ab718aa9439693"
+        },
+        {
+          "path": "config/tests/lissom-assessment.v1.json",
+          "sha256": "e272d4a8a5753ff4ae5f30081c3ce32f6a336746b028df7c2e9c77c4eacb36db"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Yoga course scoring/runtime binding absent; ROM battery is a different task.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "lissom",
+      "area": "vinyasa",
+      "title": "Vinyasa",
+      "courses": [
+        {
+          "path": "config/courses/vinyasa-standing.v1.json",
+          "id": "lissom.vinyasa.supported-standing.beginner",
+          "version": "1.0.0",
+          "units": 10,
+          "sha256": "815b7a2c7205c0b5e5c32ce096c79ad112d98ca78196184b1ced1414e6953191",
+          "bytes": 68188,
+          "lesson_ids": [
+            "v01",
+            "v02",
+            "v03",
+            "v04",
+            "v05",
+            "v06",
+            "v07",
+            "v08",
+            "v09",
+            "v10"
+          ]
+        }
+      ],
+      "current_baseline": "8c732ec61a9010d8dbf98163719bcee30a9eeb67",
+      "existing_architecture": "Existing full-pose → metric bridge → ROM/assessment battery. Calibrate visibility, camera-plane and measurement repeatability against human annotations. Five yoga courses are not wired to a yoga-pose classifier; adding course pose/transition assessment needs a separate task/metric/runtime design proposal.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "ec93c716c9c3ee14fa51eed5a2ca068b2aa53666798107f66cb7e0fc36078159"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/live_evaluator.dart",
+          "sha256": "90e72fe76d4eddc5649faccf851dd0c2f2b885adfd1089d9aae200e9f0c2b0f9"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/metric_bridge.dart",
+          "sha256": "b79449519dda727e65de1d5b5d26c48290564c70d377db6bb1ab718aa9439693"
+        },
+        {
+          "path": "config/tests/lissom-assessment.v1.json",
+          "sha256": "e272d4a8a5753ff4ae5f30081c3ce32f6a336746b028df7c2e9c77c4eacb36db"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Yoga course scoring/runtime binding absent; ROM battery is a different task.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "lissom",
+      "area": "yin",
+      "title": "Yin",
+      "courses": [
+        {
+          "path": "config/courses/yin-supported.v1.json",
+          "id": "lissom.yin.supported.beginner",
+          "version": "1.0.0",
+          "units": 8,
+          "sha256": "3b5455c6f5b3f459e64e7f3f586f37193dd9b0a8c72b548d621f091b36b570e6",
+          "bytes": 77920,
+          "lesson_ids": [
+            "y01",
+            "y02",
+            "y03",
+            "y04",
+            "y05",
+            "y06",
+            "y07",
+            "y08"
+          ]
+        }
+      ],
+      "current_baseline": "8c732ec61a9010d8dbf98163719bcee30a9eeb67",
+      "existing_architecture": "Existing full-pose → metric bridge → ROM/assessment battery. Calibrate visibility, camera-plane and measurement repeatability against human annotations. Five yoga courses are not wired to a yoga-pose classifier; adding course pose/transition assessment needs a separate task/metric/runtime design proposal.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "ec93c716c9c3ee14fa51eed5a2ca068b2aa53666798107f66cb7e0fc36078159"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/live_evaluator.dart",
+          "sha256": "90e72fe76d4eddc5649faccf851dd0c2f2b885adfd1089d9aae200e9f0c2b0f9"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/metric_bridge.dart",
+          "sha256": "b79449519dda727e65de1d5b5d26c48290564c70d377db6bb1ab718aa9439693"
+        },
+        {
+          "path": "config/tests/lissom-assessment.v1.json",
+          "sha256": "e272d4a8a5753ff4ae5f30081c3ce32f6a336746b028df7c2e9c77c4eacb36db"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Yoga course scoring/runtime binding absent; ROM battery is a different task.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "lissom",
+      "area": "ashtanga",
+      "title": "Ashtanga başlangıç",
+      "courses": [
+        {
+          "path": "config/courses/ashtanga-foundations.v1.json",
+          "id": "lissom.ashtanga.foundations.beginner",
+          "version": "1.0.0",
+          "units": 13,
+          "sha256": "dd5004b1760ea460e2ead4d16790239ffb9fbad45407d9ff4cd8fcf08a2b1bf7",
+          "bytes": 59186,
+          "lesson_ids": [
+            "a01",
+            "a02",
+            "a03",
+            "a04",
+            "a05",
+            "a06",
+            "a07",
+            "a08",
+            "a09",
+            "a10",
+            "a11",
+            "a12",
+            "a13"
+          ]
+        }
+      ],
+      "current_baseline": "8c732ec61a9010d8dbf98163719bcee30a9eeb67",
+      "existing_architecture": "Existing full-pose → metric bridge → ROM/assessment battery. Calibrate visibility, camera-plane and measurement repeatability against human annotations. Five yoga courses are not wired to a yoga-pose classifier; adding course pose/transition assessment needs a separate task/metric/runtime design proposal.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "ec93c716c9c3ee14fa51eed5a2ca068b2aa53666798107f66cb7e0fc36078159"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/live_evaluator.dart",
+          "sha256": "90e72fe76d4eddc5649faccf851dd0c2f2b885adfd1089d9aae200e9f0c2b0f9"
+        },
+        {
+          "path": "packages/lissom_engine/lib/src/metric_bridge.dart",
+          "sha256": "b79449519dda727e65de1d5b5d26c48290564c70d377db6bb1ab718aa9439693"
+        },
+        {
+          "path": "config/tests/lissom-assessment.v1.json",
+          "sha256": "e272d4a8a5753ff4ae5f30081c3ce32f6a336746b028df7c2e9c77c4eacb36db"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Yoga course scoring/runtime binding absent; ROM battery is a different task.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "jablab",
+      "area": "boxing",
+      "title": "Boks",
+      "courses": [
+        {
+          "path": "assets/content/solo_boxing_course.v1.json",
+          "id": null,
+          "version": 1,
+          "units": 39,
+          "sha256": "0909b6c991fb631faeb357026475f787ae226562e261a479e0eb315095de069f",
+          "bytes": 201068,
+          "lesson_ids": [
+            "boxing.start.space",
+            "boxing.start.stance",
+            "boxing.start.guard",
+            "boxing.start.breath",
+            "boxing.start.reset",
+            "boxing.footwork.forward_back",
+            "boxing.footwork.lateral",
+            "boxing.footwork.diagonal",
+            "boxing.footwork.pivot",
+            "boxing.footwork.enter_exit",
+            "boxing.straights.jab_line",
+            "boxing.straights.jab_return",
+            "boxing.straights.double_jab",
+            "boxing.straights.rear_straight",
+            "boxing.straights.rear_return",
+            "boxing.straights.one_two",
+            "boxing.defence.distance",
+            "boxing.defence.cover",
+            "boxing.defence.catch_parry",
+            "boxing.defence.slip",
+            "boxing.defence.roll",
+            "boxing.curves.lead_hook",
+            "boxing.curves.rear_hook",
+            "boxing.curves.lead_uppercut",
+            "boxing.curves.rear_uppercut",
+            "boxing.curves.targets",
+            "boxing.combinations.double_jab_cross",
+            "boxing.combinations.one_two_hook",
+            "boxing.combinations.one_two_uppercut",
+            "boxing.combinations.defend_return",
+            "boxing.combinations.angle_exit",
+            "boxing.rounds.short_round",
+            "boxing.rounds.footwork_round",
+            "boxing.rounds.imagined_target",
+            "boxing.rounds.pace",
+            "boxing.rounds.personal_plan",
+            "boxing.integration.skill_review",
+            "boxing.integration.two_round_rehearsal",
+            "boxing.integration.independent_round"
+          ]
+        }
+      ],
+      "current_baseline": "2113289ee5372d3a0001c1947fbe05d78b8c11a4",
+      "existing_architecture": "Existing pose → phase/attempt digest → boxing ruleset/live jab. Calibrate guard/extension/peak/return, visibility and rejection with human event times; do not call this pose-backbone training. Other four written disciplines have no equivalent accepted course-wide live classifier.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "d3e184d3c011c79de371d9cff59ae0fe6e8648b7082e63bc3620668550ff56a5"
+        },
+        {
+          "path": "lib/app/live_jab_controller.dart",
+          "sha256": "cb71921db6875df89247d1b6b50f8c5b5e1416a49ebed13c6cf03dabe2a2f6b1"
+        },
+        {
+          "path": "packages/jablab_engine/lib/src/striking_engine.dart",
+          "sha256": "f210b360a687bf1d6908682596654e2fa93a54be96efd3483e3d32ff027fb08c"
+        },
+        {
+          "path": "assets/rulesets/boxing.v3.json",
+          "sha256": "da9bb624ec0ae032c749eee05435b554386f5ca6f1427d585e805301b1fa65f9"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "jablab",
+      "area": "taichi",
+      "title": "Tai Chi",
+      "courses": [
+        {
+          "path": "assets/content/tai_chi_course.v1.json",
+          "id": "jablab.tai_chi_foundations",
+          "version": 1,
+          "units": 14,
+          "sha256": "c1d98507e9517daf6ccc514465ba98a44eb24a2c639a3968a6648869c372f47b",
+          "bytes": 99378,
+          "lesson_ids": [
+            "tai_chi_foundations_01",
+            "tai_chi_foundations_02",
+            "tai_chi_foundations_03",
+            "tai_chi_foundations_04",
+            "tai_chi_foundations_05",
+            "tai_chi_foundations_06",
+            "tai_chi_foundations_07",
+            "tai_chi_foundations_08",
+            "tai_chi_foundations_09",
+            "tai_chi_foundations_10",
+            "tai_chi_foundations_11",
+            "tai_chi_foundations_12",
+            "tai_chi_foundations_13",
+            "tai_chi_foundations_14"
+          ]
+        },
+        {
+          "path": "assets/content/yang16_angela_written.v2.json",
+          "id": "yang16-angela-written-v2",
+          "version": null,
+          "units": 18,
+          "sha256": "d6f8488084fd1bc54005ee1bd952038408e7b41e7bd02ad4f98bb85a72a44f94",
+          "bytes": 245925,
+          "lesson_ids": [
+            "prepare",
+            "m01",
+            "m02",
+            "m03",
+            "m04",
+            "m05",
+            "m06",
+            "m07",
+            "m08",
+            "m09",
+            "m10",
+            "m11",
+            "m12",
+            "m13",
+            "m14",
+            "m15",
+            "m16",
+            "return"
+          ]
+        }
+      ],
+      "current_baseline": "2113289ee5372d3a0001c1947fbe05d78b8c11a4",
+      "existing_architecture": "Existing pose → phase/attempt digest → boxing ruleset/live jab. Calibrate guard/extension/peak/return, visibility and rejection with human event times; do not call this pose-backbone training. Other four written disciplines have no equivalent accepted course-wide live classifier.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "d3e184d3c011c79de371d9cff59ae0fe6e8648b7082e63bc3620668550ff56a5"
+        },
+        {
+          "path": "lib/app/live_jab_controller.dart",
+          "sha256": "cb71921db6875df89247d1b6b50f8c5b5e1416a49ebed13c6cf03dabe2a2f6b1"
+        },
+        {
+          "path": "packages/jablab_engine/lib/src/striking_engine.dart",
+          "sha256": "f210b360a687bf1d6908682596654e2fa93a54be96efd3483e3d32ff027fb08c"
+        },
+        {
+          "path": "assets/rulesets/boxing.v3.json",
+          "sha256": "da9bb624ec0ae032c749eee05435b554386f5ca6f1427d585e805301b1fa65f9"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Written course != integrated live movement classifier.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "jablab",
+      "area": "kickboxing",
+      "title": "Kickboxing",
+      "courses": [
+        {
+          "path": "assets/content/kickboxing_a.v1.json",
+          "id": "jablab.kickboxing_a",
+          "version": 1,
+          "units": 16,
+          "sha256": "00b338d0de111ee240cdf1292611db2b8d6c3e5654800fc8967c5dfb52042fa3",
+          "bytes": 60052,
+          "lesson_ids": [
+            "kb-01",
+            "kb-02",
+            "kb-03",
+            "kb-04",
+            "kb-05",
+            "kb-06",
+            "kb-07",
+            "kb-08",
+            "kb-09",
+            "kb-10",
+            "kb-11",
+            "kb-12",
+            "kb-13",
+            "kb-14",
+            "kb-15",
+            "kb-16"
+          ]
+        }
+      ],
+      "current_baseline": "2113289ee5372d3a0001c1947fbe05d78b8c11a4",
+      "existing_architecture": "Existing pose → phase/attempt digest → boxing ruleset/live jab. Calibrate guard/extension/peak/return, visibility and rejection with human event times; do not call this pose-backbone training. Other four written disciplines have no equivalent accepted course-wide live classifier.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "d3e184d3c011c79de371d9cff59ae0fe6e8648b7082e63bc3620668550ff56a5"
+        },
+        {
+          "path": "lib/app/live_jab_controller.dart",
+          "sha256": "cb71921db6875df89247d1b6b50f8c5b5e1416a49ebed13c6cf03dabe2a2f6b1"
+        },
+        {
+          "path": "packages/jablab_engine/lib/src/striking_engine.dart",
+          "sha256": "f210b360a687bf1d6908682596654e2fa93a54be96efd3483e3d32ff027fb08c"
+        },
+        {
+          "path": "assets/rulesets/boxing.v3.json",
+          "sha256": "da9bb624ec0ae032c749eee05435b554386f5ca6f1427d585e805301b1fa65f9"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Written course != integrated live movement classifier.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "jablab",
+      "area": "karate",
+      "title": "Karate kihon/başlangıç kata",
+      "courses": [
+        {
+          "path": "assets/content/karate_a.v1.json",
+          "id": "jablab.karate_a",
+          "version": 1,
+          "units": 16,
+          "sha256": "e9b3555f09a77eb20f5756ad4cefc647e2e32415b5f6f18bca7c80ef3b4b55b0",
+          "bytes": 93021,
+          "lesson_ids": [
+            "ka-01",
+            "ka-02",
+            "ka-03",
+            "ka-04",
+            "ka-05",
+            "ka-06",
+            "ka-07",
+            "ka-08",
+            "ka-09",
+            "ka-10",
+            "ka-11",
+            "ka-12",
+            "ka-13",
+            "ka-14",
+            "ka-15",
+            "ka-16"
+          ]
+        },
+        {
+          "path": "assets/content/taikyoku_shodan_jl.v1.json",
+          "id": "jablab.taikyoku_shodan_jl",
+          "version": 1,
+          "units": 10,
+          "sha256": "56ba6480867e8bf3481b1e5fbe1b11b9ef21970ed362e546c389790901f94f92",
+          "bytes": 141753,
+          "lesson_ids": [
+            "ts-01",
+            "ts-02",
+            "ts-03",
+            "ts-04",
+            "ts-05",
+            "ts-06",
+            "ts-07",
+            "ts-08",
+            "ts-09",
+            "ts-10"
+          ]
+        }
+      ],
+      "current_baseline": "2113289ee5372d3a0001c1947fbe05d78b8c11a4",
+      "existing_architecture": "Existing pose → phase/attempt digest → boxing ruleset/live jab. Calibrate guard/extension/peak/return, visibility and rejection with human event times; do not call this pose-backbone training. Other four written disciplines have no equivalent accepted course-wide live classifier.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "d3e184d3c011c79de371d9cff59ae0fe6e8648b7082e63bc3620668550ff56a5"
+        },
+        {
+          "path": "lib/app/live_jab_controller.dart",
+          "sha256": "cb71921db6875df89247d1b6b50f8c5b5e1416a49ebed13c6cf03dabe2a2f6b1"
+        },
+        {
+          "path": "packages/jablab_engine/lib/src/striking_engine.dart",
+          "sha256": "f210b360a687bf1d6908682596654e2fa93a54be96efd3483e3d32ff027fb08c"
+        },
+        {
+          "path": "assets/rulesets/boxing.v3.json",
+          "sha256": "da9bb624ec0ae032c749eee05435b554386f5ca6f1427d585e805301b1fa65f9"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Written course != integrated live movement classifier.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "jablab",
+      "area": "muaythai",
+      "title": "Muay Thai",
+      "courses": [
+        {
+          "path": "assets/content/muay_thai_a.v1.json",
+          "id": "jablab.muay_thai_a",
+          "version": 1,
+          "units": 16,
+          "sha256": "ee16b7fe958d45c08bdcef399147a2569d33b566110f3fc4675d2971ec403531",
+          "bytes": 87373,
+          "lesson_ids": [
+            "mt-01",
+            "mt-02",
+            "mt-03",
+            "mt-04",
+            "mt-05",
+            "mt-06",
+            "mt-07",
+            "mt-08",
+            "mt-09",
+            "mt-10",
+            "mt-11",
+            "mt-12",
+            "mt-13",
+            "mt-14",
+            "mt-15",
+            "mt-16"
+          ]
+        }
+      ],
+      "current_baseline": "2113289ee5372d3a0001c1947fbe05d78b8c11a4",
+      "existing_architecture": "Existing pose → phase/attempt digest → boxing ruleset/live jab. Calibrate guard/extension/peak/return, visibility and rejection with human event times; do not call this pose-backbone training. Other four written disciplines have no equivalent accepted course-wide live classifier.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "d3e184d3c011c79de371d9cff59ae0fe6e8648b7082e63bc3620668550ff56a5"
+        },
+        {
+          "path": "lib/app/live_jab_controller.dart",
+          "sha256": "cb71921db6875df89247d1b6b50f8c5b5e1416a49ebed13c6cf03dabe2a2f6b1"
+        },
+        {
+          "path": "packages/jablab_engine/lib/src/striking_engine.dart",
+          "sha256": "f210b360a687bf1d6908682596654e2fa93a54be96efd3483e3d32ff027fb08c"
+        },
+        {
+          "path": "assets/rulesets/boxing.v3.json",
+          "sha256": "da9bb624ec0ae032c749eee05435b554386f5ca6f1427d585e805301b1fa65f9"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Written course != integrated live movement classifier.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "ostinato",
+      "area": "guitar",
+      "title": "Gitar",
+      "courses": [
+        {
+          "path": "assets/content/guitar_journey.v1.json",
+          "id": "guitar.journey",
+          "version": 1,
+          "units": 60,
+          "sha256": "bf553f62d91927be66b88210103b982bed17c357b4b643cb9b50f57a3e105a18",
+          "bytes": 995884,
+          "lesson_ids": [
+            "guitar.journey.start.parts",
+            "guitar.journey.start.setup",
+            "guitar.journey.start.tuning",
+            "guitar.journey.start.pluck",
+            "guitar.journey.start.fret",
+            "guitar.journey.start.first_pulse",
+            "guitar.journey.notes.bass_e",
+            "guitar.journey.notes.bass_a",
+            "guitar.journey.notes.middle_strings",
+            "guitar.journey.notes.treble_strings",
+            "guitar.journey.notes.alternating_pick",
+            "guitar.journey.notes.note_checkpoint",
+            "guitar.journey.reading.quarters_eighths",
+            "guitar.journey.reading.rests_ties",
+            "guitar.journey.reading.meters",
+            "guitar.journey.reading.tablature",
+            "guitar.journey.reading.staff",
+            "guitar.journey.reading.reading_checkpoint",
+            "guitar.journey.chords.diagrams_em_am",
+            "guitar.journey.chords.e_a",
+            "guitar.journey.chords.d_g",
+            "guitar.journey.chords.c_dm",
+            "guitar.journey.chords.two_chord_changes",
+            "guitar.journey.chords.four_chord_loop",
+            "guitar.journey.strum.down_up",
+            "guitar.journey.strum.accents",
+            "guitar.journey.strum.waltz",
+            "guitar.journey.strum.offbeat",
+            "guitar.journey.strum.mute",
+            "guitar.journey.strum.accompaniment",
+            "guitar.journey.melody.interval_map",
+            "guitar.journey.melody.c_major",
+            "guitar.journey.melody.g_major",
+            "guitar.journey.melody.a_minor_pent",
+            "guitar.journey.melody.phrasing",
+            "guitar.journey.melody.melody_capstone",
+            "guitar.journey.harmony.triads",
+            "guitar.journey.harmony.key_chords",
+            "guitar.journey.harmony.transpose",
+            "guitar.journey.harmony.blues_form",
+            "guitar.journey.harmony.power_chords",
+            "guitar.journey.harmony.sevenths_chart",
+            "guitar.journey.fingerstyle.finger_names",
+            "guitar.journey.fingerstyle.steady_bass",
+            "guitar.journey.fingerstyle.alternating_bass",
+            "guitar.journey.fingerstyle.arpeggio",
+            "guitar.journey.fingerstyle.melody_bass",
+            "guitar.journey.fingerstyle.finger_arrangement",
+            "guitar.journey.intermediate.partial_barre",
+            "guitar.journey.intermediate.f_chord",
+            "guitar.journey.intermediate.movable_shape",
+            "guitar.journey.intermediate.pentatonic_link",
+            "guitar.journey.intermediate.slides_bends",
+            "guitar.journey.intermediate.blues_improv",
+            "guitar.journey.independent.choose_piece",
+            "guitar.journey.independent.arrange",
+            "guitar.journey.independent.self_review",
+            "guitar.journey.independent.rhythm_final",
+            "guitar.journey.independent.melody_final",
+            "guitar.journey.independent.next_cycle"
+          ]
+        }
+      ],
+      "current_baseline": "7a91f3cc39ebf527ead983be410d826ee171c4e2",
+      "existing_architecture": "Existing body-pose posture plus deterministic FFT/pitch/chord/onset/timing, not a learned audio backbone. Use synchronized original audio/human note and onset labels for DSP/drill calibration. Body pose cannot resolve finger articulation/key contact; new hand/instrument recognition requires a separate design and dataset.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "f1379550864dd94d7908d368c151ddd735775f12d36bf45216636b0ea3d1c1e3"
+        },
+        {
+          "path": "packages/ostinato_posture/lib/src/evaluator.dart",
+          "sha256": "65fb132f6c8c7e7c55951759e1bdf06a09467ad0612df5227605cfa6b597e346"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/pitch/guitar_pitch_observer.dart",
+          "sha256": "0c7b0dcaa4b105f2c793a7fa28b2469b1ed6274208201a486e01b97cc43f2e8f"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/harmony/chord_detector.dart",
+          "sha256": "a2f4dc225fcf5caa763614ec2938b24e95fb6fbb48dc67040002275530b4ded7"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "ostinato",
+      "area": "piano",
+      "title": "Piyano/klavye",
+      "courses": [
+        {
+          "path": "assets/content/piano_beginner.v1.json",
+          "id": "piano.beginner",
+          "version": 1,
+          "units": 16,
+          "sha256": "c714a5d8be7a98b62104044eaec2ec33bcd83e775915246e65c3a3d98cbdbce7",
+          "bytes": 27012,
+          "lesson_ids": [
+            "piano-01",
+            "piano-02",
+            "piano-03",
+            "piano-04",
+            "piano-05",
+            "piano-06",
+            "piano-07",
+            "piano-08",
+            "piano-09",
+            "piano-10",
+            "piano-11",
+            "piano-12",
+            "piano-13",
+            "piano-14",
+            "piano-15",
+            "piano-16"
+          ]
+        }
+      ],
+      "current_baseline": "7a91f3cc39ebf527ead983be410d826ee171c4e2",
+      "existing_architecture": "Existing body-pose posture plus deterministic FFT/pitch/chord/onset/timing, not a learned audio backbone. Use synchronized original audio/human note and onset labels for DSP/drill calibration. Body pose cannot resolve finger articulation/key contact; new hand/instrument recognition requires a separate design and dataset.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "f1379550864dd94d7908d368c151ddd735775f12d36bf45216636b0ea3d1c1e3"
+        },
+        {
+          "path": "packages/ostinato_posture/lib/src/evaluator.dart",
+          "sha256": "65fb132f6c8c7e7c55951759e1bdf06a09467ad0612df5227605cfa6b597e346"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/pitch/guitar_pitch_observer.dart",
+          "sha256": "0c7b0dcaa4b105f2c793a7fa28b2469b1ed6274208201a486e01b97cc43f2e8f"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/harmony/chord_detector.dart",
+          "sha256": "a2f4dc225fcf5caa763614ec2938b24e95fb6fbb48dc67040002275530b4ded7"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Instrument-specific written content does not establish accepted note/technique feedback for this instrument.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "ostinato",
+      "area": "vocal",
+      "title": "Vokal",
+      "courses": [
+        {
+          "path": "assets/content/vocal_beginner.v1.json",
+          "id": "voice.beginner.written",
+          "version": 1,
+          "units": 16,
+          "sha256": "5564e76bdd97740d14c15d396c7e9916fd2943982c7418d87737cf64b84b78e5",
+          "bytes": 40015,
+          "lesson_ids": [
+            "vocal-01",
+            "vocal-02",
+            "vocal-03",
+            "vocal-04",
+            "vocal-05",
+            "vocal-06",
+            "vocal-07",
+            "vocal-08",
+            "vocal-09",
+            "vocal-10",
+            "vocal-11",
+            "vocal-12",
+            "vocal-13",
+            "vocal-14",
+            "vocal-15",
+            "vocal-16"
+          ]
+        }
+      ],
+      "current_baseline": "7a91f3cc39ebf527ead983be410d826ee171c4e2",
+      "existing_architecture": "Existing body-pose posture plus deterministic FFT/pitch/chord/onset/timing, not a learned audio backbone. Use synchronized original audio/human note and onset labels for DSP/drill calibration. Body pose cannot resolve finger articulation/key contact; new hand/instrument recognition requires a separate design and dataset.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "f1379550864dd94d7908d368c151ddd735775f12d36bf45216636b0ea3d1c1e3"
+        },
+        {
+          "path": "packages/ostinato_posture/lib/src/evaluator.dart",
+          "sha256": "65fb132f6c8c7e7c55951759e1bdf06a09467ad0612df5227605cfa6b597e346"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/pitch/guitar_pitch_observer.dart",
+          "sha256": "0c7b0dcaa4b105f2c793a7fa28b2469b1ed6274208201a486e01b97cc43f2e8f"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/harmony/chord_detector.dart",
+          "sha256": "a2f4dc225fcf5caa763614ec2938b24e95fb6fbb48dc67040002275530b4ded7"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Instrument-specific written content does not establish accepted note/technique feedback for this instrument.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "ostinato",
+      "area": "ukulele",
+      "title": "Ukulele",
+      "courses": [
+        {
+          "path": "assets/content/ukulele_beginner.v1.json",
+          "id": "ukulele.beginner",
+          "version": 1,
+          "units": 18,
+          "sha256": "181095def47ae1ab8c8a930ef2668d44dc4eca2f6a640458398bd8b49cef0126",
+          "bytes": 42209,
+          "lesson_ids": [
+            "ukulele-01",
+            "ukulele-02",
+            "ukulele-03",
+            "ukulele-04",
+            "ukulele-05",
+            "ukulele-06",
+            "ukulele-07",
+            "ukulele-08",
+            "ukulele-09",
+            "ukulele-10",
+            "ukulele-11",
+            "ukulele-12",
+            "ukulele-13",
+            "ukulele-14",
+            "ukulele-15",
+            "ukulele-16",
+            "ukulele-17",
+            "ukulele-18"
+          ]
+        }
+      ],
+      "current_baseline": "7a91f3cc39ebf527ead983be410d826ee171c4e2",
+      "existing_architecture": "Existing body-pose posture plus deterministic FFT/pitch/chord/onset/timing, not a learned audio backbone. Use synchronized original audio/human note and onset labels for DSP/drill calibration. Body pose cannot resolve finger articulation/key contact; new hand/instrument recognition requires a separate design and dataset.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "f1379550864dd94d7908d368c151ddd735775f12d36bf45216636b0ea3d1c1e3"
+        },
+        {
+          "path": "packages/ostinato_posture/lib/src/evaluator.dart",
+          "sha256": "65fb132f6c8c7e7c55951759e1bdf06a09467ad0612df5227605cfa6b597e346"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/pitch/guitar_pitch_observer.dart",
+          "sha256": "0c7b0dcaa4b105f2c793a7fa28b2469b1ed6274208201a486e01b97cc43f2e8f"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/harmony/chord_detector.dart",
+          "sha256": "a2f4dc225fcf5caa763614ec2938b24e95fb6fbb48dc67040002275530b4ded7"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Instrument-specific written content does not establish accepted note/technique feedback for this instrument.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "ostinato",
+      "area": "bass",
+      "title": "Bas",
+      "courses": [
+        {
+          "path": "assets/content/bass_beginner.v1.json",
+          "id": "bass.beginner",
+          "version": 1,
+          "units": 18,
+          "sha256": "3cc61af85ab350d67e65a207335cb83fc910ab9774def12c86d170500d7551fe",
+          "bytes": 44282,
+          "lesson_ids": [
+            "bass-01",
+            "bass-02",
+            "bass-03",
+            "bass-04",
+            "bass-05",
+            "bass-06",
+            "bass-07",
+            "bass-08",
+            "bass-09",
+            "bass-10",
+            "bass-11",
+            "bass-12",
+            "bass-13",
+            "bass-14",
+            "bass-15",
+            "bass-16",
+            "bass-17",
+            "bass-18"
+          ]
+        }
+      ],
+      "current_baseline": "7a91f3cc39ebf527ead983be410d826ee171c4e2",
+      "existing_architecture": "Existing body-pose posture plus deterministic FFT/pitch/chord/onset/timing, not a learned audio backbone. Use synchronized original audio/human note and onset labels for DSP/drill calibration. Body pose cannot resolve finger articulation/key contact; new hand/instrument recognition requires a separate design and dataset.",
+      "source_references": [
+        {
+          "path": "lib/app/pose_model.dart",
+          "sha256": "f1379550864dd94d7908d368c151ddd735775f12d36bf45216636b0ea3d1c1e3"
+        },
+        {
+          "path": "packages/ostinato_posture/lib/src/evaluator.dart",
+          "sha256": "65fb132f6c8c7e7c55951759e1bdf06a09467ad0612df5227605cfa6b597e346"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/pitch/guitar_pitch_observer.dart",
+          "sha256": "0c7b0dcaa4b105f2c793a7fa28b2469b1ed6274208201a486e01b97cc43f2e8f"
+        },
+        {
+          "path": "packages/ostinato_audio/lib/src/harmony/chord_detector.dart",
+          "sha256": "a2f4dc225fcf5caa763614ec2938b24e95fb6fbb48dc67040002275530b4ded7"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied. Instrument-specific written content does not establish accepted note/technique feedback for this instrument.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "choreia",
+      "area": "hiphop",
+      "title": "HipHop Foundations",
+      "courses": [
+        {
+          "path": "content/hip_hop_foundations_course.json",
+          "id": "hip_hop_foundations_beginner",
+          "version": 1,
+          "units": 6,
+          "sha256": "6e4b03606a225add1a7d233fb0f3d90a09dcb87d3f915acc3a43eac3eb7c2838",
+          "bytes": 40297,
+          "lesson_ids": [
+            "hhf_01",
+            "hhf_02",
+            "hhf_03",
+            "hhf_04",
+            "hhf_05",
+            "hhf_06"
+          ]
+        },
+        {
+          "path": "content/hip_hop_foundations_skill_course.json",
+          "id": "hip_hop_foundations_skill_course",
+          "version": 1,
+          "units": 8,
+          "sha256": "719b1f24e10b0eda492265160296e1c34c079061dfbc7b8b875019a5979dd8ee",
+          "bytes": 49753,
+          "lesson_ids": [
+            "hhs_01",
+            "hhs_02",
+            "hhs_03",
+            "hhs_04",
+            "hhs_05",
+            "hhs_06",
+            "hhs_07",
+            "hhs_08"
+          ]
+        }
+      ],
+      "current_baseline": "edb1e18dcf0463b2050ffc8076cce79013176dbb",
+      "existing_architecture": "Existing pose-derived cycle/reference builder + phase-aligned angular tolerances, mirroring and audio timing/latency. Build only named-step reference/calibration candidates from authorized takes; preserve report-only identity measures and provisional reference flags. Generic all-style classifier or calibrated physical weight/contact claims are not implemented.",
+      "source_references": [
+        {
+          "path": "packages/choreia_engine/lib/src/judge.dart",
+          "sha256": "eb6638effecbfa7dc0db9d7998353471684799966117338c14f05f65fda58e75"
+        },
+        {
+          "path": "packages/choreia_engine/lib/src/reference.dart",
+          "sha256": "4f0b29984a013f3c350841791cf5990fc86b0385027e51988d39cfb0ce1071af"
+        },
+        {
+          "path": "tools/build_reference.py",
+          "sha256": "4b632f819371a9f6d46df9da06729c1b39f47ce6991d39cadcf502e752f09501"
+        },
+        {
+          "path": "tools/beat_annotate.py",
+          "sha256": "8e942df9136f3df3260660a69651e812835095bb7e6d78ebe61039762cd4911b"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "choreia",
+      "area": "salsa",
+      "title": "Salsa Shines",
+      "courses": [
+        {
+          "path": "content/salsa_on1_course.json",
+          "id": "salsa_on1_solo",
+          "version": 1,
+          "units": 48,
+          "sha256": "d04ef4c413c6db0ca8858c1cf11d231cd9614adecff71aa41cc752481007cbfc",
+          "bytes": 402293,
+          "lesson_ids": [
+            "so_01",
+            "so_02",
+            "so_03",
+            "so_04",
+            "so_05",
+            "so_06",
+            "so_07",
+            "so_08",
+            "so_09",
+            "so_10",
+            "so_11",
+            "so_12",
+            "so_13",
+            "so_14",
+            "so_15",
+            "so_16",
+            "so_17",
+            "so_18",
+            "so_19",
+            "so_20",
+            "so_21",
+            "so_22",
+            "so_23",
+            "so_24",
+            "so_25",
+            "so_26",
+            "so_27",
+            "so_28",
+            "so_29",
+            "so_30",
+            "so_31",
+            "so_32",
+            "so_33",
+            "so_34",
+            "so_35",
+            "so_36",
+            "so_37",
+            "so_38",
+            "so_39",
+            "so_40",
+            "so_41",
+            "so_42",
+            "so_43",
+            "so_44",
+            "so_45",
+            "so_46",
+            "so_47",
+            "so_48"
+          ]
+        }
+      ],
+      "current_baseline": "edb1e18dcf0463b2050ffc8076cce79013176dbb",
+      "existing_architecture": "Existing pose-derived cycle/reference builder + phase-aligned angular tolerances, mirroring and audio timing/latency. Build only named-step reference/calibration candidates from authorized takes; preserve report-only identity measures and provisional reference flags. Generic all-style classifier or calibrated physical weight/contact claims are not implemented.",
+      "source_references": [
+        {
+          "path": "packages/choreia_engine/lib/src/judge.dart",
+          "sha256": "eb6638effecbfa7dc0db9d7998353471684799966117338c14f05f65fda58e75"
+        },
+        {
+          "path": "packages/choreia_engine/lib/src/reference.dart",
+          "sha256": "4f0b29984a013f3c350841791cf5990fc86b0385027e51988d39cfb0ce1071af"
+        },
+        {
+          "path": "tools/build_reference.py",
+          "sha256": "4b632f819371a9f6d46df9da06729c1b39f47ce6991d39cadcf502e752f09501"
+        },
+        {
+          "path": "tools/beat_annotate.py",
+          "sha256": "8e942df9136f3df3260660a69651e812835095bb7e6d78ebe61039762cd4911b"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "choreia",
+      "area": "line",
+      "title": "Line Dance",
+      "courses": [
+        {
+          "path": "content/line_dance_beginner_course.json",
+          "id": "line_dance_beginner_written",
+          "version": 2,
+          "units": 9,
+          "sha256": "7c03a3294cccac8b82c70eb8fe36b481e8cf836966af06f89ded185317a8534a",
+          "bytes": 49106,
+          "lesson_ids": [
+            "ld_01",
+            "ld_02",
+            "ld_03",
+            "ld_04",
+            "ld_05",
+            "ld_06",
+            "ld_07",
+            "ld_08",
+            "ld_09"
+          ]
+        }
+      ],
+      "current_baseline": "edb1e18dcf0463b2050ffc8076cce79013176dbb",
+      "existing_architecture": "Existing pose-derived cycle/reference builder + phase-aligned angular tolerances, mirroring and audio timing/latency. Build only named-step reference/calibration candidates from authorized takes; preserve report-only identity measures and provisional reference flags. Generic all-style classifier or calibrated physical weight/contact claims are not implemented.",
+      "source_references": [
+        {
+          "path": "packages/choreia_engine/lib/src/judge.dart",
+          "sha256": "eb6638effecbfa7dc0db9d7998353471684799966117338c14f05f65fda58e75"
+        },
+        {
+          "path": "packages/choreia_engine/lib/src/reference.dart",
+          "sha256": "4f0b29984a013f3c350841791cf5990fc86b0385027e51988d39cfb0ce1071af"
+        },
+        {
+          "path": "tools/build_reference.py",
+          "sha256": "4b632f819371a9f6d46df9da06729c1b39f47ce6991d39cadcf502e752f09501"
+        },
+        {
+          "path": "tools/beat_annotate.py",
+          "sha256": "8e942df9136f3df3260660a69651e812835095bb7e6d78ebe61039762cd4911b"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "choreia",
+      "area": "latin",
+      "title": "Latin Fusion Fitness",
+      "courses": [
+        {
+          "path": "content/latin_fusion_beginner_course.json",
+          "id": "latin_fusion_beginner_written",
+          "version": 1,
+          "units": 8,
+          "sha256": "c44513a64ae5bbc3ddebf68ce75d909323d1ff0403f64664435f8cf022616455",
+          "bytes": 63799,
+          "lesson_ids": [
+            "lf_01",
+            "lf_02",
+            "lf_03",
+            "lf_04",
+            "lf_05",
+            "lf_06",
+            "lf_07",
+            "lf_08"
+          ]
+        }
+      ],
+      "current_baseline": "edb1e18dcf0463b2050ffc8076cce79013176dbb",
+      "existing_architecture": "Existing pose-derived cycle/reference builder + phase-aligned angular tolerances, mirroring and audio timing/latency. Build only named-step reference/calibration candidates from authorized takes; preserve report-only identity measures and provisional reference flags. Generic all-style classifier or calibrated physical weight/contact claims are not implemented.",
+      "source_references": [
+        {
+          "path": "packages/choreia_engine/lib/src/judge.dart",
+          "sha256": "eb6638effecbfa7dc0db9d7998353471684799966117338c14f05f65fda58e75"
+        },
+        {
+          "path": "packages/choreia_engine/lib/src/reference.dart",
+          "sha256": "4f0b29984a013f3c350841791cf5990fc86b0385027e51988d39cfb0ce1071af"
+        },
+        {
+          "path": "tools/build_reference.py",
+          "sha256": "4b632f819371a9f6d46df9da06729c1b39f47ce6991d39cadcf502e752f09501"
+        },
+        {
+          "path": "tools/beat_annotate.py",
+          "sha256": "8e942df9136f3df3260660a69651e812835095bb7e6d78ebe61039762cd4911b"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    },
+    {
+      "app": "choreia",
+      "area": "shortform",
+      "title": "Özgün kısa-form",
+      "courses": [
+        {
+          "path": "content/original_short_form_beginner_course.json",
+          "id": "original_short_form_beginner_written",
+          "version": 1,
+          "units": 7,
+          "sha256": "b4746faa5d64e430a5c948555219ea3f4ecccf5f80e294c4de3cdd411542b06d",
+          "bytes": 56238,
+          "lesson_ids": [
+            "sf_01",
+            "sf_02",
+            "sf_03",
+            "sf_04",
+            "sf_05",
+            "sf_06",
+            "sf_07"
+          ]
+        }
+      ],
+      "current_baseline": "edb1e18dcf0463b2050ffc8076cce79013176dbb",
+      "existing_architecture": "Existing pose-derived cycle/reference builder + phase-aligned angular tolerances, mirroring and audio timing/latency. Build only named-step reference/calibration candidates from authorized takes; preserve report-only identity measures and provisional reference flags. Generic all-style classifier or calibrated physical weight/contact claims are not implemented.",
+      "source_references": [
+        {
+          "path": "packages/choreia_engine/lib/src/judge.dart",
+          "sha256": "eb6638effecbfa7dc0db9d7998353471684799966117338c14f05f65fda58e75"
+        },
+        {
+          "path": "packages/choreia_engine/lib/src/reference.dart",
+          "sha256": "4f0b29984a013f3c350841791cf5990fc86b0385027e51988d39cfb0ce1071af"
+        },
+        {
+          "path": "tools/build_reference.py",
+          "sha256": "4b632f819371a9f6d46df9da06729c1b39f47ce6991d39cadcf502e752f09501"
+        },
+        {
+          "path": "tools/beat_annotate.py",
+          "sha256": "8e942df9136f3df3260660a69651e812835095bb7e6d78ebe61039762cd4911b"
+        }
+      ],
+      "next_operation": "Human teaching demonstration and annotation → exact pinned extraction/DSP replay → reference/rule calibration candidate → heldout evaluation → real-device parity. No runtime promotion in this change.",
+      "acceptance_gap": "Physical teaching/rights/learner and device evidence open; no first-party capture supplied.",
+      "first_party_data_received": false,
+      "trained": false,
+      "physical_or_device_validated": false
+    }
+  ],
+  "phone_parity_extractor": {
+    "script": "tools/fixture_pipeline/extract_landmarks.py",
+    "explicit_variant": "full",
+    "model_sha256": "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1",
+    "warning": "Do not use the historical heavy default for native full-v1 parity. Match confidence, orientation pass plan and timestamp semantics explicitly; host ms/frame is not device fps."
+  },
+  "historical_research_boundary": "ops/tools/motion_models contains frozen UI-PRMD, grouped phone RGB and course-specific research candidates. These are not app-integrated general 25-area models; do not reopen their previously used holdouts or transfer laboratory/publisher labels into first-party expert truth.",
+  "large_changes_proposal_only": [
+    "Gravita three dedicated missing course/variant definitions",
+    "Lissom yoga-course pose/transition assessment",
+    "JabLab other-discipline live recognition",
+    "Ostinato finger/key/contact or broader instrument-specific feedback",
+    "Choreia all-style choreography/physical support recognition",
+    "Existing extract_landmarks.py timestamps are frame-index/fps, not original variable-rate PTS: intake blocks VFR timing calibration until a compatible PTS-preserving extractor proposal is accepted. No timestamp rewrite in this change."
+  ],
+  "device_run_card": [
+    "Read connected physical device via existing authorized tools; preserve denial/service failures, no reset/pairing/security changes.",
+    "Probe existing machine-runtime flock and native marker; acquire both only for an actual exclusive session. A free probe does not reserve a later slot.",
+    "Before capture: source SHA, exact installed package/model/rules hashes, device/OS/camera/lens/audio rate/rotation/mirror and timestamp mapping recorded.",
+    "Replay exact private clip with pinned full-v1 extractor and app rules; compare native/host landmarks and metrics with missing/occluded frames retained. No new threshold selected on test.",
+    "Physical session: permission denial/recovery, start/stop/background/foreground/interruption, owner isolation, monotonically mapped time, dropped-frame denominator, sustained fps/heat and audio latency.",
+    "Teacher/learner independently checks the same tasks and observed failure/uncertainty. Native launch/simulator/synthetic pass cannot close physical inference or teaching acceptance."
+  ],
+  "execution_sequence": [
+    "First-party original pilot + usage permissions + known movement/lesson. Technical ingest and human observability/identity review; no learned result from a single clip.",
+    "Freeze participant/session/source families and intended target conditions before extraction. Demonstration footage is separate from independent evaluation; a single performer cannot fill all splits.",
+    "Run existing pinned full pose extractor/DSP only on reference/train and validation. Reject unverified VFR timing for the existing index/fps extractor. Preserve undetected frames and human uncertainty.",
+    "Derive task-specific rule/reference calibration on reference/train only, or propose a bounded identity/rejection head if justified. Fit any imputation/scaling/normalization on train only; choose hyperparameters/thresholds with validation only. No backbone training is implemented here.",
+    "Freeze exact course/labels/split, extractor code+model, calibration/model artifact and validation result. Open the heldout test once; no tuning on test. Seen historical research holdouts cannot become new independent evidence.",
+    "Evaluate by heldout person/device/view and all eligible clips, retaining abstentions and negative controls. Compare frozen baseline and candidate without reusing test to select either.",
+    "After frozen offline result, compare native vs host on authorized physical device and then collect actual teaching/learner evidence per lesson. Promote only the demonstrated task and scope; no automatic 25-area mastery or store acceptance."
+  ],
+  "evaluation_requirements": [
+    "Task identity and negative-control false accepts, per-class precision/recall/confusion and unobservable/abstention rates with full denominators.",
+    "Event/phase/count precision/recall and timestamp error against independent human labels; no model-output oracle.",
+    "Where an angular/ROM claim is intended, use an independently defined reference measurement and report error/repeatability by view and person; no medical normative threshold inferred from videos.",
+    "For original audio: note/chord identity, onset/offset/timing and silence/noise/octave confusion, with actual capture rate and latency. A video-only sample cannot validate audio feedback.",
+    "People/sessions/devices and recording families are the independence units; many frames/edits do not create new participants. Acceptance criteria must be defined for each task before its holdout is opened; this package invents no success percentage."
+  ],
+  "test_policy": "Freeze the full master manifest before extraction/split tuning. Keep participant/session/source-recording/hash groups disjoint across all five products. One-person demonstrations alone cannot produce independent evaluation. Freeze candidate/pipeline/validation receipt before one-shot test-open marker; never reset ID/root/marker to reuse seen holdout."
+}

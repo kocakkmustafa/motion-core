@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Motion first-party local capture intake v1",
+  "description": "Metadata schema, not permission or teaching certification. CLI additionally checks chronology, consent purpose, exact hashes, local files and cross-product group leakage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "clips"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$"
+    },
+    "clips": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clip_id",
+          "app",
+          "area",
+          "movement_id",
+          "lesson_id",
+          "course_sha256",
+          "participant_id",
+          "session_id",
+          "source_recording_id",
+          "path",
+          "sha256",
+          "bytes",
+          "partition",
+          "purpose",
+          "view",
+          "mirrored",
+          "rotation_deg",
+          "duration_s",
+          "width",
+          "height",
+          "fps",
+          "device",
+          "audio",
+          "permissions",
+          "annotations"
+        ],
+        "properties": {
+          "clip_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "app": {
+            "enum": [
+              "gravita",
+              "lissom",
+              "jablab",
+              "ostinato",
+              "choreia"
+            ]
+          },
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Must belong to the selected product in first_party_capture.py"
+          },
+          "movement_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lesson_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "course_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "participant_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "session_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_recording_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 536870912
+          },
+          "partition": {
+            "enum": [
+              "reference",
+              "train",
+              "validation",
+              "test"
+            ]
+          },
+          "purpose": {
+            "enum": [
+              "demonstration",
+              "calibration",
+              "evaluation"
+            ]
+          },
+          "view": {
+            "enum": [
+              "frontal",
+              "sagittal_left",
+              "sagittal_right",
+              "diagonal",
+              "hands_closeup"
+            ]
+          },
+          "mirrored": {
+            "const": false
+          },
+          "rotation_deg": {
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "duration_s": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 90
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 720,
+            "maximum": 7680
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 720,
+            "maximum": 7680
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 29,
+            "maximum": 120
+          },
+          "device": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model",
+              "os",
+              "camera",
+              "timestamp_domain"
+            ],
+            "properties": {
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "os": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "camera": {
+                "enum": [
+                  "front",
+                  "rear",
+                  "external"
+                ]
+              },
+              "timestamp_domain": {
+                "const": "media_pts"
+              }
+            }
+          },
+          "audio": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "condition",
+              "sample_rate_hz"
+            ],
+            "properties": {
+              "condition": {
+                "enum": [
+                  "none",
+                  "original_instrument",
+                  "original_voice",
+                  "owned_click",
+                  "licensed_music"
+                ]
+              },
+              "sample_rate_hz": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 192000
+              }
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidence_path",
+              "evidence_sha256",
+              "training",
+              "evaluation",
+              "demo_distribution",
+              "no_bystanders",
+              "private_details_checked",
+              "music_rights"
+            ],
+            "properties": {
+              "evidence_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "training": {
+                "type": "boolean"
+              },
+              "evaluation": {
+                "type": "boolean"
+              },
+              "demo_distribution": {
+                "type": "boolean"
+              },
+              "no_bystanders": {
+                "type": "boolean"
+              },
+              "private_details_checked": {
+                "type": "boolean"
+              },
+              "music_rights": {
+                "type": "boolean"
+              }
+            }
+          },
+          "annotations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "start_s",
+                "end_s",
+                "event",
+                "observation",
+                "label_origin",
+                "annotator_id"
+              ],
+              "properties": {
+                "start_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "end_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "event": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "observation": {
+                  "enum": [
+                    "observed",
+                    "uncertain",
+                    "unobservable",
+                    "negative_control"
+                  ]
+                },
+                "label_origin": {
+                  "const": "human"
+                },
+                "annotator_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
