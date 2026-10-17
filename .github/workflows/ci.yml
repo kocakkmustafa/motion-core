@@ -38,10 +38,17 @@ jobs:
           python3 tools/harvest_rig/tests/test_harvest_path_safety.py
 
 
+      - name: Install capture media tools (Ubuntu APT)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+
       - name: Capture intake regressions (synthetic, offline)
         run: |
           command -v ffmpeg
           command -v ffprobe
+          ffmpeg -version
+          ffprobe -version
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/fixture_pipeline/tests -p 'test_first_party_capture*.py' -v
 
       - name: Install locked schema checker (no lifecycle scripts)
