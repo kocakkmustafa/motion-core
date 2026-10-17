@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-10-17T18:47:29.670375+00:00",
+  "base_sha": "62c105567a9fdfa9d907a8f8a399494c8ae5b598",
+  "findings": [
+    {
+      "input_id": "4303884256",
+      "source_url": "https://github.com/kocakkmustafa/motion-core/pull/9#discussion_r4303884256",
+      "supplied_priority": "P1",
+      "triage_verdict": "confirmed",
+      "outcome": "fixed",
+      "scope": "LOCAL_PATCH_ONLY",
+      "title": "Cumulative use permissions",
+      "fix": "Train/validation demonstration cannot bypass training; validation also requires evaluation; demo-only reference is retained but not development-ready.",
+      "original_trigger": "test_p1_train_demonstration_cannot_bypass_denied_training",
+      "before": "Trigger reproduced at merged 62c1055 with synthetic-only input; four assertions failed across three findings, legitimate control passed.",
+      "after": "Original trigger no longer reproduces; secure expectation passes.",
+      "regression_cases": "test_split_permissions_cannot_be_replaced_by_demo_purpose; test_demo_only_reference_remains_collection_without_development; test_evaluation_only_test_does_not_require_training",
+      "locations": "tools/fixture_pipeline/first_party_capture.py:123-169; first_party_capture.schema.json",
+      "legitimate_behavior": "Same-scope hashed inputs, permitted reference demonstrations/evaluation-only test, mixed collections, exclusive marker and failure errors preserved.",
+      "remote_disposition": "NOT_PUBLISHED; PR9 remains historical merged source. Capture real-data admission HOLD.",
+      "actual_misuse_evidence": false
+    },
+    {
+      "input_id": "4303884263",
+      "source_url": "https://github.com/kocakkmustafa/motion-core/pull/9#discussion_r4303884263",
+      "supplied_priority": "P1",
+      "triage_verdict": "confirmed",
+      "outcome": "fixed",
+      "scope": "LOCAL_PATCH_ONLY",
+      "title": "Media/consent byte identity before lifecycle writes",
+      "fix": "freeze/open_test both re-read actual media size/SHA and consent SHA, catalog, readiness and validation; version-2 receipt binds verification digest; failure does not reserve output.",
+      "original_trigger": "test_p2_absent_media_cannot_freeze_or_reserve_output; test_p2_changed_bytes_cannot_consume_holdout_marker",
+      "before": "Trigger reproduced at merged 62c1055 with synthetic-only input; four assertions failed across three findings, legitimate control passed.",
+      "after": "Original trigger no longer reproduces; secure expectation passes.",
+      "regression_cases": "test_freeze_and_open_recheck_all_media_and_consent_before_writing; test_invalid_local_paths_do_not_reserve_freeze; test_validation_scope_partition_and_legacy_receipts_cannot_bypass_open_checks; test_direct_api_enforces_catalog_binding_and_fixed_marker",
+      "locations": "tools/fixture_pipeline/first_party_capture.py:250-298",
+      "legitimate_behavior": "Same-scope hashed inputs, permitted reference demonstrations/evaluation-only test, mixed collections, exclusive marker and failure errors preserved.",
+      "remote_disposition": "NOT_PUBLISHED; PR9 remains historical merged source. Capture real-data admission HOLD.",
+      "actual_misuse_evidence": false
+    },
+    {
+      "input_id": "4303884264",
+      "source_url": "https://github.com/kocakkmustafa/motion-core/pull/9#discussion_r4303884264",
+      "supplied_priority": "P1",
+      "triage_verdict": "confirmed",
+      "outcome": "fixed",
+      "scope": "LOCAL_PATCH_ONLY",
+      "title": "Exact candidate scope and scoped holdout",
+      "fix": "Readiness partitions are grouped by exact app/area/course SHA/lesson/movement; validation/receipt/open scope must match; only selected scope test IDs returned; dataset marker remains one-shot.",
+      "original_trigger": "test_p3_unrelated_scopes_cannot_complete_candidate_readiness",
+      "before": "Trigger reproduced at merged 62c1055 with synthetic-only input; four assertions failed across three findings, legitimate control passed.",
+      "after": "Original trigger no longer reproduces; secure expectation passes.",
+      "regression_cases": "test_each_candidate_dimension_must_have_its_own_partitions; test_mixed_complete_scopes_return_only_selected_test_and_share_marker; test_partial_extra_scope_does_not_block_a_complete_selected_candidate",
+      "locations": "tools/fixture_pipeline/first_party_capture.py:152-179,250-299",
+      "legitimate_behavior": "Same-scope hashed inputs, permitted reference demonstrations/evaluation-only test, mixed collections, exclusive marker and failure errors preserved.",
+      "remote_disposition": "NOT_PUBLISHED; PR9 remains historical merged source. Capture real-data admission HOLD.",
+      "actual_misuse_evidence": false
+    }
+  ],
+  "verification": {
+    "gate_1": "Final diff check, corrected patch reverse-check, Python AST and 7 real AJV2020 schema cases PASS",
+    "gate_2": "Original five-test synthetic repro: 4 failures/1 control pass before -> 5 pass after",
+    "gate_3": "32 nearest owning Python tests PASS (19 existing +13 new); no skipped actual synthetic ffprobe test",
+    "commands": [
+      {
+        "gate": 1,
+        "command": [
+          "node",
+          "/Users/mustafakaankocak/Documents/Codex/2026-10-17/task-13/capture-security/check-schema.cjs",
+          "/Users/mustafakaankocak/Documents/Codex/2026-10-17/task-13/capture-security/schema-cases.json"
+        ],
+        "cwd": "/Users/mustafakaankocak/Developer/YULAlab-AI/ventures/motion-core/lib",
+        "exit_code": 0,
+        "log": "final-syntax-schema.log",
+        "at_utc": "2026-10-17T18:46:20.777827+00:00"
+      },
+      {
+        "gate": 2,
+        "command": [
+          "python3",
+          "/Users/mustafakaankocak/Documents/Codex/2026-10-17/task-13/capture-security/repro_three.py"
+        ],
+        "cwd": "/Users/mustafakaankocak/Documents/Codex/2026-10-17/task-13",
+        "exit_code": 0,
+        "log": "repro-green-final.log",
+        "at_utc": "2026-10-17T18:46:20.831935+00:00"
+      },
+      {
+        "gate": 3,
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/fixture_pipeline/tests",
+          "-p",
+          "test_first_party_capture*.py",
+          "-v"
+        ],
+        "cwd": "/Users/mustafakaankocak/Developer/YULAlab-AI/ventures/motion-core/lib",
+        "exit_code": 0,
+        "log": "regressions-final.log",
+        "at_utc": "2026-10-17T18:46:21.484525+00:00"
+      }
+    ]
+  },
+  "changed_files": [
+    "tools/fixture_pipeline/first_party_capture.py",
+    "tools/fixture_pipeline/first_party_capture.schema.json",
+    "tools/fixture_pipeline/FIRST_PARTY_VIDEO_DELIVERY.tr.txt",
+    "tools/fixture_pipeline/tests/test_first_party_capture.py",
+    "tools/fixture_pipeline/tests/test_first_party_capture_security.py"
+  ],
+  "local_only": true,
+  "capture_real_data_admission": "HOLD",
+  "runtime_packages_unchanged": true,
+  "new_remote_write_ci_merge": false,
+  "limits": "Fresh publication/CI approval required before remote remediation; no real data delivered or admitted. Training/calibration/consent authenticity/expert/physical acceptance remain separate.",
+  "evidence_sha256": {
+    "triage.json": "aceecb200b61f7b0be9a627b0e6bde3f149dafc8c69453485f5dd76b59bb889d",
+    "repro-red.log": "bf569cf46f7b4c5bc833810fe668d609ecff2d6370d6f6c1457123fc2e2c7968",
+    "repro-green-final.log": "4fbed754ce1b1a9acf2cd2baa2863eb9312e3c1f18bb99eddcf7534ef67bd627",
+    "regressions-final.log": "abf26755fb0b31051d818a68e38ab1a9ab42483d2749dc63dee20237fb717008",
+    "final-syntax-schema.log": "d0284fddbf87df92308dc53520b38c652205a00a4dcbf39608fd7b83f0624180",
+    "checks-final.json": "ee1569d7e38598e7f0063b4ae73080653321093569b6b362f24ad826d661577f",
+    "candidate.patch": "a7981961a3ba60d19abf0ff4b74cac5dc9defe789f81a36639949a98fec3929c",
+    "independent-review.json": "937a941ff89c21cd8ff10bf568abfa8105e18d789a2c2148633ef1cd9b7bc342",
+    "dispositions.json": "c0d712de373324d15f3a265fd1e175cd27a6796c8b55ec3571bbcf80dfc910bd"
+  }
+}

@@ -35,6 +35,29 @@ def manifest():
     return {"schema_version": 1, "dataset_id": "qa-synthetic-not-real-data",
             "clips": [clip(1, "train"), clip(2, "validation"), clip(3, "test")]}
 
+def scope(doc):
+    return {key: doc["clips"][0][key] for key in capture.SCOPE_FIELDS}
+
+def targets(doc):
+    grouped = {}
+    for c in doc["clips"]:
+        courses = grouped.setdefault((c["app"], c["area"]), {})
+        courses.setdefault(c["course_sha256"], set()).add(c["lesson_id"])
+    return {"areas": [{"app": app, "area": area, "courses": [
+        {"sha256": sha, "lesson_ids": sorted(lessons)} for sha, lessons in courses.items()]}
+        for (app, area), courses in grouped.items()]}
+
+def synthetic_media(doc, root):
+    (root / "permissions.txt").write_text("Synthetic fixture: no participant or real consent")
+    for c in doc["clips"]:
+        path = root / c["path"]
+        path.write_bytes(("synthetic-no-human-" + c["clip_id"]).encode())
+        c.update(sha256=capture.file_sha(path), bytes=path.stat().st_size)
+        c["permissions"]["evidence_sha256"] = capture.file_sha(root / "permissions.txt")
+
+def options(doc, root):
+    return {"root": root, "scope": scope(doc), "catalog": targets(doc)}
+
 class IntakeTests(unittest.TestCase):
     def rejected(self, doc, contains):
         with self.assertRaisesRegex(capture.IntakeError, contains):
@@ -133,37 +156,38 @@ class IntakeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); artifact=root/"qa-parameters.json"; pipeline=root/"qa-pipeline.py"
             artifact.write_text('{"synthetic":true}');pipeline.write_text("# QA only, never a trainer")
-            d=manifest(); v={"partition":"validation","manifest_sha256":capture.digest(d),
+            d=manifest(); synthetic_media(d,root); v={"scope":scope(d), "partition":"validation","manifest_sha256":capture.digest(d),
                 "artifact_sha256":capture.file_sha(artifact),"pipeline_sha256":capture.file_sha(pipeline)}
-            frozen=capture.freeze(d,artifact,pipeline,v,root/"freeze.json")
-            with self.assertRaises(FileExistsError):capture.freeze(d,artifact,pipeline,v,root/"freeze.json")
+            frozen=capture.freeze(d,artifact,pipeline,v,root/"freeze.json",**options(d,root))
+            with self.assertRaises(FileExistsError):capture.freeze(d,artifact,pipeline,v,root/"freeze.json",**options(d,root))
             changed=copy.deepcopy(d);changed["clips"][0]["view"]="frontal"
-            with self.assertRaisesRegex(capture.IntakeError,"drift"):capture.open_test(changed,frozen,artifact,pipeline,v,root/"opened.json")
-            result=capture.open_test(d,frozen,artifact,pipeline,v,root/"opened.json")
+            with self.assertRaisesRegex(capture.IntakeError,"drift"):capture.open_test(changed,frozen,artifact,pipeline,v,root/("test-opened-"+d["dataset_id"]+".json"),state_root=root,**options(d,root))
+            result=capture.open_test(d,frozen,artifact,pipeline,v,root/("test-opened-"+d["dataset_id"]+".json"),state_root=root,**options(d,root))
             self.assertEqual(result["test_clip_ids"],["clip-3"])
             self.assertEqual(result["status"],"TEST_OPENED_NO_RESULT")
-            with self.assertRaises(FileExistsError):capture.open_test(d,frozen,artifact,pipeline,v,root/"opened.json")
+            with self.assertRaises(FileExistsError):capture.open_test(d,frozen,artifact,pipeline,v,root/("test-opened-"+d["dataset_id"]+".json"),state_root=root,**options(d,root))
             artifact.write_text("changed after test")
-            with self.assertRaisesRegex(capture.IntakeError,"drift"):capture.open_test(d,frozen,artifact,pipeline,v,root/"other.json")
+            with self.assertRaisesRegex(capture.IntakeError,"drift"):capture.open_test(d,frozen,artifact,pipeline,v,root/("test-opened-"+d["dataset_id"]+".json"),state_root=root,**options(d,root))
 
     def test_cannot_freeze_without_real_split_population(self):
         d=manifest();d["clips"]=[clip()]
         with self.assertRaisesRegex(capture.IntakeError,"not ready"):
-            capture.freeze(d,Path("absent"),Path("absent"),{},Path("absent"))
+            capture.freeze(d,Path("absent"),Path("absent"),{},Path("absent"),**options(d,Path(".")))
 
     def test_cli_new_candidate_cannot_select_another_test_marker(self):
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder); d=manifest(); m=root/"manifest.json"
+            root=Path(folder); d=manifest(); synthetic_media(d,root); m=root/"manifest.json"
             m.write_text(json.dumps(d));a=root/"artifact";p=root/"pipeline";v=root/"validation.json"
             a.write_text("synthetic");p.write_text("synthetic")
-            validation={"partition":"validation","manifest_sha256":capture.digest(d),
+            validation={"scope":scope(d), "partition":"validation","manifest_sha256":capture.digest(d),
                 "artifact_sha256":capture.file_sha(a),"pipeline_sha256":capture.file_sha(p)}
             v.write_text(json.dumps(validation));receipt=root/"freeze.json"
-            capture.freeze(d,a,p,validation,receipt)
+            capture.freeze(d,a,p,validation,receipt,**options(d,root))
             targets=root/"targets.json"
             targets.write_text(json.dumps({"areas":[{"app":"gravita","area":"bodyweight",
                 "courses":[{"sha256":"a"*64,"lesson_ids":["cal-01"]}]}]}))
-            cmd=[sys.executable,str(Path(capture.__file__)),"open-test","--manifest",str(m),
+            scope_file=root/"scope.json";scope_file.write_text(json.dumps(scope(d)))
+            cmd=[sys.executable,str(Path(capture.__file__)),"open-test","--root",str(root),"--scope",str(scope_file),"--manifest",str(m),
                 "--artifact",str(a),"--pipeline",str(p),"--validation",str(v),"--receipt",str(receipt),"--targets",str(targets)]
             wrong=subprocess.run(cmd+["--out",str(root/"new-candidate-marker.json")],capture_output=True,text=True)
             self.assertEqual(wrong.returncode,2);self.assertIn("fixed",wrong.stdout)
@@ -171,7 +195,7 @@ class IntakeTests(unittest.TestCase):
             opened=subprocess.run(cmd+["--out",str(fixed)],capture_output=True,text=True)
             self.assertEqual(opened.returncode,0,opened.stdout)
             # Different candidate receipt still shares the dataset's marker.
-            receipt2=root/"another-candidate.json";capture.freeze(d,a,p,validation,receipt2)
+            receipt2=root/"another-candidate.json";capture.freeze(d,a,p,validation,receipt2,**options(d,root))
             cmd[cmd.index(str(receipt))]=str(receipt2)
             repeated=subprocess.run(cmd+["--out",str(fixed)],capture_output=True,text=True)
             self.assertEqual(repeated.returncode,2)
