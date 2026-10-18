@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Motion first-party local capture intake v1",
-  "description": "Metadata schema, not permission or teaching certification. CLI additionally checks chronology, consent purpose, exact hashes, local files and cross-product group leakage.",
+  "description": "Metadata schema, not permission or teaching certification. Purpose permissions and partition-role permissions are cumulative; CLI additionally checks exact local hashes, candidate scope, chronology and cross-product group leakage.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -304,7 +304,55 @@
               }
             }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "partition": {
+                  "enum": [
+                    "train",
+                    "validation"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "permissions": {
+                  "properties": {
+                    "training": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "partition": {
+                  "enum": [
+                    "validation",
+                    "test"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "permissions": {
+                  "properties": {
+                    "evaluation": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

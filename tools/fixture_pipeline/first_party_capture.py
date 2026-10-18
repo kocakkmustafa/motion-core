@@ -15,6 +15,8 @@ import re
 import subprocess
 from pathlib import Path
 
+SCOPE_FIELDS = ("app", "area", "course_sha256", "lesson_id", "movement_id")
+TARGETS = Path(__file__).with_name("first_party_capture.targets.v1.json")
 PARTITIONS = {"reference", "train", "validation", "test"}
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,95}\Z")
@@ -118,8 +120,15 @@ def validate(doc):
         for field in ("training", "evaluation", "demo_distribution", "no_bystanders", "private_details_checked", "music_rights"):
             require(type(p[field]) is bool, "permission must be explicit boolean")
         require(p["no_bystanders"] and p["private_details_checked"], "privacy review missing")
-        needed = {"demonstration": "demo_distribution", "calibration": "training", "evaluation": "evaluation"}[c["purpose"]]
-        require(p[needed], f"permission missing: {needed}")
+        needed = { {"demonstration": "demo_distribution", "calibration": "training",
+                    "evaluation": "evaluation"}[c["purpose"]] }
+        # A descriptive purpose never authorizes the operational split role.
+        if c["partition"] in {"train", "validation"}:
+            needed.add("training")
+        if c["partition"] in {"validation", "test"}:
+            needed.add("evaluation")
+        for permission in sorted(needed):
+            require(p[permission], f"permission missing: {permission}")
         if c["audio"]["condition"] == "licensed_music":
             require(p["music_rights"], "music permission missing")
         require(isinstance(c["annotations"], list) and c["annotations"], "human annotation required")
@@ -140,11 +149,34 @@ def validate(doc):
             value = c[field]
             require(value not in seen or seen[value] == c["partition"], f"split leakage: {field}")
             seen[value] = c["partition"]
+    scopes = {}
+    for c in doc["clips"]:
+        key = tuple(c[field] for field in SCOPE_FIELDS)
+        population = scopes.setdefault(key, set())
+        if c["partition"] in {"train", "reference"} and c["permissions"]["training"]:
+            population.add("development")
+        elif c["partition"] in {"validation", "test"}:
+            population.add(c["partition"])
+    readiness = [{"scope": dict(zip(SCOPE_FIELDS, key)),
+                  "independent_evaluation_ready": {"development", "validation", "test"}.issubset(population)}
+                 for key, population in sorted(scopes.items())]
     return {"status": "VALID_COLLECTION" if ids else "DRAFT_NO_DATA", "clips": len(ids),
             "manifest_sha256": digest(doc), "trained": False, "physically_validated": False,
             "media_hashes_verified": False, "visual_quality_or_expert_review_verified": False,
-            "independent_evaluation_ready": bool(ids) and {"validation", "test"}.issubset({c["partition"] for c in doc["clips"]})
-            and any(c["partition"] in {"train", "reference"} for c in doc["clips"])}
+            "scope_readiness": readiness,
+            # Conservative collection summary; freeze checks its exact scope.
+            "independent_evaluation_ready": bool(readiness) and
+            all(row["independent_evaluation_ready"] for row in readiness)}
+
+
+def candidate_scope(value):
+    exact(value, " ".join(SCOPE_FIELDS), "candidate scope")
+    require(all(isinstance(value[key], str) for key in SCOPE_FIELDS), "scope fields must be strings")
+    require(value["app"] in AREAS and value["area"] in AREAS[value["app"]], "unknown scope product/area")
+    require(SHA.fullmatch(value["course_sha256"]), "invalid scope course SHA256")
+    require(0 < len(value["lesson_id"]) <= 128, "scope lesson id required")
+    identifier(value["movement_id"], "scope movement_id")
+    return {key: value[key] for key in SCOPE_FIELDS}
 
 def verify_media(doc, root, probe=None):
     status = validate(doc)
@@ -215,38 +247,64 @@ def write_new(path, data):
         stream.flush()
         __import__("os").fsync(stream.fileno())
 
-def freeze(doc, artifact, pipeline, validation, output):
+def frozen_candidate(doc, artifact, pipeline, validation, *, root, scope, catalog=None, probe=None):
     result = validate(doc)
-    require(result["independent_evaluation_ready"], "person-disjoint validation/test data not ready")
-    require(validation.get("partition") == "validation"
-            and validation.get("manifest_sha256") == digest(doc)
-            and validation.get("artifact_sha256") == file_sha(artifact)
-            and validation.get("pipeline_sha256") == file_sha(pipeline), "validation binding mismatch")
-    receipt = {"manifest_sha256": digest(doc), "artifact_sha256": file_sha(artifact),
-               "pipeline_sha256": file_sha(pipeline), "validation_sha256": digest(validation),
-               "status": "FROZEN_NOT_ACCEPTED", "trained_by_this_tool": False}
+    verify_bindings(doc, read(TARGETS) if catalog is None else catalog)
+    selected = candidate_scope(scope)
+    require(any(row["scope"] == selected and row["independent_evaluation_ready"]
+                for row in result["scope_readiness"]), "candidate scope data not ready")
+    require(isinstance(validation, dict) and validation.get("partition") == "validation",
+            "validation partition required")
+    require(candidate_scope(validation.get("scope")) == selected, "validation scope mismatch")
+    artifact_sha, pipeline_sha = file_sha(artifact), file_sha(pipeline)
+    require(validation.get("manifest_sha256") == digest(doc)
+            and validation.get("artifact_sha256") == artifact_sha
+            and validation.get("pipeline_sha256") == pipeline_sha, "validation binding mismatch")
+    # Re-read every declared media/consent file at BOTH lifecycle writes.
+    # This is workflow verification, not a snapshot against filesystem writers.
+    verified = verify_media(doc, root, probe)
+    return {"receipt_version": 2, "scope": selected, "manifest_sha256": digest(doc),
+            "artifact_sha256": artifact_sha, "pipeline_sha256": pipeline_sha,
+            "validation_sha256": digest(validation),
+            "media_verification_sha256": digest(verified),
+            "status": "FROZEN_NOT_ACCEPTED", "trained_by_this_tool": False}
+
+
+def freeze(doc, artifact, pipeline, validation, output, *, root, scope, catalog=None, probe=None):
+    receipt = frozen_candidate(doc, artifact, pipeline, validation,
+                               root=root, scope=scope, catalog=catalog, probe=probe)
     write_new(output, receipt)
     return receipt
 
-def open_test(doc, receipt, artifact, pipeline, validation, marker):
-    validate(doc)
-    require(receipt.get("manifest_sha256") == digest(doc)
-            and receipt.get("artifact_sha256") == file_sha(artifact)
-            and receipt.get("pipeline_sha256") == file_sha(pipeline)
-            and receipt.get("validation_sha256") == digest(validation), "freeze drift")
-    require(receipt.get("status") == "FROZEN_NOT_ACCEPTED", "unrecognized freeze")
-    clips = [c["clip_id"] for c in doc["clips"] if c["partition"] == "test"]
-    require(clips, "no test clips")
+
+def open_test(doc, receipt, artifact, pipeline, validation, marker, *, root, scope,
+              state_root, catalog=None, probe=None):
+    # Keep the dataset-wide one-shot reservation even across candidate scopes.
+    expected_marker = state_root.resolve(strict=True) / ("test-opened-" + doc["dataset_id"] + ".json")
+    require(marker.resolve() == expected_marker.resolve(),
+            "test marker must be the dataset's fixed test-opened-<dataset_id>.json sibling; a new candidate cannot reset it")
+    try:
+        expected = frozen_candidate(doc, artifact, pipeline, validation,
+                                    root=root, scope=scope, catalog=catalog, probe=probe)
+    except IntakeError as error:
+        raise IntakeError(f"freeze drift: {error}") from error
+    require(receipt == expected, "freeze drift or unrecognized receipt version")
+    clips = [c["clip_id"] for c in doc["clips"] if c["partition"] == "test"
+             and all(c[key] == expected["scope"][key] for key in SCOPE_FIELDS)]
+    require(clips, "no test clips for candidate scope")
     write_new(marker, {"receipt_sha256": digest(receipt), "test_clip_ids": clips,
+                       "scope": expected["scope"],
+                       "media_verification_sha256": expected["media_verification_sha256"],
                        "status": "TEST_OPENED_NO_RESULT", "reuse_for_tuning_allowed": False})
-    return {"test_clip_ids": clips, "status": "TEST_OPENED_NO_RESULT"}
+    return {"test_clip_ids": clips, "scope": expected["scope"], "status": "TEST_OPENED_NO_RESULT"}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["validate", "verify-media", "freeze", "open-test"])
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--targets", type=Path, default=Path(__file__).with_name("first_party_capture.targets.v1.json"))
+    parser.add_argument("--targets", type=Path, default=TARGETS)
     parser.add_argument("--root", type=Path)
+    parser.add_argument("--scope", type=Path, help="Exact candidate app/area/course SHA/lesson/movement JSON; required for freeze/open-test")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--artifact", type=Path)
     parser.add_argument("--pipeline", type=Path)
@@ -257,21 +315,24 @@ def main():
     try:
         doc = read(a.manifest)
         validate(doc)
-        verify_bindings(doc, read(a.targets))
+        catalog = read(a.targets)
+        verify_bindings(doc, catalog)
         if a.action == "validate":
             result = validate(doc)
         elif a.action == "verify-media":
             require(a.root is not None, "--root required")
             result = verify_media(doc, a.root, ffprobe if a.probe else None)
         else:
-            require(all((a.artifact, a.pipeline, a.validation, a.out)), "artifact/pipeline/validation/out required")
+            require(all((a.artifact, a.pipeline, a.validation, a.out, a.root, a.scope)),
+                    "artifact/pipeline/validation/out/root/scope required")
+            options = {"root": a.root, "scope": read(a.scope), "catalog": catalog,
+                       "probe": ffprobe if a.probe else None}
             if a.action == "freeze":
-                result = freeze(doc, a.artifact, a.pipeline, read(a.validation), a.out)
+                result = freeze(doc, a.artifact, a.pipeline, read(a.validation), a.out, **options)
             else:
                 require(a.receipt is not None, "--receipt required")
-                expected = a.manifest.with_name("test-opened-" + doc["dataset_id"] + ".json")
-                require(a.out.resolve() == expected.resolve(), "test marker must be the dataset's fixed test-opened-<dataset_id>.json sibling; a new candidate cannot reset it")
-                result = open_test(doc, read(a.receipt), a.artifact, a.pipeline, read(a.validation), a.out)
+                result = open_test(doc, read(a.receipt), a.artifact, a.pipeline,
+                                   read(a.validation), a.out, state_root=a.manifest.parent, **options)
         print(json.dumps(result, sort_keys=True))
         return 0 if result.get("status") != "DRAFT_NO_DATA" else 2
     except (IntakeError, ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError) as e:

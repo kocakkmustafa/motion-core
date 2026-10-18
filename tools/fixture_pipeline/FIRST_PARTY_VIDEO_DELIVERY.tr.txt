@@ -112,3 +112,28 @@ Bu paket yeni model indirme/eğitme, yeni scorer, bulut GPU, harici video yükle
 credential, CI/deploy, mağaza işlemi veya uzman onayı yapmaz. Yerel kabul aracı
 teknik metadata/hash/split sözleşmesini sınar; öğretim kalitesi ve hakların
 gerçekliğini otomatik sertifikalandırmaz.
+
+
+17 Ekim yerel güvenlik düzeltmesi — aday dondurma kapısı v2
+- Purpose ve split rolünün izinleri birlikte gerekir: train/validation için
+  training; validation/test için evaluation; demonstration için ayrıca
+  demo_distribution. Validation kalibrasyon/model seçimi içindir. Yalnız
+  gösterim izni olan reference koleksiyonda kalabilir; development sayılmaz.
+- Readiness her app + area + course_sha256 + lesson_id + movement_id için
+  ayrı hesaplanır. Karma koleksiyon geçerlidir; farklı görevler birbirinin
+  eksik split'ini doldurmaz. Koleksiyon özeti bütün scope'lar için konservatiftir.
+- freeze ve open-test artık --root ve --scope <aday-scope.json> ister.
+  Scope JSON tam olarak yukarıdaki beş alanı içerir; validation raporunun
+  scope alanı aynı nesnedir. Artifact/pipeline hashleri bu rapora bağlı kalır.
+- İki işlem de katalog bağını, seçilen scope'un population'ını ve gerçek
+  medya/izin dosyası boyut/hashlerini yazımdan hemen önce yeniden kontrol eder.
+  Eski metadata-only receipt kabul edilmez; yeni receipt_version 2'dir.
+  --probe isteğe bağlı teknik kontroldür ve freeze/open-test arasında aynıdır;
+  hash kontrolünün yerine geçmez, fiziksel/uzman doğrulaması değildir.
+- Test yalnız seçilen scope'un kliplerini döndürür. Marker hâlâ manifest'in
+  yanındaki sabit test-opened-<dataset_id>.json dosyasıdır; başka scope/yeni
+  candidate bunu sıfırlamaz. İçe aktarılan open_test API'si de state_root
+  (manifest klasörü) ve aynı sabit marker'ı ister. Hatalı önkoşul marker tüketmez.
+- Bu kontroller aynı yetkili dosya sistemi yazarını veya sahte izin metnini
+  engelleyen güven kökü değildir. Gerçek dosya teslimi/hakların gerçekliği,
+  eğitim ve bağımsız fiziksel başarı kabulü hâlâ ayrı ve açık kapılardır.
