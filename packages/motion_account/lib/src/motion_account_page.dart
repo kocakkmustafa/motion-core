@@ -50,6 +50,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   String? _message;
   String? _lastUserId;
   int _profileRequestGeneration = 0;
+  // Same-owner refreshes must retain local intent, including a saved draft.
+  // Only an owner change starts a clean display-name field again.
+  bool _displayNameEdited = false;
 
   @override
   void initState() {
@@ -78,7 +81,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           }
         });
         if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
-          _loadDisplayName();
+          _loadDisplayName(resetDraft: accountChanged);
         }
       },
       onError: (Object _, StackTrace _) {
@@ -121,17 +124,21 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         : widget.account.hasActiveMembership();
   }
 
-  Future<void> _loadDisplayName() async {
+  Future<void> _loadDisplayName({bool resetDraft = false}) async {
     final generation = ++_profileRequestGeneration;
     final userId = widget.account.currentUser?.id;
-    if (userId == null) {
+    if (resetDraft || userId == null) {
+      _displayNameEdited = false;
       _displayName.clear();
+    }
+    if (userId == null) {
       return;
     }
     try {
       final profile = await widget.account.loadProfile();
       if (mounted &&
           generation == _profileRequestGeneration &&
+          !_displayNameEdited &&
           widget.account.currentUser?.id == userId) {
         _displayName.text = profile?['display_name'] as String? ?? '';
       }
@@ -444,6 +451,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       const SizedBox(height: 12),
       TextField(
         controller: _displayName,
+        onChanged: (_) => _displayNameEdited = true,
         decoration: InputDecoration(
           labelText: _t('Görünen ad', 'Display name'),
         ),
@@ -451,10 +459,17 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       FilledButton.tonal(
         onPressed: _busy
             ? null
-            : () => _run(
-                () => widget.account.saveDisplayName(_displayName.text),
-                success: _t('Profil kaydedildi.', 'Profile saved.'),
-              ),
+            : () {
+                // Saving is explicit draft intent even when the field is empty
+                // and the initial profile read has not finished yet.
+                _displayNameEdited = true;
+                _profileRequestGeneration++;
+                final displayName = _displayName.text;
+                _run(
+                  () => widget.account.saveDisplayName(displayName),
+                  success: _t('Profil kaydedildi.', 'Profile saved.'),
+                );
+              },
         child: Text(_t('Profili kaydet', 'Save profile')),
       ),
       const SizedBox(height: 16),
