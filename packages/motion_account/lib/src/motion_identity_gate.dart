@@ -306,7 +306,8 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
       darkTheme: widget.darkTheme,
       themeMode: widget.themeMode,
       locale: MotionAccountLocalizations.localeFor(
-        widget.locale ?? Localizations.maybeLocaleOf(parentContext) ??
+        widget.locale ??
+            Localizations.maybeLocaleOf(parentContext) ??
             MotionAccountLocalizations.localeListResolutionCallback(
               widget.preferredLocales ??
                   WidgetsBinding.instance.platformDispatcher.locales,

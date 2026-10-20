@@ -104,7 +104,11 @@ class MotionAccountLocalizations {
     Locale('fr'),
     Locale('ja'),
     Locale('ar'),
-    Locale('it'), Locale('ko'), Locale('id'), Locale('pl'), Locale('hi'),
+    Locale('it'),
+    Locale('ko'),
+    Locale('id'),
+    Locale('pl'),
+    Locale('hi'),
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
   ];
 
@@ -134,15 +138,17 @@ class MotionAccountLocalizations {
         'id' => const Locale('id'),
         'pl' => const Locale('pl'),
         'hi' => const Locale('hi'),
-        'zh' when _supportsChinese(requested!) =>
-          const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
+        'zh' when _supportsChinese(requested!) => const Locale.fromSubtags(
+          languageCode: 'zh',
+          scriptCode: 'Hans',
+        ),
         _ => const Locale('en'),
       };
 
   static bool _supportsChinese(Locale locale) =>
       locale.scriptCode == 'Hans' ||
       (locale.scriptCode == null &&
-        !const {'TW', 'HK', 'MO'}.contains(locale.countryCode));
+          !const {'TW', 'HK', 'MO'}.contains(locale.countryCode));
 
   static bool _supportsRequested(Locale locale) =>
       (locale.languageCode != 'zh' || _supportsChinese(locale)) &&
@@ -161,7 +167,8 @@ class MotionAccountLocalizations {
         if (candidate == target) return candidate;
       }
       for (final candidate in supported) {
-        if (candidate.languageCode == target.languageCode && _supportsRequested(candidate)) {
+        if (candidate.languageCode == target.languageCode &&
+            _supportsRequested(candidate)) {
           return candidate;
         }
       }
@@ -179,7 +186,9 @@ class MotionAccountLocalizations {
       if (candidate == target) return candidate;
     }
     for (final candidate in supported) {
-      if (candidate.languageCode == target.languageCode && _supportsRequested(candidate)) return candidate;
+      if (candidate.languageCode == target.languageCode &&
+          _supportsRequested(candidate))
+        return candidate;
     }
     for (final candidate in supported) {
       if (candidate.languageCode == 'en') return candidate;
@@ -322,8 +331,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.privacyOpenFailed: _Translations(
     tr: "Gizlilik politikası açılamadı. Bağlantını ve tarayıcını kontrol et.",
     en: "Could not open the privacy policy. Check your connection and browser.",
-    es419: "No se pudo abrir la política de privacidad. Revisa tu conexión y navegador.",
-    ptBR: "Não foi possível abrir a política de privacidade. Verifique a conexão e o navegador.",
+    es419:
+        "No se pudo abrir la política de privacidad. Revisa tu conexión y navegador.",
+    ptBR:
+        "Não foi possível abrir a política de privacidade. Verifique a conexão e o navegador.",
     de: "Die Datenschutzerklärung konnte nicht geöffnet werden. Prüfe Verbindung und Browser.",
     fr: "Impossible d’ouvrir la politique de confidentialité. Vérifie ta connexion et ton navigateur.",
     ja: "プライバシーポリシーを開けませんでした。接続とブラウザを確認してください。",
@@ -338,8 +349,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.cleanupPending: _Translations(
     tr: "Motion hesabın silindi. Bu cihazdaki geçmiş şu anda temizlenemedi; uygulama çevrimiçi açıldığında yeniden denenecek.",
     en: "Your Motion account was deleted. Local history could not be cleared now; cleanup will retry when the app opens online.",
-    es419: "Se eliminó tu cuenta de Motion. No se pudo borrar el historial local; se reintentará cuando abras la app con conexión.",
-    ptBR: "Sua conta Motion foi excluída. Não foi possível limpar o histórico local; tentaremos novamente quando o app abrir com conexão.",
+    es419:
+        "Se eliminó tu cuenta de Motion. No se pudo borrar el historial local; se reintentará cuando abras la app con conexión.",
+    ptBR:
+        "Sua conta Motion foi excluída. Não foi possível limpar o histórico local; tentaremos novamente quando o app abrir com conexão.",
     de: "Dein Motion-Konto wurde gelöscht. Der lokale Verlauf konnte noch nicht gelöscht werden; beim nächsten Online-Start wird es erneut versucht.",
     fr: "Ton compte Motion a été supprimé. L’historique local n’a pas pu être effacé ; un nouvel essai aura lieu à l’ouverture de l’app en ligne.",
     ja: "Motionアカウントを削除しました。この端末の履歴はまだ消去できていません。オンラインでアプリを開くと再試行します。",
@@ -354,8 +367,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.requestFailed: _Translations(
     tr: "İşlem tamamlanamadı. Bilgilerini ve bağlantını kontrol edip tekrar dene.",
     en: "Could not complete the request. Check your details and connection, then retry.",
-    es419: "No se pudo completar la solicitud. Revisa tus datos y conexión y vuelve a intentarlo.",
-    ptBR: "Não foi possível concluir a solicitação. Verifique seus dados e a conexão e tente novamente.",
+    es419:
+        "No se pudo completar la solicitud. Revisa tus datos y conexión y vuelve a intentarlo.",
+    ptBR:
+        "Não foi possível concluir a solicitação. Verifique seus dados e a conexão e tente novamente.",
     de: "Die Anfrage konnte nicht abgeschlossen werden. Prüfe deine Angaben und Verbindung und versuche es erneut.",
     fr: "Impossible de terminer la demande. Vérifie tes informations et ta connexion, puis réessaie.",
     ja: "操作を完了できませんでした。入力内容と接続を確認して、もう一度お試しください。",
@@ -658,8 +673,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.profileReadFailed: _Translations(
     tr: "Profil yüklenemedi. Yeniden deneyebilir veya görünen adını düzenleyebilirsin.",
     en: "Could not load your profile. Retry or edit your display name.",
-    es419: "No se pudo cargar tu perfil. Vuelve a intentarlo o edita tu nombre visible.",
-    ptBR: "Não foi possível carregar seu perfil. Tente novamente ou edite seu nome de exibição.",
+    es419:
+        "No se pudo cargar tu perfil. Vuelve a intentarlo o edita tu nombre visible.",
+    ptBR:
+        "Não foi possível carregar seu perfil. Tente novamente ou edite seu nome de exibição.",
     de: "Dein Profil konnte nicht geladen werden. Versuche es erneut oder bearbeite deinen Anzeigenamen.",
     fr: "Impossible de charger ton profil. Réessaie ou modifie ton nom affiché.",
     ja: "プロフィールを読み込めませんでした。再試行するか、表示名を編集してください。",
@@ -898,8 +915,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.membershipReopen: _Translations(
     tr: "Hesabın yenilenemedi. Hesabını tekrar doğrulayıp üyelik ekranını yeniden aç.",
     en: "Could not refresh your account. Reopen membership after retrying your account.",
-    es419: "No se pudo actualizar tu cuenta. Vuelve a verificarla y abre de nuevo la membresía.",
-    ptBR: "Não foi possível atualizar sua conta. Tente atualizar a conta novamente e depois reabra a página de assinatura.",
+    es419:
+        "No se pudo actualizar tu cuenta. Vuelve a verificarla y abre de nuevo la membresía.",
+    ptBR:
+        "Não foi possível atualizar sua conta. Tente atualizar a conta novamente e depois reabra a página de assinatura.",
     de: "Dein Konto konnte nicht aktualisiert werden. Versuche die Kontoaktualisierung erneut und öffne danach die Mitgliedschaft wieder.",
     fr: "Impossible d’actualiser ton compte. Réessaie de l’actualiser, puis rouvre la page d’abonnement.",
     ja: "アカウントを更新できませんでした。アカウントの更新を再試行してからメンバーシップ画面を開き直してください。",
@@ -914,8 +933,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.guidedBenefit: _Translations(
     tr: "Bu uygulamadaki kullanılabilir rehberli seanslara erişim sağlar. Satın almadan önce kataloğu incele.",
     en: "Provides access to available guided sessions in this app. Check the catalog before purchasing.",
-    es419: "Da acceso a las sesiones guiadas disponibles en esta app. Revisa el catálogo antes de comprar.",
-    ptBR: "Dá acesso às sessões guiadas disponíveis neste app. Confira o catálogo antes de comprar.",
+    es419:
+        "Da acceso a las sesiones guiadas disponibles en esta app. Revisa el catálogo antes de comprar.",
+    ptBR:
+        "Dá acesso às sessões guiadas disponíveis neste app. Confira o catálogo antes de comprar.",
     de: "Bietet Zugang zu den verfügbaren geführten Einheiten dieser App. Prüfe vor dem Kauf den Katalog.",
     fr: "Donne accès aux séances guidées disponibles dans cette app. Consulte le catalogue avant l’achat.",
     ja: "このアプリで利用可能なガイド付きセッションにアクセスできます。購入前にカタログをご確認ください。",
@@ -930,8 +951,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.membershipDetailsUnavailable: _Translations(
     tr: "Üyelik veya mağaza bilgisi alınamadı. Yeniden dene.",
     en: "Membership or store details are unavailable. Try again.",
-    es419: "No están disponibles los datos de membresía o tienda. Vuelve a intentarlo.",
-    ptBR: "Os detalhes da assinatura ou da loja estão indisponíveis. Tente novamente.",
+    es419:
+        "No están disponibles los datos de membresía o tienda. Vuelve a intentarlo.",
+    ptBR:
+        "Os detalhes da assinatura ou da loja estão indisponíveis. Tente novamente.",
     de: "Mitgliedschafts- oder Store-Details sind nicht verfügbar. Versuche es erneut.",
     fr: "Les informations d’abonnement ou de boutique sont indisponibles. Réessaie.",
     ja: "メンバーシップまたはストア情報を取得できません。もう一度お試しください。",
@@ -1010,8 +1033,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.foundPurchases: _Translations(
     tr: "Bulunan satın almalar doğrulanacak. Üyelik görünmüyorsa durumu yenile.",
     en: "Found purchases will be verified. Refresh status if membership does not appear.",
-    es419: "Se verificarán las compras encontradas. Actualiza el estado si no aparece la membresía.",
-    ptBR: "As compras encontradas serão verificadas. Atualize o status se a assinatura não aparecer.",
+    es419:
+        "Se verificarán las compras encontradas. Actualiza el estado si no aparece la membresía.",
+    ptBR:
+        "As compras encontradas serão verificadas. Atualize o status se a assinatura não aparecer.",
     de: "Gefundene Käufe werden geprüft. Aktualisiere den Status, falls die Mitgliedschaft nicht erscheint.",
     fr: "Les achats trouvés seront vérifiés. Actualise le statut si l’abonnement n’apparaît pas.",
     ja: "見つかった購入情報を確認します。メンバーシップが表示されない場合は状態を更新してください。",
@@ -1106,8 +1131,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.purchaseNotVerified: _Translations(
     tr: "Satın alma henüz doğrulanamadı. Bağlantını kontrol edip tekrar dene.",
     en: "Purchase could not be verified yet. Check your connection and try again.",
-    es419: "Aún no se pudo verificar la compra. Revisa tu conexión y vuelve a intentarlo.",
-    ptBR: "Ainda não foi possível verificar a compra. Verifique a conexão e tente novamente.",
+    es419:
+        "Aún no se pudo verificar la compra. Revisa tu conexión y vuelve a intentarlo.",
+    ptBR:
+        "Ainda não foi possível verificar a compra. Verifique a conexão e tente novamente.",
     de: "Der Kauf konnte noch nicht geprüft werden. Prüfe deine Verbindung und versuche es erneut.",
     fr: "L’achat n’a pas encore pu être vérifié. Vérifie ta connexion et réessaie.",
     ja: "購入をまだ確認できていません。接続を確認して、もう一度お試しください。",
@@ -1122,8 +1149,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.verificationUnavailable: _Translations(
     tr: "Doğrulama şu anda kullanılamıyor. Tekrar dene veya satın almaları geri yükle.",
     en: "Verification is unavailable. Try again or restore purchases.",
-    es419: "La verificación no está disponible. Reintenta o restaura las compras.",
-    ptBR: "A verificação está indisponível. Tente novamente ou restaure as compras.",
+    es419:
+        "La verificación no está disponible. Reintenta o restaura las compras.",
+    ptBR:
+        "A verificação está indisponível. Tente novamente ou restaure as compras.",
     de: "Die Prüfung ist nicht verfügbar. Versuche es erneut oder stelle Käufe wieder her.",
     fr: "La vérification est indisponible. Réessaie ou restaure les achats.",
     ja: "現在確認できません。再試行するか、購入を復元してください。",
@@ -1266,8 +1295,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.storeMembershipsUnavailable: _Translations(
     tr: "Mağaza üyelikleri şu anda sunmuyor. Daha sonra tekrar dene.",
     en: "Store memberships are unavailable right now. Try again later.",
-    es419: "Las membresías de la tienda no están disponibles ahora. Inténtalo más tarde.",
-    ptBR: "As assinaturas da loja estão indisponíveis no momento. Tente mais tarde.",
+    es419:
+        "Las membresías de la tienda no están disponibles ahora. Inténtalo más tarde.",
+    ptBR:
+        "As assinaturas da loja estão indisponíveis no momento. Tente mais tarde.",
     de: "Store-Mitgliedschaften sind derzeit nicht verfügbar. Versuche es später erneut.",
     fr: "Les abonnements de la boutique sont indisponibles pour le moment. Réessaie plus tard.",
     ja: "現在ストアのメンバーシップを利用できません。しばらくしてからお試しください。",
@@ -1298,8 +1329,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.otherSubscription: _Translations(
     tr: "Başka bir Motion uygulamasında aktif aboneliğin var. Bu uygulamanın ayrı üyeliğini alabilirsin. Çift ödeme riskini önlemek için Motion+ seçeneği mevcut aboneliğin bitene kadar kapalı; aboneliğini mağazada yönet.",
     en: "You have a subscription in another Motion app. You can buy this app's separate membership. Motion+ is unavailable until the existing subscription ends to avoid overlapping charges; manage it in the store.",
-    es419: "Tienes una suscripción en otra app de Motion. Puedes comprar la membresía separada de esta app. Motion+ no estará disponible hasta que termine tu suscripción actual para evitar cargos superpuestos; adminístrala en la tienda.",
-    ptBR: "Você tem uma assinatura em outro app Motion. Pode comprar a assinatura separada deste app. Para evitar cobranças sobrepostas, o Motion+ fica indisponível até a assinatura atual terminar; gerencie-a na loja.",
+    es419:
+        "Tienes una suscripción en otra app de Motion. Puedes comprar la membresía separada de esta app. Motion+ no estará disponible hasta que termine tu suscripción actual para evitar cargos superpuestos; adminístrala en la tienda.",
+    ptBR:
+        "Você tem uma assinatura em outro app Motion. Pode comprar a assinatura separada deste app. Para evitar cobranças sobrepostas, o Motion+ fica indisponível até a assinatura atual terminar; gerencie-a na loja.",
     de: "Du hast ein Abonnement in einer anderen Motion-App. Du kannst die separate Mitgliedschaft dieser App kaufen. Um doppelte Zahlungen zu vermeiden, ist Motion+ bis zum Ende des bestehenden Abonnements gesperrt; verwalte es im Store.",
     fr: "Tu as un abonnement dans une autre app Motion. Tu peux acheter l’abonnement distinct de cette app. Pour éviter des paiements qui se chevauchent, Motion+ est indisponible jusqu’à la fin de l’abonnement actuel ; gère-le dans la boutique.",
     ja: "別のMotionアプリに有効なサブスクリプションがあります。このアプリ専用のメンバーシップは購入できます。重複課金を避けるため、現在の契約が終了するまでMotion+は利用できません。ストアで契約を管理してください。",
@@ -1309,13 +1342,16 @@ const _messages = <MotionAccountString, _Translations>{
     id: "Kamu memiliki langganan di aplikasi Motion lain. Kamu dapat membeli keanggotaan terpisah untuk aplikasi ini. Motion+ tidak tersedia hingga langganan yang ada berakhir agar tidak terjadi tagihan yang tumpang tindih; kelola langganan tersebut di toko aplikasi.",
     pl: "Masz subskrypcję w innej aplikacji Motion. Możesz kupić osobne członkostwo w tej aplikacji. Aby uniknąć nakładających się opłat, Motion+ pozostaje niedostępne do końca obecnej subskrypcji; zarządzaj nią w sklepie.",
     hi: "किसी दूसरे Motion ऐप में आपकी सदस्यता है। आप इस ऐप की अलग सदस्यता खरीद सकते हैं। दोहरे शुल्क से बचने के लिए मौजूदा सदस्यता समाप्त होने तक Motion+ उपलब्ध नहीं है; उसे स्टोर में प्रबंधित करें।",
-    zhHans: "你已订阅另一个 Motion 应用。可以单独购买此应用的会员。为避免重复收费，现有订阅结束前无法购买 Motion+；请在商店中管理现有订阅。",
+    zhHans:
+        "你已订阅另一个 Motion 应用。可以单独购买此应用的会员。为避免重复收费，现有订阅结束前无法购买 Motion+；请在商店中管理现有订阅。",
   ),
   MotionAccountString.motionPlusBenefit: _Translations(
     tr: "Beş Motion uygulamasındaki bugün açık olan canlı çalışmalara erişim. Gelecek dersler bu sürümde yok.",
     en: "Access the live practice currently available in all five Motion apps. Future lessons are not in this release.",
-    es419: "Accede a la práctica en vivo disponible actualmente en las cinco apps de Motion. Las lecciones futuras no están en esta versión.",
-    ptBR: "Acesse as práticas ao vivo disponíveis hoje nos cinco apps Motion. Aulas futuras não estão nesta versão.",
+    es419:
+        "Accede a la práctica en vivo disponible actualmente en las cinco apps de Motion. Las lecciones futuras no están en esta versión.",
+    ptBR:
+        "Acesse as práticas ao vivo disponíveis hoje nos cinco apps Motion. Aulas futuras não estão nesta versão.",
     de: "Zugang zu den derzeit verfügbaren Live-Übungen in allen fünf Motion-Apps. Künftige Lektionen sind nicht Teil dieser Version.",
     fr: "Accède aux pratiques en direct actuellement disponibles dans les cinq apps Motion. Les futures leçons ne sont pas incluses dans cette version.",
     ja: "5つのMotionアプリで現在利用可能なライブ練習にアクセスできます。今後のレッスンはこのリリースには含まれません。",
@@ -1330,8 +1366,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.autoRenewTerms: _Translations(
     tr: "Aylık veya yıllık paket, mağazada gösterilen tutardan iptal edilene kadar aynı dönemle otomatik yenilenir. İptali mağaza hesabından yönetebilirsin.",
     en: "Monthly or yearly plans renew automatically for the same period at the displayed store price until canceled. Manage cancellation in your store account.",
-    es419: "Los planes mensuales o anuales se renuevan automáticamente por el mismo período al precio mostrado en la tienda hasta que se cancelen. Administra la cancelación en tu cuenta de la tienda.",
-    ptBR: "Os planos mensais ou anuais se renovam automaticamente pelo mesmo período, ao preço exibido na loja, até o cancelamento. Gerencie o cancelamento na sua conta da loja.",
+    es419:
+        "Los planes mensuales o anuales se renuevan automáticamente por el mismo período al precio mostrado en la tienda hasta que se cancelen. Administra la cancelación en tu cuenta de la tienda.",
+    ptBR:
+        "Os planos mensais ou anuais se renovam automaticamente pelo mesmo período, ao preço exibido na loja, até o cancelamento. Gerencie o cancelamento na sua conta da loja.",
     de: "Monats- oder Jahrespläne verlängern sich automatisch zum angezeigten Store-Preis um denselben Zeitraum, bis du kündigst. Verwalte die Kündigung in deinem Store-Konto.",
     fr: "Les formules mensuelles ou annuelles se renouvellent automatiquement pour la même durée au prix affiché dans la boutique, jusqu’à résiliation. Gère la résiliation dans ton compte de boutique.",
     ja: "月額または年額プランは、解約するまでストア表示価格で同じ期間ごとに自動更新されます。解約はストアのアカウントから管理できます。",
@@ -1426,8 +1464,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.subscriptionDisclosure: _Translations(
     tr: "Abonelik seçtiğin dönemde otomatik yenilenir. Tutar ve para birimi mağazada gösterilir; iptal işlemi mağaza hesabından yapılır.",
     en: "Subscriptions renew automatically for the selected period. The store shows the amount and currency; cancel from your store account.",
-    es419: "Las suscripciones se renuevan automáticamente por el período elegido. La tienda muestra el monto y la moneda; cancela desde tu cuenta de la tienda.",
-    ptBR: "As assinaturas se renovam automaticamente pelo período escolhido. A loja mostra o valor e a moeda; cancele pela sua conta da loja.",
+    es419:
+        "Las suscripciones se renuevan automáticamente por el período elegido. La tienda muestra el monto y la moneda; cancela desde tu cuenta de la tienda.",
+    ptBR:
+        "As assinaturas se renovam automaticamente pelo período escolhido. A loja mostra o valor e a moeda; cancele pela sua conta da loja.",
     de: "Abonnements verlängern sich automatisch um den gewählten Zeitraum. Betrag und Währung werden im Store angezeigt; kündige über dein Store-Konto.",
     fr: "Les abonnements se renouvellent automatiquement pour la durée choisie. La boutique affiche le montant et la devise ; résilie depuis ton compte de boutique.",
     ja: "サブスクリプションは選択した期間ごとに自動更新されます。金額と通貨はストアに表示されます。解約はストアのアカウントから行ってください。",
@@ -1442,7 +1482,8 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.invalidRegistration: _Translations(
     tr: "Geçerli e-posta ve en az 8 karakterli şifre gir.",
     en: "Enter a valid email and a password of at least 8 characters.",
-    es419: "Ingresa un correo válido y una contraseña de al menos 8 caracteres.",
+    es419:
+        "Ingresa un correo válido y una contraseña de al menos 8 caracteres.",
     ptBR: "Digite um e-mail válido e uma senha com pelo menos 8 caracteres.",
     de: "Gib eine gültige E-Mail und ein Passwort mit mindestens 8 Zeichen ein.",
     fr: "Saisis un e-mail valide et un mot de passe d’au moins 8 caractères.",
@@ -1474,8 +1515,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.deleteExplanation: _Translations(
     tr: "Ortak hesabın ve beş uygulamadaki üyelik hakların silinir. Ardından bu uygulamadaki yerel geçmiş temizlenir. Mağaza aboneliğini Apple veya Google hesabından ayrıca iptal etmelisin.",
     en: "This deletes your shared account and access in all five apps, then erases local history in this app. Cancel any store subscription separately in your Apple or Google account.",
-    es419: "Esto elimina tu cuenta compartida y el acceso en las cinco apps; luego borra el historial local de esta app. Cancela por separado cualquier suscripción de la tienda desde tu cuenta de Apple o Google.",
-    ptBR: "Isso exclui sua conta compartilhada e o acesso nos cinco apps, e depois apaga o histórico local deste app. Cancele qualquer assinatura da loja separadamente na sua conta Apple ou Google.",
+    es419:
+        "Esto elimina tu cuenta compartida y el acceso en las cinco apps; luego borra el historial local de esta app. Cancela por separado cualquier suscripción de la tienda desde tu cuenta de Apple o Google.",
+    ptBR:
+        "Isso exclui sua conta compartilhada e o acesso nos cinco apps, e depois apaga o histórico local deste app. Cancele qualquer assinatura da loja separadamente na sua conta Apple ou Google.",
     de: "Dein gemeinsames Konto und die Zugriffsrechte in allen fünf Apps werden gelöscht, danach der lokale Verlauf dieser App. Kündige Store-Abonnements separat in deinem Apple- oder Google-Konto.",
     fr: "Ton compte commun et tes accès dans les cinq apps seront supprimés, puis l’historique local de cette app sera effacé. Résilie séparément tout abonnement dans ton compte Apple ou Google.",
     ja: "共通アカウントと5つのアプリすべての利用権限を削除した後、このアプリの端末内履歴を消去します。ストアのサブスクリプションは、AppleまたはGoogleのアカウントから別途解約してください。",
@@ -1538,8 +1581,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.accountVerificationFailed: _Translations(
     tr: "Hesap doğrulanamadı. Bağlantını kontrol edip yeniden dene.",
     en: "Could not verify your account. Check your connection and retry.",
-    es419: "No se pudo verificar tu cuenta. Revisa tu conexión y vuelve a intentarlo.",
-    ptBR: "Não foi possível verificar sua conta. Verifique a conexão e tente novamente.",
+    es419:
+        "No se pudo verificar tu cuenta. Revisa tu conexión y vuelve a intentarlo.",
+    ptBR:
+        "Não foi possível verificar sua conta. Verifique a conexão e tente novamente.",
     de: "Dein Konto konnte nicht geprüft werden. Prüfe deine Verbindung und versuche es erneut.",
     fr: "Impossible de vérifier ton compte. Vérifie ta connexion et réessaie.",
     ja: "アカウントを確認できませんでした。接続を確認して、もう一度お試しください。",
@@ -1602,8 +1647,10 @@ const _messages = <MotionAccountString, _Translations>{
   MotionAccountString.membershipVerificationFailed: _Translations(
     tr: "Üyelik doğrulanamadı. Bağlantını kontrol edip tekrar dene.",
     en: "Membership could not be verified. Check your connection and retry.",
-    es419: "No se pudo verificar la membresía. Revisa tu conexión y vuelve a intentarlo.",
-    ptBR: "Não foi possível verificar a assinatura. Verifique a conexão e tente novamente.",
+    es419:
+        "No se pudo verificar la membresía. Revisa tu conexión y vuelve a intentarlo.",
+    ptBR:
+        "Não foi possível verificar a assinatura. Verifique a conexão e tente novamente.",
     de: "Die Mitgliedschaft konnte nicht geprüft werden. Prüfe deine Verbindung und versuche es erneut.",
     fr: "Impossible de vérifier l’abonnement. Vérifie ta connexion et réessaie.",
     ja: "メンバーシップを確認できませんでした。接続を確認して、もう一度お試しください。",

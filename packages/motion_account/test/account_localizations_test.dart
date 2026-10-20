@@ -46,20 +46,42 @@ void main() {
     );
     expect(MotionAccountLocalizations.localeFor(null), const Locale('en'));
     const hans = Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans');
-    expect(MotionAccountLocalizations.localeFor(const Locale('zh', 'CN')), hans);
+    expect(
+      MotionAccountLocalizations.localeFor(const Locale('zh', 'CN')),
+      hans,
+    );
     expect(MotionAccountLocalizations.localeFor(hans), hans);
-    for (final locale in const [Locale('zh', 'TW'), Locale('zh', 'HK'), Locale('zh', 'MO'),
+    for (final locale in const [
+      Locale('zh', 'TW'),
+      Locale('zh', 'HK'),
+      Locale('zh', 'MO'),
       Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
-      Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Latn')]) {
+      Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Latn'),
+    ]) {
       expect(MotionAccountLocalizations.localeFor(locale), const Locale('en'));
       expect(MotionAccountLocalizations.delegate.isSupported(locale), isFalse);
-      expect(MotionAccountLocalizations.localeListResolutionCallback(
-        [locale, const Locale('fr')], MotionAccountLocalizations.supportedLocales), const Locale('fr'));
+      expect(
+        MotionAccountLocalizations.localeListResolutionCallback([
+          locale,
+          const Locale('fr'),
+        ], MotionAccountLocalizations.supportedLocales),
+        const Locale('fr'),
+      );
     }
-    expect(MotionAccountLocalizations.localeListResolutionCallback(
-      const [Locale('de'), Locale('fr')], const [Locale('tr'), Locale('fr')]), const Locale('fr'));
-    expect(MotionAccountLocalizations.localeResolutionCallback(hans,
-      const [Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'), Locale('en')]), const Locale('en'));
+    expect(
+      MotionAccountLocalizations.localeListResolutionCallback(
+        const [Locale('de'), Locale('fr')],
+        const [Locale('tr'), Locale('fr')],
+      ),
+      const Locale('fr'),
+    );
+    expect(
+      MotionAccountLocalizations.localeResolutionCallback(hans, const [
+        Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+        Locale('en'),
+      ]),
+      const Locale('en'),
+    );
 
     expect(
       MotionAccountLocalizations.localeFor(const Locale('xx')),
@@ -402,7 +424,9 @@ void main() {
     expect(find.text('REPLACEMENT_PAGE'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('identity blocker inherits a changed parent appearance', (tester) async {
+  testWidgets('identity blocker inherits a changed parent appearance', (
+    tester,
+  ) async {
     final runtime = MotionAccountRuntime.forTesting(
       client: const _CatalogSupabase(),
       app: MotionApp.ostinato,
@@ -410,13 +434,18 @@ void main() {
     )..dispose();
     final brightness = ValueNotifier<Brightness>(Brightness.dark);
     addTearDown(brightness.dispose);
-    await tester.pumpWidget(ValueListenableBuilder<Brightness>(
-      valueListenable: brightness,
-      builder: (_, value, _) => Theme(
-        data: ThemeData(brightness: value),
-        child: MotionIdentityGate(runtime: runtime, child: const SizedBox.shrink()),
+    await tester.pumpWidget(
+      ValueListenableBuilder<Brightness>(
+        valueListenable: brightness,
+        builder: (_, value, _) => Theme(
+          data: ThemeData(brightness: value),
+          child: MotionIdentityGate(
+            runtime: runtime,
+            child: const SizedBox.shrink(),
+          ),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     final scaffold = find.byType(Scaffold);
     expect(scaffold, findsOneWidget);
@@ -427,74 +456,117 @@ void main() {
     expect(runtime.isDisposed, isTrue);
   });
 
-  testWidgets('identity blocker accepts explicit light dark and system themes', (tester) async {
-    final runtime = MotionAccountRuntime.forTesting(
-      client: const _CatalogSupabase(),
-      app: MotionApp.ostinato,
-      onDeletedAccount: (_) async {},
-    )..dispose();
-    final mode = ValueNotifier<ThemeMode>(ThemeMode.dark);
-    addTearDown(mode.dispose);
-    await tester.pumpWidget(ValueListenableBuilder<ThemeMode>(
-      valueListenable: mode,
-      builder: (_, value, _) => MotionIdentityGate(
-        runtime: runtime,
-        theme: ThemeData.light(),
-        darkTheme: ThemeData.dark(),
-        themeMode: value,
-        child: const SizedBox.shrink(),
-      ),
-    ));
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.dark);
-    mode.value = ThemeMode.light;
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.light);
-    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    mode.value = ThemeMode.system;
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.dark);
-    expect(runtime.isDisposed, isTrue);
-  });
+  testWidgets(
+    'identity blocker accepts explicit light dark and system themes',
+    (tester) async {
+      final runtime = MotionAccountRuntime.forTesting(
+        client: const _CatalogSupabase(),
+        app: MotionApp.ostinato,
+        onDeletedAccount: (_) async {},
+      )..dispose();
+      final mode = ValueNotifier<ThemeMode>(ThemeMode.dark);
+      addTearDown(mode.dispose);
+      await tester.pumpWidget(
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: mode,
+          builder: (_, value, _) => MotionIdentityGate(
+            runtime: runtime,
+            theme: ThemeData.light(),
+            darkTheme: ThemeData.dark(),
+            themeMode: value,
+            child: const SizedBox.shrink(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(Scaffold))).brightness,
+        Brightness.dark,
+      );
+      mode.value = ThemeMode.light;
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(Scaffold))).brightness,
+        Brightness.light,
+      );
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      mode.value = ThemeMode.system;
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(Scaffold))).brightness,
+        Brightness.dark,
+      );
+      expect(runtime.isDisposed, isTrue);
+    },
+  );
 
-  testWidgets('identity blocker resolves ordered preferences and explicit host locale', (tester) async {
-    final runtime = MotionAccountRuntime.forTesting(
-      client: const _CatalogSupabase(), app: MotionApp.ostinato,
-      onDeletedAccount: (_) async {},
-    )..dispose();
-    await tester.pumpWidget(MotionIdentityGate(
-      runtime: runtime,
-      preferredLocales: const [Locale('xx'), Locale('fr')],
-      child: const SizedBox.shrink(),
-    ));
-    await tester.pumpAndSettle();
-    expect(find.text(MotionAccountLocalizations(const Locale('fr')).text(
-      MotionAccountString.accountVerificationFailed)), findsOneWidget);
-    await tester.pumpWidget(Localizations(
-      locale: const Locale('ar'), delegates: MotionAccountLocalizations.delegates,
-      child: MotionIdentityGate(runtime: runtime,
-        preferredLocales: const [Locale('fr')], locale: const Locale('ja'),
-        child: const SizedBox.shrink()),
-    ));
-    await tester.pumpAndSettle();
-    final japanese = find.text(MotionAccountLocalizations(const Locale('ja')).text(
-      MotionAccountString.accountVerificationFailed));
-    expect(japanese, findsOneWidget);
-    expect(Directionality.of(tester.element(japanese)), TextDirection.ltr);
-    await tester.pumpWidget(Localizations(
-      locale: const Locale('ar'), delegates: MotionAccountLocalizations.delegates,
-      child: MotionIdentityGate(runtime: runtime,
-        preferredLocales: const [Locale('fr')], child: const SizedBox.shrink()),
-    ));
-    await tester.pumpAndSettle();
-    final arabic = find.text(MotionAccountLocalizations(const Locale('ar')).text(
-      MotionAccountString.accountVerificationFailed));
-    expect(arabic, findsOneWidget);
-    expect(Directionality.of(tester.element(arabic)), TextDirection.rtl);
-    expect(runtime.isDisposed, isTrue);
-  });
-
+  testWidgets(
+    'identity blocker resolves ordered preferences and explicit host locale',
+    (tester) async {
+      final runtime = MotionAccountRuntime.forTesting(
+        client: const _CatalogSupabase(),
+        app: MotionApp.ostinato,
+        onDeletedAccount: (_) async {},
+      )..dispose();
+      await tester.pumpWidget(
+        MotionIdentityGate(
+          runtime: runtime,
+          preferredLocales: const [Locale('xx'), Locale('fr')],
+          child: const SizedBox.shrink(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          MotionAccountLocalizations(
+            const Locale('fr'),
+          ).text(MotionAccountString.accountVerificationFailed),
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(
+        Localizations(
+          locale: const Locale('ar'),
+          delegates: MotionAccountLocalizations.delegates,
+          child: MotionIdentityGate(
+            runtime: runtime,
+            preferredLocales: const [Locale('fr')],
+            locale: const Locale('ja'),
+            child: const SizedBox.shrink(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final japanese = find.text(
+        MotionAccountLocalizations(
+          const Locale('ja'),
+        ).text(MotionAccountString.accountVerificationFailed),
+      );
+      expect(japanese, findsOneWidget);
+      expect(Directionality.of(tester.element(japanese)), TextDirection.ltr);
+      await tester.pumpWidget(
+        Localizations(
+          locale: const Locale('ar'),
+          delegates: MotionAccountLocalizations.delegates,
+          child: MotionIdentityGate(
+            runtime: runtime,
+            preferredLocales: const [Locale('fr')],
+            child: const SizedBox.shrink(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final arabic = find.text(
+        MotionAccountLocalizations(
+          const Locale('ar'),
+        ).text(MotionAccountString.accountVerificationFailed),
+      );
+      expect(arabic, findsOneWidget);
+      expect(Directionality.of(tester.element(arabic)), TextDirection.rtl);
+      expect(runtime.isDisposed, isTrue);
+    },
+  );
 }
 
 Widget _app(Locale locale, Widget home) => MaterialApp(
