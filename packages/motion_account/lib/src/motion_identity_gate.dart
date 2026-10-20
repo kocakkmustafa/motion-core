@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'motion_account_runtime.dart';
+import 'motion_account_localizations.dart';
 
 /// Closes new admission until the exact current Auth Session is verified.
 ///
@@ -248,12 +248,12 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
             ),
           ),
         ),
-        if (!ready) _blocker(),
+        if (!ready) _blocker(context),
       ],
     );
   }
 
-  Widget _blocker() {
+  Widget _blocker(BuildContext parentContext) {
     final runtime = _boundRuntime;
     final phase = runtime.phase.value;
     final pending = !runtime.isDisposed && !_authUnavailable &&
@@ -261,15 +261,17 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
             (phase == MotionIdentityPhase.verified &&
                 !runtime.isCurrentSessionVerified));
     return MaterialApp(
-      supportedLocales: const [Locale('tr'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      locale: MotionAccountLocalizations.localeFor(
+        Localizations.maybeLocaleOf(parentContext) ??
+            WidgetsBinding.instance.platformDispatcher.locale,
+      ),
+      supportedLocales: MotionAccountLocalizations.supportedLocales,
+      localizationsDelegates: MotionAccountLocalizations.delegates,
+      localeResolutionCallback:
+          MotionAccountLocalizations.localeResolutionCallback,
       home: Builder(
         builder: (context) {
-          final tr = Localizations.localeOf(context).languageCode == 'tr';
+          final strings = MotionAccountLocalizations.of(context);
           return Scaffold(
             body: SafeArea(
               child: Center(
@@ -281,12 +283,10 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                       if (pending) ...[
                         const CircularProgressIndicator(),
                         const SizedBox(height: 16),
-                        Text(tr ? 'Hesap doğrulanıyor…' : 'Checking account…'),
+                        Text(strings.text(MotionAccountString.checkingAccount)),
                       ] else ...[
                         Text(
-                          tr
-                              ? 'Hesap doğrulanamadı. Bağlantını kontrol edip yeniden dene.'
-                              : 'Could not verify your account. Check your connection and retry.',
+                          strings.text(MotionAccountString.accountVerificationFailed),
                           textAlign: TextAlign.center,
                         ),
                         if (!runtime.isDisposed) ...[
@@ -300,7 +300,7 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                                 // Keep admission closed while retry is unavailable.
                               }
                             },
-                            child: Text(tr ? 'Yeniden dene' : 'Retry'),
+                            child: Text(strings.text(MotionAccountString.retry)),
                           ),
                           TextButton(
                             onPressed: () async {
@@ -325,7 +325,7 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                               }
                             },
                             child: Text(
-                              tr ? 'Misafir olarak devam et' : 'Continue as guest',
+                              strings.text(MotionAccountString.continueAsGuest),
                             ),
                           ),
                         ],

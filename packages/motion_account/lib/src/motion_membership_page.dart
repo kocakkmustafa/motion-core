@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'motion_account_client.dart';
+import 'motion_account_localizations.dart';
 
 /// One small store-owned membership surface shared by the five host apps.
 /// Prices are shown only after the installed app's store returns real offers.
@@ -37,7 +38,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   bool _active = false;
   bool _anyActive = false;
   bool _authStreamFailed = false;
-  String? _message;
+  MotionAccountString? _message;
 
   String get _appId => widget.account.app.name;
   bool get _sameUser =>
@@ -73,10 +74,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
         if (!mounted) return;
         setState(() {
           _busy = false;
-          _message = _t(
-            'Mağaza bağlantısı kesildi. Yeniden dene.',
-            'Store connection failed. Try again.',
-          );
+          _message = MotionAccountString.storeConnectionFailed;
         });
       },
     );
@@ -101,10 +99,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
           _active = false;
           _anyActive = false;
           _busy = false;
-          _message = _t(
-            'Hesabın yenilenemedi. Hesabını tekrar doğrulayıp üyelik ekranını yeniden aç.',
-            'Could not refresh your account. Reopen membership after retrying your account.',
-          );
+          _message = MotionAccountString.membershipReopen;
         });
       },
     );
@@ -118,13 +113,10 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     super.dispose();
   }
 
-  String _t(String tr, String en) =>
-      Localizations.localeOf(context).languageCode == 'tr' ? tr : en;
+  String _text(MotionAccountString key) =>
+      MotionAccountLocalizations.of(context).text(key);
 
-  String _currentBenefit() => _t(
-    'Bu uygulamadaki kullanılabilir rehberli seanslara erişim sağlar. Satın almadan önce kataloğu incele.',
-    'Provides access to available guided sessions in this app. Check the catalog before purchasing.',
-  );
+  String _currentBenefit() => _text(MotionAccountString.guidedBenefit);
 
   List<String> _productIds() =>
       Theme.of(context).platform == TargetPlatform.android
@@ -159,10 +151,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     } catch (_) {
       if (!mounted || !_sameUser) return;
       setState(
-        () => _message = _t(
-          'Üyelik veya mağaza bilgisi alınamadı. Yeniden dene.',
-          'Membership or store details are unavailable. Try again.',
-        ),
+        () => _message = MotionAccountString.membershipDetailsUnavailable,
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -174,7 +163,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       return;
     setState(() {
       _busy = true;
-      _message = _t('Mağaza açılıyor…', 'Opening the store…');
+      _message = MotionAccountString.openingStore;
     });
     try {
       // Another app may have purchased since this page loaded. Recheck before
@@ -187,10 +176,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
           _active = status.active;
           _anyActive = status.anyActive;
           _busy = false;
-          _message = _t(
-            'Üyelik durumu değişti. Seçenekleri yenile.',
-            'Membership changed. Refresh the options.',
-          );
+          _message = MotionAccountString.membershipChanged;
         });
         return;
       }
@@ -203,10 +189,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _message = _t(
-          'Satın alma başlatılamadı. Yeniden dene.',
-          'Could not start the purchase. Try again.',
-        );
+        _message = MotionAccountString.purchaseStartFailed;
       });
     }
   }
@@ -215,26 +198,20 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     if (_busy || !_sameUser) return;
     setState(() {
       _busy = true;
-      _message = _t('Satın almalar aranıyor…', 'Looking for purchases…');
+      _message = MotionAccountString.lookingForPurchases;
     });
     try {
       await _store.restore();
       if (!mounted || !_sameUser) return;
       setState(() {
         _busy = false;
-        _message = _t(
-          'Bulunan satın almalar doğrulanacak. Üyelik görünmüyorsa durumu yenile.',
-          'Found purchases will be verified. Refresh status if membership does not appear.',
-        );
+        _message = MotionAccountString.foundPurchases;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _message = _t(
-          'Satın almalar geri yüklenemedi. Yeniden dene.',
-          'Could not restore purchases. Try again.',
-        );
+        _message = MotionAccountString.restoreFailed;
       });
     }
   }
@@ -243,10 +220,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     if (!mounted || !_sameUser) return;
     if (update.kind == StorePurchaseKind.pending) {
       setState(
-        () => _message = _t(
-          'Mağaza işlemi bekleniyor…',
-          'Waiting for the store…',
-        ),
+        () => _message = MotionAccountString.waitingStore,
       );
       return;
     }
@@ -255,8 +229,8 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       setState(() {
         _busy = false;
         _message = update.kind == StorePurchaseKind.canceled
-            ? _t('Satın alma iptal edildi.', 'Purchase canceled.')
-            : _t('Mağaza işlemi başarısız oldu.', 'Store purchase failed.');
+            ? MotionAccountString.purchaseCanceled
+            : MotionAccountString.storePurchaseFailed;
       });
       return;
     }
@@ -269,22 +243,16 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
           _active = true;
           _anyActive = true;
           _offers = const [];
-          _message = _t('Üyelik etkin.', 'Membership active.');
+          _message = MotionAccountString.membershipActive;
         } else {
-          _message = _t(
-            'Satın alma henüz doğrulanamadı. Bağlantını kontrol edip tekrar dene.',
-            'Purchase could not be verified yet. Check your connection and try again.',
-          );
+          _message = MotionAccountString.purchaseNotVerified;
         }
       });
     } catch (_) {
       if (!mounted || !_sameUser) return;
       setState(() {
         _busy = false;
-        _message = _t(
-          'Doğrulama şu anda kullanılamıyor. Tekrar dene veya satın almaları geri yükle.',
-          'Verification is unavailable. Try again or restore purchases.',
-        );
+        _message = MotionAccountString.verificationUnavailable;
       });
     }
   }
@@ -302,10 +270,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     }
     if (!mounted) return;
     setState(
-      () => _message = _t(
-        'Mağaza abonelik sayfası açılamadı.',
-        'Could not open the store subscription page.',
-      ),
+      () => _message = MotionAccountString.storeSubscriptionOpenFailed,
     );
   }
 
@@ -317,10 +282,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     }
     if (!mounted) return;
     setState(
-      () => _message = _t(
-        'Bağlantı açılamadı. Daha sonra tekrar dene.',
-        'Could not open the link. Try again later.',
-      ),
+      () => _message = MotionAccountString.linkOpenFailed,
     );
   }
 
@@ -330,14 +292,14 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
 
   Widget _offer(StoreProductRef offer) {
     final period = offer.planId == 'yearly'
-        ? _t('Yıllık', 'Yearly')
-        : _t('Aylık', 'Monthly');
+        ? _text(MotionAccountString.yearly)
+        : _text(MotionAccountString.monthly);
     return ListTile(
       title: Text(period),
       subtitle: Text(offer.localizedPrice),
       trailing: FilledButton(
         onPressed: _busy ? null : () => _buy(offer),
-        child: Text(_t('Seç', 'Choose')),
+        child: Text(_text(MotionAccountString.choose)),
       ),
     );
   }
@@ -346,7 +308,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   Widget build(BuildContext context) {
     final appName = _appId[0].toUpperCase() + _appId.substring(1);
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Üyelik', 'Membership'))),
+      appBar: AppBar(title: Text(_text(MotionAccountString.membershipTitle))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
@@ -354,35 +316,26 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
             if (_busy) const LinearProgressIndicator(),
             if (_message != null) ...[
               const SizedBox(height: 12),
-              Semantics(liveRegion: true, child: Text(_message!)),
+              Semantics(liveRegion: true, child: Text(_text(_message!))),
             ],
             if (!_sameUser)
               Text(
-                _t(
-                  'Önce Motion hesabına giriş yap.',
-                  'Sign in to your Motion account first.',
-                ),
+                _text(MotionAccountString.signInFirst),
               )
             else if (_active)
               Text(
-                _t(
-                  'Bu uygulamada üyeliğin aktif.',
-                  'Your membership is active in this app.',
-                ),
+                _text(MotionAccountString.yourMembershipActive),
               )
             else if (!_busy &&
                 (_anyActive
                     ? _offers.where((offer) => !_isMotionPlus(offer)).isEmpty
                     : _offers.isEmpty))
               Text(
-                _t(
-                  'Mağaza üyelikleri şu anda sunmuyor. Daha sonra tekrar dene.',
-                  'Store memberships are unavailable right now. Try again later.',
-                ),
+                _text(MotionAccountString.storeMembershipsUnavailable),
               )
             else ...[
               Text(
-                '$appName ${_t('üyeliği', 'membership')}',
+                MotionAccountLocalizations.of(context).membershipForApp(appName),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               Text(_currentBenefit()),
@@ -391,62 +344,47 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
               const SizedBox(height: 16),
               if (_anyActive)
                 Text(
-                  _t(
-                    'Başka bir Motion uygulamasında aktif aboneliğin var. Bu uygulamanın ayrı üyeliğini alabilirsin. Çift ödeme riskini önlemek için Motion+ seçeneği mevcut aboneliğin bitene kadar kapalı; aboneliğini mağazada yönet.',
-                    'You have a subscription in another Motion app. You can buy this app\'s separate membership. Motion+ is unavailable until the existing subscription ends to avoid overlapping charges; manage it in the store.',
-                  ),
+                  _text(MotionAccountString.otherSubscription),
                 )
               else ...[
                 Text('Motion+', style: Theme.of(context).textTheme.titleLarge),
                 Text(
-                  _t(
-                    'Beş Motion uygulamasındaki bugün açık olan canlı çalışmalara erişim. Gelecek dersler bu sürümde yok.',
-                    'Access the live practice currently available in all five Motion apps. Future lessons are not in this release.',
-                  ),
+                  _text(MotionAccountString.motionPlusBenefit),
                 ),
                 for (final offer in _offers.where(_isMotionPlus)) _offer(offer),
               ],
               const SizedBox(height: 12),
               Text(
-                _t(
-                  'Aylık veya yıllık paket, mağazada gösterilen tutardan iptal edilene kadar aynı dönemle otomatik yenilenir. İptali mağaza hesabından yönetebilirsin.',
-                  'Monthly or yearly plans renew automatically for the same period at the displayed store price until canceled. Manage cancellation in your store account.',
-                ),
+                _text(MotionAccountString.autoRenewTerms),
               ),
             ],
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: _busy || !_sameUser ? null : _restore,
-              child: Text(_t('Satın almaları geri yükle', 'Restore purchases')),
+              child: Text(_text(MotionAccountString.restorePurchases)),
             ),
             TextButton(
               onPressed: _busy ? null : _load,
-              child: Text(_t('Durumu yenile', 'Refresh status')),
+              child: Text(_text(MotionAccountString.refreshStatus)),
             ),
             TextButton(
               onPressed: _manage,
               child: Text(
-                _t(
-                  'Mağazada aboneliği yönet',
-                  'Manage subscription in the store',
-                ),
+                _text(MotionAccountString.manageInStore),
               ),
             ),
             TextButton(
               onPressed: () =>
                   _openLegal(Uri.parse('https://yulalab.com/terms')),
-              child: Text(_t('Kullanım şartları', 'Terms of Use')),
+              child: Text(_text(MotionAccountString.termsOfUse)),
             ),
             TextButton(
               onPressed: () =>
                   _openLegal(Uri.parse('https://yulalab.com/privacy/motion')),
-              child: Text(_t('Gizlilik politikası', 'Privacy Policy')),
+              child: Text(_text(MotionAccountString.privacyPolicyTitle)),
             ),
             Text(
-              _t(
-                'Abonelik seçtiğin dönemde otomatik yenilenir. Tutar ve para birimi mağazada gösterilir; iptal işlemi mağaza hesabından yapılır.',
-                'Subscriptions renew automatically for the selected period. The store shows the amount and currency; cancel from your store account.',
-              ),
+              _text(MotionAccountString.subscriptionDisclosure),
             ),
           ],
         ),

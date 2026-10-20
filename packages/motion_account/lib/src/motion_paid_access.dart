@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'motion_account_client.dart';
+import 'motion_account_localizations.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
 
@@ -14,13 +15,12 @@ Future<bool> requireMotionPaidAccess(
   bool paidFeaturesAvailable = motionPaidFeaturesAvailable,
 }) async {
   if (!paidFeaturesAvailable) {
-    final turkish = Localizations.maybeLocaleOf(context)?.languageCode == 'tr';
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(
-          turkish
-              ? 'Bu seans sonraki bir güncellemeyle açılacak.'
-              : 'This session will open in a future update.',
+          MotionAccountLocalizations.of(context).text(
+            MotionAccountString.futureSession,
+          ),
         ),
       ),
     );
@@ -42,14 +42,12 @@ Future<bool> requireMotionPaidAccess(
       return active;
     } catch (_) {
       if (context.mounted) {
-        final turkish =
-            Localizations.maybeLocaleOf(context)?.languageCode == 'tr';
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(
-              turkish
-                  ? 'Üyelik doğrulanamadı. Bağlantını kontrol edip tekrar dene.'
-                  : 'Membership could not be verified. Check your connection and retry.',
+              MotionAccountLocalizations.of(context).text(
+                MotionAccountString.membershipVerificationFailed,
+              ),
             ),
           ),
         );

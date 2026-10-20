@@ -211,3 +211,82 @@ handle is owned by fake UI teardown: unmount/pump, dispose once, then real SDK
 work drain. A count matcher accepts FinderBase<dynamic> in the selected cached
 SDK. These are source-backed preparation corrections, not compiler/test GREEN;
 V3 remains preserved with REVISE_PREPARATION_ONLY_UNRUN disposition.
+
+## Account copy and host locale integration
+
+The account, identity gate, recovery, deletion and membership surfaces use the
+exported `MotionAccountLocalizations` catalog. Its 82 typed
+`MotionAccountString` keys contain complete copy for `tr`, `en`, `es-419`,
+`pt-BR`, `de`, `fr`, `ja` and `ar`. `membershipForApp(String)` owns the named
+`{appName}` placeholder; do not concatenate translated membership fragments.
+Store-provided `localizedPrice` remains opaque text with its original amount and
+currency. Catalog completeness and placeholder parity do not establish native
+speaker, legal, screen reader, font or real-device acceptance.
+
+For a host that does not already own localization delegates and a resolver:
+
+```dart
+MaterialApp(
+  locale: selectedLocale,
+  supportedLocales: MotionAccountLocalizations.supportedLocales,
+  localizationsDelegates: MotionAccountLocalizations.delegates,
+  localeResolutionCallback:
+      MotionAccountLocalizations.localeResolutionCallback,
+  home: accountOrAppHome,
+)
+```
+
+Hosts with an existing app catalog keep their own locale selection and resolver;
+add `MotionAccountLocalizations.delegate` alongside their Material, Widgets and
+Cupertino delegates. The selected locale must be in the host's supported list.
+The Core lookup uses that inherited locale, including when the host has not
+registered the Core delegate. Existing constructors and TR/EN hosts remain valid.
+The optional Core resolver selects Latin American Spanish or Brazilian Portuguese
+for other variants of those languages and falls back to English for unsupported
+languages. A nonempty narrower host list is respected; it prefers English if the
+target is absent. Arabic direction comes from `GlobalWidgetsLocalizations`.
+
+The identity gate's nested blocker inherits the parent's selected locale; without
+a parent localization scope it resolves the platform locale. Open status/error
+messages retain typed keys and resolve during build. The retained deletion dialog
+looks up its own context, so changing locale or removing its account page does not
+make it use a disposed State. Paid sales stay disabled by the existing release
+policy. Deleting a common account still does not cancel Apple/Google subscriptions;
+the translated dialog preserves that separate store-account action.
+
+## Profile read and draft intent
+
+An untouched empty controller is not evidence that a remote profile is empty.
+`Save profile` stays disabled until a successful profile read, including a
+successful no-row/empty result, or an explicit edit. Editing and then clearing a
+name is explicit intent and remains saveable when a read is pending or fails.
+Read failure is visible with a separate `Retry profile` button; `Refresh account`
+continues to invoke the host's identity callback. A same-owner `userUpdated`
+event can retry the profile read while preserving dirty draft intent.
+
+Only this read has a ten-second UI deadline. Timeout exposes retry and cannot
+publish a late response. Superseding reads, save, owner change and disposal cancel
+the owned timer/local wait; they do not assert that the transport was aborted.
+The existing owner, request-generation and mounted checks reject late publication.
+A profile save captures the displayed user's ID and name. Its separate UI action
+generation/busy lifetime is retired on owner change: an old save success, error
+or finally block cannot change the new owner's draft, message or busy indicator.
+A retained save callback also checks the captured user before dispatch and the
+widget must still be mounted. This is form ownership, not server-side identity
+proof, transport cancellation or a backend write-isolation test.
+
+No generic timeout was added to sign-in, profile-save, recovery, deletion or store
+mutations. A timeout cannot establish whether a remote mutation happened. The
+remaining finite-action design requires per-action deadlines, transport abort
+capability, uncertain-outcome readback/idempotency semantics and the host's live
+owner/resource ticket across awaits. The existing identity-verification deadline
+does not bound total Auth/reconciliation time. These broader contracts, provider
+deployment and Choreia's readiness/owner seam require separate acceptance.
+
+The candidate adds `test/account_localizations_test.dart` and updates
+`test/profile_draft_test.dart`. Catalog/source checks using Python are not Flutter
+product tests. Compiler, formatter, analyzer and widget execution remain UNRUN
+until the execution coordinator grants its owner checkpoint. The current consumer
+Git pins and package caches are unchanged; local Core edits do not update the
+five apps or deployed packages. No dependency, SDK, SQL, migration, session-store,
+store configuration or package version change is part of this candidate.

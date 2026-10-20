@@ -5,8 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'motion_account_client.dart';
+import 'motion_account_localizations.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
+
+enum _ProfileReadState { idle, loading, ready, failed }
 
 /// A small account surface that inherits the host app's Material theme.
 ///
@@ -47,12 +50,22 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   bool _register = false;
   bool _recovering = false;
   bool _busy = false;
-  String? _message;
+  bool _profileSaveBusy = false;
+  int _profileSaveGeneration = 0;
+  MotionAccountString? _message;
   String? _lastUserId;
   int _profileRequestGeneration = 0;
   // Same-owner refreshes must retain local intent, including a saved draft.
   // Only an owner change starts a clean display-name field again.
   bool _displayNameEdited = false;
+  bool _profileReadSucceeded = false;
+  _ProfileReadState _profileReadState = _ProfileReadState.idle;
+  Timer? _profileReadTimer;
+  Completer<Map<String, dynamic>?>? _profileReadDeadline;
+  static const _profileReadTimeout = Duration(seconds: 10);
+
+  bool get _canSaveProfile => _displayNameEdited || _profileReadSucceeded;
+  bool get _isBusy => _busy || _profileSaveBusy;
 
   @override
   void initState() {
@@ -67,6 +80,12 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         final userId = widget.account.currentUser?.id;
         final accountChanged = userId != _lastUserId;
         _lastUserId = userId;
+        if (accountChanged) {
+          // A pending profile write belongs to the old form lifetime. Its
+          // eventual outcome cannot hold or publish into the new owner's UI.
+          _profileSaveGeneration++;
+          _profileSaveBusy = false;
+        }
         setState(() {
           if (state.event == AuthChangeEvent.passwordRecovery) {
             _recovering = true;
@@ -89,12 +108,11 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         // A refresh error is not a deletion or a new verified identity. Stop
         // publishing pending profile/membership observations; keep the form.
         _profileRequestGeneration++;
+        _cancelProfileRead();
         setState(() {
           _membership = null;
-          _message = _t(
-            'Hesabın yenilenemedi. Lütfen tekrar dene.',
-            'Could not refresh your account. Please retry.',
-          );
+          _profileReadState = _ProfileReadState.failed;
+          _message = MotionAccountString.accountRefreshFailed;
         });
       },
     );
@@ -110,6 +128,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
 
   @override
   void dispose() {
+    _profileSaveGeneration++;
+    _cancelProfileRead();
     _authSubscription?.cancel();
     _email.dispose();
     _password.dispose();
@@ -125,30 +145,72 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   }
 
   Future<void> _loadDisplayName({bool resetDraft = false}) async {
+    _cancelProfileRead();
     final generation = ++_profileRequestGeneration;
     final userId = widget.account.currentUser?.id;
     if (resetDraft || userId == null) {
       _displayNameEdited = false;
+      _profileReadSucceeded = false;
       _displayName.clear();
     }
     if (userId == null) {
+      _profileReadState = _ProfileReadState.idle;
       return;
     }
+    // The read has a UI deadline; it does not cancel the underlying transport
+    // or provide authority to roll back a remote mutation.
+    _profileReadState = _ProfileReadState.loading;
+    final deadline = Completer<Map<String, dynamic>?>();
+    _profileReadDeadline = deadline;
+    final timer = Timer(_profileReadTimeout, () {
+      deadline.completeError(TimeoutException('Profile read timed out'));
+    });
+    _profileReadTimer = timer;
     try {
-      final profile = await widget.account.loadProfile();
+      final profile = await Future.any([
+        Future<Map<String, dynamic>?>.sync(widget.account.loadProfile),
+        deadline.future,
+      ]);
       if (mounted &&
           generation == _profileRequestGeneration &&
-          !_displayNameEdited &&
           widget.account.currentUser?.id == userId) {
-        _displayName.text = profile?['display_name'] as String? ?? '';
+        setState(() {
+          if (!_displayNameEdited) {
+            _displayName.text = profile?['display_name'] as String? ?? '';
+          }
+          _profileReadSucceeded = true;
+          _profileReadState = _ProfileReadState.ready;
+        });
       }
     } catch (_) {
-      // The profile field stays editable when the network is unavailable.
+      if (mounted &&
+          generation == _profileRequestGeneration &&
+          widget.account.currentUser?.id == userId) {
+        // An unobserved blank field is not permission to overwrite a profile.
+        // Explicit user edits, including clearing a name, remain usable.
+        setState(() => _profileReadState = _ProfileReadState.failed);
+      }
+    } finally {
+      timer.cancel();
+      if (identical(_profileReadTimer, timer)) _profileReadTimer = null;
+      if (identical(_profileReadDeadline, deadline)) _profileReadDeadline = null;
     }
   }
 
-  String _t(String tr, String en) =>
-      Localizations.localeOf(context).languageCode == 'tr' ? tr : en;
+  void _cancelProfileRead() {
+    _profileReadTimer?.cancel();
+    _profileReadTimer = null;
+    final deadline = _profileReadDeadline;
+    _profileReadDeadline = null;
+    if (deadline != null && !deadline.isCompleted) {
+      // Settle only this local wait. Future.any still observes the transport's
+      // eventual result/error, while generation/owner/mounted reject publication.
+      deadline.completeError(StateError('Profile read superseded'));
+    }
+  }
+
+  String _text(MotionAccountString key) =>
+      MotionAccountLocalizations.of(context).text(key);
 
   Future<void> _openPrivacyPolicy() async {
     try {
@@ -163,10 +225,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     }
     if (!mounted) return;
     setState(() {
-      _message = _t(
-        'Gizlilik politikası açılamadı. Bağlantını ve tarayıcını kontrol et.',
-        'Could not open the privacy policy. Check your connection and browser.',
-      );
+      _message = MotionAccountString.privacyOpenFailed;
     });
   }
 
@@ -181,8 +240,11 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     setState(_refreshMembership);
   }
 
-  Future<void> _run(Future<void> Function() action, {String? success}) async {
-    if (_busy) return;
+  Future<void> _run(
+    Future<void> Function() action, {
+    MotionAccountString? success,
+  }) async {
+    if (_isBusy) return;
     setState(() {
       _busy = true;
       _message = null;
@@ -201,17 +263,47 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       if (!mounted) return;
       setState(() {
         _message = error is MotionLocalCleanupPending
-            ? _t(
-                'Motion hesabın silindi. Bu cihazdaki geçmiş şu anda temizlenemedi; uygulama çevrimiçi açıldığında yeniden denenecek.',
-                'Your Motion account was deleted. Local history could not be cleared now; cleanup will retry when the app opens online.',
-              )
-            : _t(
-                'İşlem tamamlanamadı. Bilgilerini ve bağlantını kontrol edip tekrar dene.',
-                'Could not complete the request. Check your details and connection, then retry.',
-              );
+            ? MotionAccountString.cleanupPending
+            : MotionAccountString.requestFailed;
       });
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _canPublishProfileSave(int generation, String userId) =>
+      mounted &&
+      generation == _profileSaveGeneration &&
+      widget.account.currentUser?.id == userId;
+
+  Future<void> _saveDisplayName(String userId) async {
+    // The button closure captures the user rendered by _profile. A retained
+    // callback from A is not authority to dispatch a write for current user B.
+    if (!mounted ||
+        _isBusy ||
+        !_canSaveProfile ||
+        widget.account.currentUser?.id != userId) return;
+    final generation = ++_profileSaveGeneration;
+    _displayNameEdited = true;
+    _profileRequestGeneration++;
+    _cancelProfileRead();
+    _profileReadState = _ProfileReadState.idle;
+    final displayName = _displayName.text;
+    setState(() {
+      _profileSaveBusy = true;
+      _message = null;
+    });
+    try {
+      await widget.account.saveDisplayName(displayName);
+      if (!_canPublishProfileSave(generation, userId)) return;
+      setState(() => _message = MotionAccountString.profileSaved);
+    } catch (_) {
+      if (!_canPublishProfileSave(generation, userId)) return;
+      setState(() => _message = MotionAccountString.requestFailed);
+    } finally {
+      if (_canPublishProfileSave(generation, userId)) {
+        setState(() => _profileSaveBusy = false);
+      }
     }
   }
 
@@ -221,14 +313,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         _password.text.isEmpty ||
         (_register && _password.text.length < 8)) {
       setState(() {
-        _message = _t(
-          _register
-              ? 'Geçerli e-posta ve en az 8 karakterli şifre gir.'
-              : 'E-posta ve şifreni gir.',
-          _register
-              ? 'Enter a valid email and a password of at least 8 characters.'
-              : 'Enter your email and password.',
-        );
+        _message = _register
+            ? MotionAccountString.invalidRegistration
+            : MotionAccountString.invalidCredentials;
       });
       return;
     }
@@ -237,10 +324,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         () async {
           await widget.account.signUp(email: email, password: _password.text);
         },
-        success: _t(
-          'Doğrulama e-postanı kontrol et. Ardından giriş yapabilirsin.',
-          'Check your verification email, then sign in.',
-        ),
+        success: MotionAccountString.verificationThenSignIn,
       );
       return;
     }
@@ -258,28 +342,20 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        String t(String tr, String en) =>
-            Localizations.localeOf(dialogContext).languageCode == 'tr' ? tr : en;
+        final strings = MotionAccountLocalizations.of(dialogContext);
         return AlertDialog(
-          title: Text(t('Motion hesabını sil', 'Delete Motion account')),
+          title: Text(strings.text(MotionAccountString.deleteMotionAccount)),
           content: Text(
-            t(
-              'Ortak hesabın ve beş uygulamadaki üyelik hakların silinir. '
-                  'Ardından bu uygulamadaki yerel geçmiş temizlenir. '
-                  'Mağaza aboneliğini Apple veya Google hesabından ayrıca iptal etmelisin.',
-              'This deletes your shared account and access in all five apps, '
-                  'then erases local history in this app. '
-                  'Cancel any store subscription separately in your Apple or Google account.',
-            ),
+            strings.text(MotionAccountString.deleteExplanation),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(t('Vazgeç', 'Cancel')),
+              child: Text(strings.text(MotionAccountString.cancel)),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(t('Hesabı sil', 'Delete account')),
+              child: Text(strings.text(MotionAccountString.confirmDeleteAccount)),
             ),
           ],
         );
@@ -300,16 +376,16 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   Widget build(BuildContext context) {
     final user = widget.account.currentUser;
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Motion hesabı', 'Motion account'))),
+      appBar: AppBar(title: Text(_text(MotionAccountString.accountTitle))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             if (_message != null) ...[
-              Semantics(liveRegion: true, child: Text(_message!)),
+              Semantics(liveRegion: true, child: Text(_text(_message!))),
               const SizedBox(height: 16),
             ],
-            if (_busy) const LinearProgressIndicator(),
+            if (_isBusy) const LinearProgressIndicator(),
             if (_recovering)
               _recoveryForm()
             else if (user == null)
@@ -319,7 +395,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
             const SizedBox(height: 16),
             TextButton(
               onPressed: _openPrivacyPolicy,
-              child: Text(_t('Gizlilik politikası', 'Privacy policy')),
+              child: Text(_text(MotionAccountString.privacyPolicy)),
             ),
           ],
         ),
@@ -332,8 +408,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     children: [
       Text(
         _register
-            ? _t('Hesap oluştur', 'Create account')
-            : _t('Giriş yap', 'Sign in'),
+            ? _text(MotionAccountString.createAccount)
+            : _text(MotionAccountString.signIn),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 16),
@@ -341,7 +417,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         controller: _email,
         keyboardType: TextInputType.emailAddress,
         autofillHints: const [AutofillHints.email],
-        decoration: InputDecoration(labelText: _t('E-posta', 'Email')),
+        decoration: InputDecoration(labelText: _text(MotionAccountString.email)),
       ),
       TextField(
         controller: _password,
@@ -349,19 +425,19 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         autofillHints: [
           _register ? AutofillHints.newPassword : AutofillHints.password,
         ],
-        decoration: InputDecoration(labelText: _t('Şifre', 'Password')),
+        decoration: InputDecoration(labelText: _text(MotionAccountString.password)),
       ),
       const SizedBox(height: 16),
       FilledButton(
-        onPressed: _busy ? null : _submitCredentials,
+        onPressed: _isBusy ? null : _submitCredentials,
         child: Text(
           _register
-              ? _t('Hesap oluştur', 'Create account')
-              : _t('Giriş yap', 'Sign in'),
+              ? _text(MotionAccountString.createAccount)
+              : _text(MotionAccountString.signIn),
         ),
       ),
       TextButton(
-        onPressed: _busy
+        onPressed: _isBusy
             ? null
             : () => setState(() {
                 _register = !_register;
@@ -369,40 +445,31 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
               }),
         child: Text(
           _register
-              ? _t('Zaten hesabım var', 'I already have an account')
-              : _t('Yeni hesap oluştur', 'Create a new account'),
+              ? _text(MotionAccountString.alreadyHaveAccount)
+              : _text(MotionAccountString.newAccount),
         ),
       ),
       if (_register)
         TextButton(
-          onPressed: _busy
+          onPressed: _isBusy
               ? null
               : () => _run(
                   () => widget.account.resendConfirmation(_email.text),
-                  success: _t(
-                    'Doğrulama e-postanı kontrol et.',
-                    'Check your verification email.',
-                  ),
+                  success: MotionAccountString.verificationEmail,
                 ),
           child: Text(
-            _t(
-              'Doğrulama e-postasını yeniden gönder',
-              'Resend verification email',
-            ),
+            _text(MotionAccountString.resendVerification),
           ),
         ),
       if (!_register)
         TextButton(
-          onPressed: _busy
+          onPressed: _isBusy
               ? null
               : () => _run(
                   () => widget.account.sendPasswordReset(_email.text),
-                  success: _t(
-                    'Şifre sıfırlama e-postanı kontrol et.',
-                    'Check your password reset email.',
-                  ),
+                  success: MotionAccountString.passwordResetEmail,
                 ),
-          child: Text(_t('Şifremi unuttum', 'Forgot password')),
+          child: Text(_text(MotionAccountString.forgotPassword)),
         ),
     ],
   );
@@ -411,26 +478,23 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        _t('Yeni şifre', 'New password'),
+        _text(MotionAccountString.newPassword),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       TextField(
         controller: _password,
         obscureText: true,
         decoration: InputDecoration(
-          labelText: _t('Yeni şifre', 'New password'),
+          labelText: _text(MotionAccountString.newPassword),
         ),
       ),
       FilledButton(
-        onPressed: _busy
+        onPressed: _isBusy
             ? null
             : () {
                 if (_password.text.length < 8) {
                   setState(
-                    () => _message = _t(
-                      'En az 8 karakterli yeni şifre gir.',
-                      'Enter a new password of at least 8 characters.',
-                    ),
+                    () => _message = MotionAccountString.invalidNewPassword,
                   );
                   return;
                 }
@@ -439,7 +503,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
                   if (mounted) setState(() => _recovering = false);
                 });
               },
-        child: Text(_t('Şifreyi kaydet', 'Save password')),
+        child: Text(_text(MotionAccountString.savePassword)),
       ),
     ],
   );
@@ -451,26 +515,39 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       const SizedBox(height: 12),
       TextField(
         controller: _displayName,
-        onChanged: (_) => _displayNameEdited = true,
+        onChanged: (_) => setState(() => _displayNameEdited = true),
         decoration: InputDecoration(
-          labelText: _t('Görünen ad', 'Display name'),
+          labelText: _text(MotionAccountString.displayName),
         ),
       ),
+      if (_profileReadState == _ProfileReadState.loading)
+        Semantics(
+          liveRegion: true,
+          child: Text(_text(MotionAccountString.profileLoading)),
+        ),
+      if (_profileReadState == _ProfileReadState.failed) ...[
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            _text(MotionAccountString.profileReadFailed),
+          ),
+        ),
+        TextButton(
+          onPressed: _isBusy
+              ? null
+              : () {
+                  setState(() {
+                    _loadDisplayName();
+                  });
+                },
+          child: Text(_text(MotionAccountString.retryProfile)),
+        ),
+      ],
       FilledButton.tonal(
-        onPressed: _busy
+        onPressed: _isBusy || !_canSaveProfile
             ? null
-            : () {
-                // Saving is explicit draft intent even when the field is empty
-                // and the initial profile read has not finished yet.
-                _displayNameEdited = true;
-                _profileRequestGeneration++;
-                final displayName = _displayName.text;
-                _run(
-                  () => widget.account.saveDisplayName(displayName),
-                  success: _t('Profil kaydedildi.', 'Profile saved.'),
-                );
-              },
-        child: Text(_t('Profili kaydet', 'Save profile')),
+            : () => _saveDisplayName(user.id),
+        child: Text(_text(MotionAccountString.saveProfile)),
       ),
       const SizedBox(height: 16),
       if (widget.paidFeaturesAvailable)
@@ -478,52 +555,46 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           future: _membership,
           builder: (context, snapshot) => Text(
             snapshot.hasError
-                ? _t('Üyelik durumu alınamadı.', 'Membership unavailable.')
+                ? _text(MotionAccountString.membershipUnavailable)
                 : !snapshot.hasData
-                ? _t('Üyelik kontrol ediliyor…', 'Checking membership…')
+                ? _text(MotionAccountString.membershipChecking)
                 : snapshot.data!
-                ? _t(
-                    'Bu uygulamada üyelik aktif.',
-                    'Membership active in this app.',
-                  )
-                : _t(
-                    'Bu uygulamada aktif üyelik yok.',
-                    'No active membership in this app.',
-                  ),
+                ? _text(MotionAccountString.membershipActiveInApp)
+                : _text(MotionAccountString.noMembershipInApp),
           ),
         ),
       if (widget.paidFeaturesAvailable)
         FilledButton.tonal(
-          onPressed: _busy ? null : _openMembership,
-          child: Text(_t('Üyelik seçenekleri', 'Membership options')),
+          onPressed: _isBusy ? null : _openMembership,
+          child: Text(_text(MotionAccountString.membershipOptions)),
         ),
       TextButton(
-        onPressed: _busy
+        onPressed: _isBusy
             ? null
             : () => _run(() async {
                 await widget.onRetryIdentity?.call();
               }),
         child: Text(
           widget.paidFeaturesAvailable
-              ? _t('Hesabı ve üyeliği yenile', 'Refresh account and membership')
-              : _t('Hesabı yenile', 'Refresh account'),
+              ? _text(MotionAccountString.refreshAccountAndMembership)
+              : _text(MotionAccountString.refreshAccount),
         ),
       ),
       if (widget.onManageSubscription != null)
         TextButton(
           onPressed: widget.onManageSubscription,
           child: Text(
-            _t('Mağaza aboneliğini yönet', 'Manage store subscription'),
+            _text(MotionAccountString.manageStoreSubscription),
           ),
         ),
       OutlinedButton(
-        onPressed: _busy ? null : () => _run(widget.account.signOut),
-        child: Text(_t('Çıkış yap', 'Sign out')),
+        onPressed: _isBusy ? null : () => _run(widget.account.signOut),
+        child: Text(_text(MotionAccountString.signOut)),
       ),
       if (widget.clearLocalData != null)
         TextButton(
-          onPressed: _busy ? null : _confirmDeletion,
-          child: Text(_t('Motion hesabını sil', 'Delete Motion account')),
+          onPressed: _isBusy ? null : _confirmDeletion,
+          child: Text(_text(MotionAccountString.deleteMotionAccount)),
         ),
     ],
   );

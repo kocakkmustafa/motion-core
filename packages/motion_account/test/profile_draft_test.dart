@@ -13,11 +13,15 @@ void main() {
     await _pumpAccount(tester, account);
 
     expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNull);
+    expect(find.text('Loading profile…'), findsOneWidget);
     expect(account.profileReads.single.userId, 'user-a');
     account.profileReads.single.complete('Alice from server');
     await tester.pump();
 
     expect(_displayName(tester), 'Alice from server');
+    expect(_saveButton(tester).onPressed, isNotNull);
+    expect(find.text('Loading profile…'), findsNothing);
     expect(account.profileSaves, isEmpty);
     expect(tester.takeException(), isNull);
   });
@@ -29,6 +33,7 @@ void main() {
     await _pumpAccount(tester, account);
 
     await tester.enterText(_displayNameField, 'My draft');
+    await tester.pump();
     account.profileReads.single.complete('Old server name');
     await tester.pump();
 
@@ -44,7 +49,10 @@ void main() {
     await _pumpAccount(tester, account);
 
     await tester.enterText(_displayNameField, 'Temporary draft');
+    await tester.pump();
     await tester.enterText(_displayNameField, '');
+    await tester.pump();
+    expect(_saveButton(tester).onPressed, isNotNull);
     account.profileReads.single.complete('Old server name');
     await tester.pump();
 
@@ -60,6 +68,7 @@ void main() {
     await _pumpAccount(tester, account);
 
     await tester.enterText(_displayNameField, 'Saved draft');
+    await tester.pump();
     await tester.tap(find.text('Save profile'));
     await tester.pump();
 
@@ -82,31 +91,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('saving an untouched empty field invalidates the pending read', (
+  testWidgets('an untouched empty field cannot save before a successful read', (
     tester,
   ) async {
     final account = _DelayedProfileAccount();
     await _pumpAccount(tester, account);
 
-    // No enterText: Save itself must express intent before the initial GET.
+    // No enterText: an empty controller is not evidence of the remote name.
+    expect(_saveButton(tester).onPressed, isNull);
     await tester.tap(find.text('Save profile'));
     await tester.pump();
-
-    final save = account.profileSaves.single;
-    expect(save.userId, 'user-a');
-    expect(save.displayName, isEmpty);
+    expect(account.profileSaves, isEmpty);
 
     account.profileReads.single.complete('Old server name');
     await tester.pump();
-    expect(_displayName(tester), isEmpty);
-    expect(save.displayName, isEmpty);
-    expect(account.profileSaves, hasLength(1));
-
-    save.complete();
-    await tester.pump();
-    expect(_displayName(tester), isEmpty);
-    expect(find.text('Profile saved.'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(_displayName(tester), 'Old server name');
+    expect(_saveButton(tester).onPressed, isNotNull);
+    expect(account.profileSaves, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
@@ -119,9 +120,11 @@ void main() {
     account.profileReads.single.fail();
     await tester.pump();
     expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNull);
     expect(tester.takeException(), isNull);
 
     await tester.enterText(_displayNameField, 'Offline draft');
+    await tester.pump();
     account.notifyUserUpdated();
     await tester.pump();
 
@@ -144,6 +147,7 @@ void main() {
 
     final firstRead = account.profileReads.single;
     await tester.enterText(_displayNameField, 'Alice draft');
+    await tester.pump();
     account.switchTo('user-b');
     await tester.pump();
 
@@ -151,6 +155,7 @@ void main() {
     expect(account.profileReads.last.userId, 'user-b');
     // B is still loading: A's draft must already have disappeared.
     expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNull);
 
     account.profileReads.last.complete('Bob from server');
     await tester.pump();
@@ -170,10 +175,15 @@ void main() {
   ) async {
     final account = _DelayedProfileAccount();
     await _pumpAccount(tester, account);
+    await tester.enterText(_displayNameField, 'Disposed draft');
+    await tester.pump();
+    final retainedSave = _saveButton(tester).onPressed!;
 
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: Text('REPLACEMENT_PAGE'))),
     );
+    await tester.pump(const Duration(seconds: 11));
+    retainedSave();
     account.profileReads.single.complete('Late server name');
     await tester.pump();
 
@@ -183,6 +193,190 @@ void main() {
     expect(account.profileSaves, isEmpty);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('an initial read error needs a read or edit before saving', (
+    tester,
+  ) async {
+    final account = _DelayedProfileAccount();
+    await _pumpAccount(tester, account);
+    account.profileReads.single.fail();
+    await tester.pump();
+
+    expect(_saveButton(tester).onPressed, isNull);
+    expect(
+      find.text('Could not load your profile. Retry or edit your display name.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Save profile'));
+    expect(account.profileSaves, isEmpty);
+
+    await tester.tap(find.text('Retry profile'));
+    await tester.pump();
+    expect(account.profileReads, hasLength(2));
+    expect(_saveButton(tester).onPressed, isNull);
+    account.profileReads.last.complete('');
+    await tester.pump();
+
+    // A successful empty profile is different from an unobserved empty form.
+    expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNotNull);
+    expect(find.text('Retry profile'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('profile timeout exposes retry and rejects the late response', (
+    tester,
+  ) async {
+    final account = _DelayedProfileAccount();
+    await _pumpAccount(tester, account);
+    final timedOutRead = account.profileReads.single;
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    expect(find.text('Loading profile…'), findsNothing);
+    expect(find.text('Retry profile'), findsOneWidget);
+    expect(_saveButton(tester).onPressed, isNull);
+
+    timedOutRead.complete('Too late');
+    await tester.pump();
+    expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNull);
+
+    await tester.tap(find.text('Retry profile'));
+    await tester.pump();
+    expect(account.profileReads, hasLength(2));
+    account.profileReads.last.complete('Fresh profile');
+    await tester.pump();
+    expect(_displayName(tester), 'Fresh profile');
+    expect(_saveButton(tester).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Refresh account and Retry profile perform distinct actions', (
+    tester,
+  ) async {
+    final account = _DelayedProfileAccount();
+    var identityRefreshes = 0;
+    await _pumpAccount(
+      tester,
+      account,
+      onRetryIdentity: () async {
+        identityRefreshes++;
+      },
+    );
+    account.profileReads.single.fail();
+    await tester.pump();
+
+    await tester.tap(find.text('Refresh account'));
+    await tester.pump();
+    expect(identityRefreshes, 1);
+    expect(account.profileReads, hasLength(1));
+    expect(find.text('Retry profile'), findsOneWidget);
+
+    await tester.tap(find.text('Retry profile'));
+    await tester.pump();
+    expect(identityRefreshes, 1);
+    expect(account.profileReads, hasLength(2));
+    account.profileReads.last.complete('Retried profile');
+    await tester.pump();
+    expect(_displayName(tester), 'Retried profile');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed saving preserves an explicitly cleared draft', (
+    tester,
+  ) async {
+    final account = _DelayedProfileAccount();
+    await _pumpAccount(tester, account);
+    await tester.enterText(_displayNameField, 'Temporary draft');
+    await tester.pump();
+    await tester.enterText(_displayNameField, '');
+    await tester.pump();
+    await tester.tap(find.text('Save profile'));
+    await tester.pump();
+    final save = account.profileSaves.single;
+    expect(save.displayName, isEmpty);
+
+    account.profileReads.single.complete('Old remote name');
+    save.fail();
+    await tester.pump();
+    expect(_displayName(tester), isEmpty);
+    expect(_saveButton(tester).onPressed, isNotNull);
+    expect(
+      find.text(
+        'Could not complete the request. Check your details and connection, then retry.',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'old-owner save ${fails ? 'error' : 'success'} cannot publish into a new save',
+      (tester) async {
+        final account = _DelayedProfileAccount();
+        await _pumpAccount(tester, account);
+        account.profileReads.single.complete('Alice');
+        await tester.pump();
+        await tester.enterText(_displayNameField, 'Alice saved draft');
+        await tester.pump();
+        final retainedAliceSave = _saveButton(tester).onPressed!;
+        await tester.tap(find.text('Save profile'));
+        await tester.pump();
+        final aliceSave = account.profileSaves.single;
+        expect(aliceSave.userId, 'user-a');
+        expect(aliceSave.displayName, 'Alice saved draft');
+
+        account.switchTo('user-b');
+        await tester.pump();
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(_displayName(tester), isEmpty);
+        account.profileReads.last.complete('Bob');
+        await tester.pump();
+        // B is now saveable and idle: only the captured owner fence can reject
+        // A's formerly enabled callback, rather than the read/busy guards.
+        expect(_saveButton(tester).onPressed, isNotNull);
+        retainedAliceSave();
+        expect(account.profileSaves, hasLength(1));
+        expect(_displayName(tester), 'Bob');
+        await tester.enterText(_displayNameField, 'Bob saved draft');
+        await tester.pump();
+        await tester.tap(find.text('Save profile'));
+        await tester.pump();
+        final bobSave = account.profileSaves.last;
+        expect(account.profileSaves, hasLength(2));
+        expect(bobSave.userId, 'user-b');
+        expect(bobSave.displayName, 'Bob saved draft');
+
+        if (fails) {
+          aliceSave.fail();
+        } else {
+          aliceSave.complete();
+        }
+        await tester.pump();
+        expect(_displayName(tester), 'Bob saved draft');
+        expect(_saveButton(tester).onPressed, isNull);
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        expect(find.text('Profile saved.'), findsNothing);
+        expect(
+          find.text(
+            'Could not complete the request. Check your details and connection, then retry.',
+          ),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+
+        bobSave.complete();
+        await tester.pump();
+        expect(_displayName(tester), 'Bob saved draft');
+        expect(_saveButton(tester).onPressed, isNotNull);
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(find.text('Profile saved.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
 
 Finder get _displayNameField => find.widgetWithText(TextField, 'Display name');
@@ -190,10 +384,14 @@ Finder get _displayNameField => find.widgetWithText(TextField, 'Display name');
 String _displayName(WidgetTester tester) =>
     tester.widget<TextField>(_displayNameField).controller!.text;
 
+FilledButton _saveButton(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save profile'));
+
 Future<void> _pumpAccount(
   WidgetTester tester,
-  _DelayedProfileAccount account,
-) async {
+  _DelayedProfileAccount account, {
+  Future<void> Function()? onRetryIdentity,
+}) async {
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());
     await account.dispose();
@@ -204,6 +402,7 @@ Future<void> _pumpAccount(
       home: MotionAccountPage(
         account: account,
         paidFeaturesAvailable: false,
+        onRetryIdentity: onRetryIdentity,
       ),
     ),
   );
@@ -290,6 +489,8 @@ class _ProfileSave {
   final result = Completer<void>();
 
   void complete() => result.complete();
+
+  void fail() => result.completeError(StateError('Save unavailable'));
 }
 
 class _ProfileSupabase implements SupabaseClient {
