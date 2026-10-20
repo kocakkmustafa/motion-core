@@ -106,8 +106,18 @@ void main() {
     account.profileReads.single.complete('Old server name');
     await tester.pump();
     expect(_displayName(tester), 'Old server name');
+    // The completed read changes the controller during the microtask flush.
+    // Observe the next built button as well as the controller's immediate text.
+    await tester.pump();
     expect(_saveButton(tester).onPressed, isNotNull);
     expect(account.profileSaves, isEmpty);
+    await tester.tap(find.text('Save profile'));
+    await tester.pump();
+    expect(account.profileSaves.single.userId, 'user-a');
+    expect(account.profileSaves.single.displayName, 'Old server name');
+    account.profileSaves.single.complete();
+    await tester.pump();
+    expect(find.text('Profile saved.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
