@@ -130,6 +130,20 @@ class MotionAccountLocalizations {
         _ => const Locale('en'),
       };
 
+  /// Resolve ordered device/host preferences, skipping unsupported languages.
+  /// Explicit parent Localizations or the gate's locale takes precedence.
+  static Locale localeListResolutionCallback(
+    List<Locale>? requested,
+    Iterable<Locale> supported,
+  ) {
+    for (final locale in requested ?? const <Locale>[]) {
+      if (supportedLocales.any((item) => item.languageCode == locale.languageCode)) {
+        return localeResolutionCallback(locale, supported);
+      }
+    }
+    return localeResolutionCallback(null, supported);
+  }
+
   /// Optional MaterialApp callback. It never returns a locale the host omitted.
   static Locale localeResolutionCallback(
     Locale? requested,

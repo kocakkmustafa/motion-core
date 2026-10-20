@@ -17,21 +17,54 @@ class MotionIdentityGate extends StatelessWidget {
     super.key,
     required this.runtime,
     required this.child,
+    this.theme,
+    this.darkTheme,
+    this.themeMode,
+    this.locale,
+    this.preferredLocales,
   });
 
   final MotionAccountRuntime runtime;
   final Widget child;
 
+  /// Presentation of the loading/recovery surface. With no explicit theme,
+  /// inherit the effective parent Theme without rebinding identity or child.
+  final ThemeData? theme;
+  final ThemeData? darkTheme;
+  final ThemeMode? themeMode;
+  final Locale? locale;
+  final List<Locale>? preferredLocales;
+
   @override
-  Widget build(BuildContext context) =>
-      _MotionIdentityGateBody(runtime: runtime, child: child);
+  Widget build(BuildContext context) => _MotionIdentityGateBody(
+    runtime: runtime,
+    theme: theme,
+    darkTheme: darkTheme,
+    themeMode: themeMode,
+    locale: locale,
+    preferredLocales: preferredLocales,
+    child: child,
+  );
 }
 
 class _MotionIdentityGateBody extends StatefulWidget {
-  const _MotionIdentityGateBody({required this.runtime, required this.child});
+  const _MotionIdentityGateBody({
+    required this.runtime,
+    required this.child,
+    this.theme,
+    this.darkTheme,
+    this.themeMode,
+    this.locale,
+    this.preferredLocales,
+  });
 
   final MotionAccountRuntime runtime;
   final Widget child;
+  final ThemeData? theme;
+  final ThemeData? darkTheme;
+  final ThemeMode? themeMode;
+  final Locale? locale;
+  final List<Locale>? preferredLocales;
 
   @override
   State<_MotionIdentityGateBody> createState() =>
@@ -269,9 +302,16 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
             (phase == MotionIdentityPhase.verified &&
                 !runtime.isCurrentSessionVerified));
     return MaterialApp(
+      theme: widget.theme ?? Theme.of(parentContext),
+      darkTheme: widget.darkTheme,
+      themeMode: widget.themeMode,
       locale: MotionAccountLocalizations.localeFor(
-        Localizations.maybeLocaleOf(parentContext) ??
-            WidgetsBinding.instance.platformDispatcher.locale,
+        widget.locale ?? Localizations.maybeLocaleOf(parentContext) ??
+            MotionAccountLocalizations.localeListResolutionCallback(
+              widget.preferredLocales ??
+                  WidgetsBinding.instance.platformDispatcher.locales,
+              MotionAccountLocalizations.supportedLocales,
+            ),
       ),
       supportedLocales: MotionAccountLocalizations.supportedLocales,
       localizationsDelegates: MotionAccountLocalizations.delegates,

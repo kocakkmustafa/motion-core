@@ -290,3 +290,19 @@ until the execution coordinator grants its owner checkpoint. The current consume
 Git pins and package caches are unchanged; local Core edits do not update the
 five apps or deployed packages. No dependency, SDK, SQL, migration, session-store,
 store configuration or package version change is part of this candidate.
+
+
+### Identity gate appearance and host locale
+
+`MotionIdentityGate` accepts optional `theme`, `darkTheme`, and `themeMode`
+for its loading/recovery MaterialApp. Without `theme`, it inherits the effective
+parent `Theme`. Optional `locale` wins over parent `Localizations`; otherwise
+`preferredLocales` (or the full device preference list) selects the first
+supported language. `MotionAccountLocalizations.localeListResolutionCallback`
+exposes the same ordered resolution to hosts. Presentation updates do not own
+identity/admission tickets or change the retained child key.
+
+This local follow-up is separate from published commit `8f38158e`; consumers
+must adopt an exact remote commit and run their own regressions. Fourteen-locale
+copy is a separate pending catalog checkpoint, not part of the eight-locale
+publication or a live-auth/device acceptance claim.
