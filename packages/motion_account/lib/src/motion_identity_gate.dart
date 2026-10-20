@@ -23,10 +23,8 @@ class MotionIdentityGate extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => _MotionIdentityGateBody(
-    runtime: runtime,
-    child: child,
-  );
+  Widget build(BuildContext context) =>
+      _MotionIdentityGateBody(runtime: runtime, child: child);
 }
 
 class _MotionIdentityGateBody extends StatefulWidget {
@@ -36,7 +34,8 @@ class _MotionIdentityGateBody extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_MotionIdentityGateBody> createState() => _MotionIdentityGateBodyState();
+  State<_MotionIdentityGateBody> createState() =>
+      _MotionIdentityGateBodyState();
 }
 
 class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
@@ -75,7 +74,9 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
   }
 
   bool _isBound(MotionAccountRuntime runtime) =>
-      !_closed && mounted && identical(runtime, _boundRuntime) &&
+      !_closed &&
+      mounted &&
+      identical(runtime, _boundRuntime) &&
       identical(runtime, widget.runtime);
 
   void _bind(MotionAccountRuntime runtime) {
@@ -135,7 +136,9 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
     if (!_isBound(runtime) || runtime.isDisposed) return;
     final actual = runtime.account.supabase.auth.currentSession;
     if (!identical(state.session, actual)) {
-      _changed(runtime); // Recompute live owner, never assign a stale event owner.
+      _changed(
+        runtime,
+      ); // Recompute live owner, never assign a stale event owner.
       return;
     }
     final distinct = !identical(actual, _handledSession);
@@ -204,7 +207,8 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
     }
     if (!_ready || _retirementFrame != null) return;
     if (_retainedChild == null) {
-      _scopeOwner = actual?.user.id; // null is a separately admitted guest scope.
+      _scopeOwner =
+          actual?.user.id; // null is a separately admitted guest scope.
       _slotKey = UniqueKey();
     }
     // Never hand new account-private configuration to an unverified retained
@@ -223,7 +227,8 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
           !runtime.isPasswordRecovery;
     }
     return runtime.phase.value == MotionIdentityPhase.verified &&
-        runtime.isCurrentSessionVerified && identical(actual, _handledSession);
+        runtime.isCurrentSessionVerified &&
+        identical(actual, _handledSession);
     // Unknown eventless same-UUID replacement is deliberately not classified
     // from UUID/proof alone. The host resets its ticket key or uses its adapter.
   }
@@ -233,7 +238,8 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
     _synchronize();
     final ready = _ready && _retainedChild != null;
     return Stack(
-      alignment: Alignment.topLeft, // Also supports top-level runApp without Directionality.
+      alignment: Alignment
+          .topLeft, // Also supports top-level runApp without Directionality.
       fit: StackFit.expand,
       children: [
         Offstage(
@@ -256,7 +262,9 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
   Widget _blocker(BuildContext parentContext) {
     final runtime = _boundRuntime;
     final phase = runtime.phase.value;
-    final pending = !runtime.isDisposed && !_authUnavailable &&
+    final pending =
+        !runtime.isDisposed &&
+        !_authUnavailable &&
         (phase == MotionIdentityPhase.verifying ||
             (phase == MotionIdentityPhase.verified &&
                 !runtime.isCurrentSessionVerified));
@@ -286,25 +294,31 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                         Text(strings.text(MotionAccountString.checkingAccount)),
                       ] else ...[
                         Text(
-                          strings.text(MotionAccountString.accountVerificationFailed),
+                          strings.text(
+                            MotionAccountString.accountVerificationFailed,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         if (!runtime.isDisposed) ...[
                           const SizedBox(height: 16),
                           FilledButton(
                             onPressed: () async {
-                              if (!_isBound(runtime) || runtime.isDisposed) return;
+                              if (!_isBound(runtime) || runtime.isDisposed)
+                                return;
                               try {
                                 await runtime.refreshIdentity();
                               } catch (_) {
                                 // Keep admission closed while retry is unavailable.
                               }
                             },
-                            child: Text(strings.text(MotionAccountString.retry)),
+                            child: Text(
+                              strings.text(MotionAccountString.retry),
+                            ),
                           ),
                           TextButton(
                             onPressed: () async {
-                              if (!_isBound(runtime) || runtime.isDisposed) return;
+                              if (!_isBound(runtime) || runtime.isDisposed)
+                                return;
                               final recovery = Object();
                               _guestRecovery = recovery;
                               try {
@@ -312,11 +326,19 @@ class _MotionIdentityGateBodyState extends State<_MotionIdentityGateBody> {
                                 // Only this explicit, successfully completed guest
                                 // action can recover a stream failure. A null auth
                                 // event alone is not successful sign-out proof.
-                                if (!_isBound(runtime) || runtime.isDisposed ||
+                                if (!_isBound(runtime) ||
+                                    runtime.isDisposed ||
                                     !identical(_guestRecovery, recovery) ||
-                                    runtime.account.supabase.auth.currentSession != null ||
-                                    runtime.phase.value != MotionIdentityPhase.signedOut ||
-                                    runtime.isPasswordRecovery) return;
+                                    runtime
+                                            .account
+                                            .supabase
+                                            .auth
+                                            .currentSession !=
+                                        null ||
+                                    runtime.phase.value !=
+                                        MotionIdentityPhase.signedOut ||
+                                    runtime.isPasswordRecovery)
+                                  return;
                                 _guestRecovery = null;
                                 _authUnavailable = false;
                                 _changed(runtime);

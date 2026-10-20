@@ -219,9 +219,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   Future<void> _handleUpdate(StorePurchaseUpdate update) async {
     if (!mounted || !_sameUser) return;
     if (update.kind == StorePurchaseKind.pending) {
-      setState(
-        () => _message = MotionAccountString.waitingStore,
-      );
+      setState(() => _message = MotionAccountString.waitingStore);
       return;
     }
     if (update.kind == StorePurchaseKind.canceled ||
@@ -269,9 +267,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       // The store app or a browser may be unavailable on this device.
     }
     if (!mounted) return;
-    setState(
-      () => _message = MotionAccountString.storeSubscriptionOpenFailed,
-    );
+    setState(() => _message = MotionAccountString.storeSubscriptionOpenFailed);
   }
 
   Future<void> _openLegal(Uri uri) async {
@@ -281,9 +277,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       // Browser availability is outside the purchase flow.
     }
     if (!mounted) return;
-    setState(
-      () => _message = MotionAccountString.linkOpenFailed,
-    );
+    setState(() => _message = MotionAccountString.linkOpenFailed);
   }
 
   bool _isMotionPlus(StoreProductRef offer) =>
@@ -319,23 +313,19 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
               Semantics(liveRegion: true, child: Text(_text(_message!))),
             ],
             if (!_sameUser)
-              Text(
-                _text(MotionAccountString.signInFirst),
-              )
+              Text(_text(MotionAccountString.signInFirst))
             else if (_active)
-              Text(
-                _text(MotionAccountString.yourMembershipActive),
-              )
+              Text(_text(MotionAccountString.yourMembershipActive))
             else if (!_busy &&
                 (_anyActive
                     ? _offers.where((offer) => !_isMotionPlus(offer)).isEmpty
                     : _offers.isEmpty))
-              Text(
-                _text(MotionAccountString.storeMembershipsUnavailable),
-              )
+              Text(_text(MotionAccountString.storeMembershipsUnavailable))
             else ...[
               Text(
-                MotionAccountLocalizations.of(context).membershipForApp(appName),
+                MotionAccountLocalizations.of(
+                  context,
+                ).membershipForApp(appName),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               Text(_currentBenefit()),
@@ -343,20 +333,14 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
                 _offer(offer),
               const SizedBox(height: 16),
               if (_anyActive)
-                Text(
-                  _text(MotionAccountString.otherSubscription),
-                )
+                Text(_text(MotionAccountString.otherSubscription))
               else ...[
                 Text('Motion+', style: Theme.of(context).textTheme.titleLarge),
-                Text(
-                  _text(MotionAccountString.motionPlusBenefit),
-                ),
+                Text(_text(MotionAccountString.motionPlusBenefit)),
                 for (final offer in _offers.where(_isMotionPlus)) _offer(offer),
               ],
               const SizedBox(height: 12),
-              Text(
-                _text(MotionAccountString.autoRenewTerms),
-              ),
+              Text(_text(MotionAccountString.autoRenewTerms)),
             ],
             const SizedBox(height: 16),
             OutlinedButton(
@@ -369,9 +353,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
             ),
             TextButton(
               onPressed: _manage,
-              child: Text(
-                _text(MotionAccountString.manageInStore),
-              ),
+              child: Text(_text(MotionAccountString.manageInStore)),
             ),
             TextButton(
               onPressed: () =>
@@ -383,9 +365,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
                   _openLegal(Uri.parse('https://yulalab.com/privacy/motion')),
               child: Text(_text(MotionAccountString.privacyPolicyTitle)),
             ),
-            Text(
-              _text(MotionAccountString.subscriptionDisclosure),
-            ),
+            Text(_text(MotionAccountString.subscriptionDisclosure)),
           ],
         ),
       ),

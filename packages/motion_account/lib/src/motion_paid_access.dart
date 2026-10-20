@@ -18,9 +18,9 @@ Future<bool> requireMotionPaidAccess(
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(
-          MotionAccountLocalizations.of(context).text(
-            MotionAccountString.futureSession,
-          ),
+          MotionAccountLocalizations.of(
+            context,
+          ).text(MotionAccountString.futureSession),
         ),
       ),
     );
@@ -45,9 +45,9 @@ Future<bool> requireMotionPaidAccess(
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(
-              MotionAccountLocalizations.of(context).text(
-                MotionAccountString.membershipVerificationFailed,
-              ),
+              MotionAccountLocalizations.of(
+                context,
+              ).text(MotionAccountString.membershipVerificationFailed),
             ),
           ),
         );

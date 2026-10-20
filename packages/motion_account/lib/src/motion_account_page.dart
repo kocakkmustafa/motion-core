@@ -193,7 +193,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     } finally {
       timer.cancel();
       if (identical(_profileReadTimer, timer)) _profileReadTimer = null;
-      if (identical(_profileReadDeadline, deadline)) _profileReadDeadline = null;
+      if (identical(_profileReadDeadline, deadline))
+        _profileReadDeadline = null;
     }
   }
 
@@ -282,7 +283,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     if (!mounted ||
         _isBusy ||
         !_canSaveProfile ||
-        widget.account.currentUser?.id != userId) return;
+        widget.account.currentUser?.id != userId)
+      return;
     final generation = ++_profileSaveGeneration;
     _displayNameEdited = true;
     _profileRequestGeneration++;
@@ -320,12 +322,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       return;
     }
     if (_register) {
-      await _run(
-        () async {
-          await widget.account.signUp(email: email, password: _password.text);
-        },
-        success: MotionAccountString.verificationThenSignIn,
-      );
+      await _run(() async {
+        await widget.account.signUp(email: email, password: _password.text);
+      }, success: MotionAccountString.verificationThenSignIn);
       return;
     }
     await _run(
@@ -345,9 +344,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         final strings = MotionAccountLocalizations.of(dialogContext);
         return AlertDialog(
           title: Text(strings.text(MotionAccountString.deleteMotionAccount)),
-          content: Text(
-            strings.text(MotionAccountString.deleteExplanation),
-          ),
+          content: Text(strings.text(MotionAccountString.deleteExplanation)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -355,7 +352,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(strings.text(MotionAccountString.confirmDeleteAccount)),
+              child: Text(
+                strings.text(MotionAccountString.confirmDeleteAccount),
+              ),
             ),
           ],
         );
@@ -367,9 +366,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         !identical(account.supabase.auth.currentSession, initiatingSession) ||
         account.currentUser?.id != userId)
       return;
-    await _run(
-      () => account.deleteCommonAccount(afterRemoteDelete: clear),
-    );
+    await _run(() => account.deleteCommonAccount(afterRemoteDelete: clear));
   }
 
   @override
@@ -417,7 +414,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         controller: _email,
         keyboardType: TextInputType.emailAddress,
         autofillHints: const [AutofillHints.email],
-        decoration: InputDecoration(labelText: _text(MotionAccountString.email)),
+        decoration: InputDecoration(
+          labelText: _text(MotionAccountString.email),
+        ),
       ),
       TextField(
         controller: _password,
@@ -425,7 +424,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         autofillHints: [
           _register ? AutofillHints.newPassword : AutofillHints.password,
         ],
-        decoration: InputDecoration(labelText: _text(MotionAccountString.password)),
+        decoration: InputDecoration(
+          labelText: _text(MotionAccountString.password),
+        ),
       ),
       const SizedBox(height: 16),
       FilledButton(
@@ -457,9 +458,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
                   () => widget.account.resendConfirmation(_email.text),
                   success: MotionAccountString.verificationEmail,
                 ),
-          child: Text(
-            _text(MotionAccountString.resendVerification),
-          ),
+          child: Text(_text(MotionAccountString.resendVerification)),
         ),
       if (!_register)
         TextButton(
@@ -528,9 +527,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       if (_profileReadState == _ProfileReadState.failed) ...[
         Semantics(
           liveRegion: true,
-          child: Text(
-            _text(MotionAccountString.profileReadFailed),
-          ),
+          child: Text(_text(MotionAccountString.profileReadFailed)),
         ),
         TextButton(
           onPressed: _isBusy
@@ -583,9 +580,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       if (widget.onManageSubscription != null)
         TextButton(
           onPressed: widget.onManageSubscription,
-          child: Text(
-            _text(MotionAccountString.manageStoreSubscription),
-          ),
+          child: Text(_text(MotionAccountString.manageStoreSubscription)),
         ),
       OutlinedButton(
         onPressed: _isBusy ? null : () => _run(widget.account.signOut),

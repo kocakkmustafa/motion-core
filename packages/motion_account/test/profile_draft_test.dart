@@ -149,36 +149,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('switching owners clears a dirty draft and rejects the old read', (
-    tester,
-  ) async {
-    final account = _DelayedProfileAccount();
-    await _pumpAccount(tester, account);
+  testWidgets(
+    'switching owners clears a dirty draft and rejects the old read',
+    (tester) async {
+      final account = _DelayedProfileAccount();
+      await _pumpAccount(tester, account);
 
-    final firstRead = account.profileReads.single;
-    await tester.enterText(_displayNameField, 'Alice draft');
-    await tester.pump();
-    account.switchTo('user-b');
-    await tester.pump();
+      final firstRead = account.profileReads.single;
+      await tester.enterText(_displayNameField, 'Alice draft');
+      await tester.pump();
+      account.switchTo('user-b');
+      await tester.pump();
 
-    expect(account.profileReads, hasLength(2));
-    expect(account.profileReads.last.userId, 'user-b');
-    // B is still loading: A's draft must already have disappeared.
-    expect(_displayName(tester), isEmpty);
-    expect(_saveButton(tester).onPressed, isNull);
+      expect(account.profileReads, hasLength(2));
+      expect(account.profileReads.last.userId, 'user-b');
+      // B is still loading: A's draft must already have disappeared.
+      expect(_displayName(tester), isEmpty);
+      expect(_saveButton(tester).onPressed, isNull);
 
-    account.profileReads.last.complete('Bob from server');
-    await tester.pump();
-    // B's read must be allowed, so A's dirty flag must also have reset.
-    expect(_displayName(tester), 'Bob from server');
+      account.profileReads.last.complete('Bob from server');
+      await tester.pump();
+      // B's read must be allowed, so A's dirty flag must also have reset.
+      expect(_displayName(tester), 'Bob from server');
 
-    firstRead.complete('Alice from server');
-    await tester.pump();
-    expect(account.currentUser?.id, 'user-b');
-    expect(_displayName(tester), 'Bob from server');
-    expect(account.profileSaves, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+      firstRead.complete('Alice from server');
+      await tester.pump();
+      expect(account.currentUser?.id, 'user-b');
+      expect(_displayName(tester), 'Bob from server');
+      expect(account.profileSaves, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('a profile read finishing after disposal cannot publish a name', (
     tester,
@@ -214,7 +215,9 @@ void main() {
 
     expect(_saveButton(tester).onPressed, isNull);
     expect(
-      find.text('Could not load your profile. Retry or edit your display name.'),
+      find.text(
+        'Could not load your profile. Retry or edit your display name.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Save profile'));
@@ -394,8 +397,9 @@ Finder get _displayNameField => find.widgetWithText(TextField, 'Display name');
 String _displayName(WidgetTester tester) =>
     tester.widget<TextField>(_displayNameField).controller!.text;
 
-FilledButton _saveButton(WidgetTester tester) =>
-    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save profile'));
+FilledButton _saveButton(WidgetTester tester) => tester.widget<FilledButton>(
+  find.widgetWithText(FilledButton, 'Save profile'),
+);
 
 Future<void> _pumpAccount(
   WidgetTester tester,

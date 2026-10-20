@@ -21,7 +21,8 @@ void main() {
     expect(MotionAccountLocalizations.supportedLocales, hasLength(8));
     for (final key in MotionAccountString.values) {
       final english = MotionAccountLocalizations.templateFor(
-        const Locale('en'), key,
+        const Locale('en'),
+        key,
       );
       for (final locale in MotionAccountLocalizations.supportedLocales) {
         final template = MotionAccountLocalizations.templateFor(locale, key);
@@ -50,14 +51,16 @@ void main() {
     );
     expect(
       MotionAccountLocalizations.localeResolutionCallback(
-        const Locale('ar'), const [Locale('tr'), Locale('en')],
+        const Locale('ar'),
+        const [Locale('tr'), Locale('en')],
       ),
       const Locale('en'),
     );
     for (final locale in MotionAccountLocalizations.supportedLocales) {
       expect(
         MotionAccountLocalizations.localeResolutionCallback(
-          locale, MotionAccountLocalizations.supportedLocales,
+          locale,
+          MotionAccountLocalizations.supportedLocales,
         ),
         locale,
       );
@@ -71,15 +74,19 @@ void main() {
   test('typed placeholder values are inserted once', () {
     for (final locale in MotionAccountLocalizations.supportedLocales) {
       final strings = MotionAccountLocalizations(locale);
-      expect(strings.membershipForApp('Demo{appName}'), contains('Demo{appName}'));
+      expect(
+        strings.membershipForApp('Demo{appName}'),
+        contains('Demo{appName}'),
+      );
       expect(
         () => strings.text(MotionAccountString.appMembership),
         throwsArgumentError,
       );
     }
     expect(
-      MotionAccountLocalizations(const Locale('xx'))
-          .text(MotionAccountString.accountTitle),
+      MotionAccountLocalizations(
+        const Locale('xx'),
+      ).text(MotionAccountString.accountTitle),
       'Motion account',
     );
   });
@@ -112,7 +119,8 @@ void main() {
       await tester.tap(find.text(strings.text(MotionAccountString.newAccount)));
       await tester.pump();
       expect(
-        find.text(strings.text(MotionAccountString.createAccount)), findsWidgets,
+        find.text(strings.text(MotionAccountString.createAccount)),
+        findsWidgets,
       );
 
       await tester.pumpWidget(
@@ -121,7 +129,9 @@ void main() {
           MotionAccountPage(account: guest, initialPasswordRecovery: true),
         ),
       );
-      await tester.tap(find.text(strings.text(MotionAccountString.savePassword)));
+      await tester.tap(
+        find.text(strings.text(MotionAccountString.savePassword)),
+      );
       await tester.pump();
       expect(
         find.text(strings.text(MotionAccountString.invalidNewPassword)),
@@ -198,7 +208,8 @@ void main() {
       await tester.tap(find.text('CLOSED_ACCESS'));
       await tester.pump();
       expect(
-        find.text(strings.text(MotionAccountString.futureSession)), findsOneWidget,
+        find.text(strings.text(MotionAccountString.futureSession)),
+        findsOneWidget,
       );
 
       // A retired runtime gives a deterministic blocked gate without HTTP IO.
@@ -207,7 +218,8 @@ void main() {
         _app(
           locale,
           MotionIdentityGate(
-            runtime: runtime, child: const Text('PRIVATE_CONTENT'),
+            runtime: runtime,
+            child: const Text('PRIVATE_CONTENT'),
           ),
         ),
       );
@@ -231,7 +243,8 @@ void main() {
     await tester.pumpWidget(
       ValueListenableBuilder<Locale>(
         valueListenable: locale,
-        builder: (_, value, _) => _app(value, MotionAccountPage(account: account)),
+        builder: (_, value, _) =>
+            _app(value, MotionAccountPage(account: account)),
       ),
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
@@ -240,7 +253,9 @@ void main() {
     locale.value = const Locale('ar');
     await tester.pumpAndSettle();
     final arabic = MotionAccountLocalizations(const Locale('ar'));
-    final error = find.text(arabic.text(MotionAccountString.invalidCredentials));
+    final error = find.text(
+      arabic.text(MotionAccountString.invalidCredentials),
+    );
     expect(error, findsOneWidget);
     expect(find.text('Enter your email and password.'), findsNothing);
     expect(Directionality.of(tester.element(error)), TextDirection.rtl);
@@ -255,7 +270,8 @@ void main() {
     await tester.pumpWidget(
       ValueListenableBuilder<Locale>(
         valueListenable: locale,
-        builder: (_, value, _) => _app(value, MotionAccountPage(account: account)),
+        builder: (_, value, _) =>
+            _app(value, MotionAccountPage(account: account)),
       ),
     );
     await tester.pump();
@@ -266,8 +282,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        MotionAccountLocalizations(const Locale('ja'))
-            .text(MotionAccountString.profileSaved),
+        MotionAccountLocalizations(
+          const Locale('ja'),
+        ).text(MotionAccountString.profileSaved),
       ),
       findsOneWidget,
     );
@@ -291,7 +308,8 @@ void main() {
         builder: (_, value, _) => _app(
           value,
           MotionMembershipPage(
-            account: account, purchaseAdapter: store,
+            account: account,
+            purchaseAdapter: store,
             serverAdapter: _CatalogServer(),
           ),
         ),
@@ -305,8 +323,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        MotionAccountLocalizations(const Locale('fr'))
-            .text(MotionAccountString.waitingStore),
+        MotionAccountLocalizations(
+          const Locale('fr'),
+        ).text(MotionAccountString.waitingStore),
       ),
       findsOneWidget,
     );
@@ -335,7 +354,9 @@ void main() {
             builder: (_, show, _) => show
                 ? MotionAccountPage(
                     account: account,
-                    clearLocalData: (_) async { cleanupCalls++; },
+                    clearLocalData: (_) async {
+                      cleanupCalls++;
+                    },
                   )
                 : const Scaffold(body: Text('REPLACEMENT_PAGE')),
           ),
@@ -351,10 +372,14 @@ void main() {
     locale.value = const Locale('ar');
     await tester.pumpAndSettle();
     final arabic = MotionAccountLocalizations(const Locale('ar'));
-    final explanation = find.text(arabic.text(MotionAccountString.deleteExplanation));
+    final explanation = find.text(
+      arabic.text(MotionAccountString.deleteExplanation),
+    );
     expect(explanation, findsOneWidget);
     expect(Directionality.of(tester.element(explanation)), TextDirection.rtl);
-    await tester.tap(find.text(arabic.text(MotionAccountString.confirmDeleteAccount)));
+    await tester.tap(
+      find.text(arabic.text(MotionAccountString.confirmDeleteAccount)),
+    );
     await tester.pumpAndSettle();
     expect(account.deleteCalls, 0);
     expect(cleanupCalls, 0);
@@ -385,8 +410,11 @@ class _CatalogAccount implements MotionAccountClient {
   @override
   User? get currentUser => signedIn
       ? const User(
-          id: 'catalog-user', appMetadata: {}, userMetadata: null,
-          aud: 'authenticated', createdAt: '2026-10-20T00:00:00Z',
+          id: 'catalog-user',
+          appMetadata: {},
+          userMetadata: null,
+          aud: 'authenticated',
+          createdAt: '2026-10-20T00:00:00Z',
         )
       : null;
   @override
@@ -401,7 +429,10 @@ class _CatalogAccount implements MotionAccountClient {
   @override
   Future<void> deleteCommonAccount({
     Future<void> Function(String userId)? afterRemoteDelete,
-  }) async { deleteCalls++; }
+  }) async {
+    deleteCalls++;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -434,7 +465,8 @@ class _CatalogStore implements PurchaseAdapter {
   Future<List<StoreProductRef>> fetchProducts(List<String> ids) async => const [
     StoreProductRef(
       productId: 'com.yulalab.ostinato.individual.monthly',
-      platform: StorePlatform.ios, planId: 'monthly',
+      platform: StorePlatform.ios,
+      planId: 'monthly',
       localizedPrice: 'STORE_PRICE_9.90',
     ),
   ];
@@ -447,7 +479,8 @@ class _CatalogStore implements PurchaseAdapter {
 
   void pending() => _updates.add(
     const StorePurchaseUpdate(
-      kind: StorePurchaseKind.pending, localHandle: 'catalog-pending',
+      kind: StorePurchaseKind.pending,
+      localHandle: 'catalog-pending',
     ),
   );
 
@@ -456,5 +489,6 @@ class _CatalogStore implements PurchaseAdapter {
 
 class _CatalogServer implements ServerAdapter {
   @override
-  Future<EntitlementStatus?> verify(StorePurchaseEvidence evidence) async => null;
+  Future<EntitlementStatus?> verify(StorePurchaseEvidence evidence) async =>
+      null;
 }
