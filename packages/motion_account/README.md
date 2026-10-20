@@ -217,7 +217,7 @@ V3 remains preserved with REVISE_PREPARATION_ONLY_UNRUN disposition.
 The account, identity gate, recovery, deletion and membership surfaces use the
 exported `MotionAccountLocalizations` catalog. Its 82 typed
 `MotionAccountString` keys contain complete copy for `tr`, `en`, `es-419`,
-`pt-BR`, `de`, `fr`, `ja` and `ar`. `membershipForApp(String)` owns the named
+`pt-BR`, `de`, `fr`, `ja`, `ar`, `it`, `ko`, `id`, `pl`, `hi` and `zh-Hans`. `membershipForApp(String)` owns the named
 `{appName}` placeholder; do not concatenate translated membership fragments.
 Store-provided `localizedPrice` remains opaque text with its original amount and
 currency. Catalog completeness and placeholder parity do not establish native
@@ -230,8 +230,8 @@ MaterialApp(
   locale: selectedLocale,
   supportedLocales: MotionAccountLocalizations.supportedLocales,
   localizationsDelegates: MotionAccountLocalizations.delegates,
-  localeResolutionCallback:
-      MotionAccountLocalizations.localeResolutionCallback,
+  localeListResolutionCallback:
+      MotionAccountLocalizations.localeListResolutionCallback,
   home: accountOrAppHome,
 )
 ```
@@ -243,11 +243,13 @@ The Core lookup uses that inherited locale, including when the host has not
 registered the Core delegate. Existing constructors and TR/EN hosts remain valid.
 The optional Core resolver selects Latin American Spanish or Brazilian Portuguese
 for other variants of those languages and falls back to English for unsupported
-languages. A nonempty narrower host list is respected; it prefers English if the
-target is absent. Arabic direction comes from `GlobalWidgetsLocalizations`.
+languages. The ordered resolver skips preferences absent from a narrower host
+list before falling back. Explicit Traditional Chinese (Hant/TW/HK/MO) and other
+unsupported scripts do not silently select Hans; the next supported preference
+is considered. An explicit Hans script takes precedence over a region hint. Arabic direction comes from `GlobalWidgetsLocalizations`.
 
 The identity gate's nested blocker inherits the parent's selected locale; without
-a parent localization scope it resolves the platform locale. Open status/error
+a parent localization scope it resolves the ordered platform preference list. Open status/error
 messages retain typed keys and resolve during build. The retained deletion dialog
 looks up its own context, so changing locale or removing its account page does not
 make it use a disposed State. Paid sales stay disabled by the existing release
@@ -296,13 +298,14 @@ store configuration or package version change is part of this candidate.
 
 `MotionIdentityGate` accepts optional `theme`, `darkTheme`, and `themeMode`
 for its loading/recovery MaterialApp. Without `theme`, it inherits the effective
-parent `Theme`. Optional `locale` wins over parent `Localizations`; otherwise
-`preferredLocales` (or the full device preference list) selects the first
-supported language. `MotionAccountLocalizations.localeListResolutionCallback`
+parent `Theme`. Locale precedence is explicit `locale`, then inherited parent
+`Localizations`, then ordered `preferredLocales` or the full device preference
+list. An unsupported explicit or inherited locale falls back to English; ordered
+list resolution skips unsupported entries to find the next supported preference. `MotionAccountLocalizations.localeListResolutionCallback`
 exposes the same ordered resolution to hosts. Presentation updates do not own
 identity/admission tickets or change the retained child key.
 
 This local follow-up is separate from published commit `8f38158e`; consumers
 must adopt an exact remote commit and run their own regressions. Fourteen-locale
-copy is a separate pending catalog checkpoint, not part of the eight-locale
-publication or a live-auth/device acceptance claim.
+copy belongs to this separate local catalog checkpoint; the published eight-locale
+CI result does not establish this checkpoint, a live-auth check or device acceptance.

@@ -7,7 +7,7 @@ import 'package:motion_entitlements/motion_entitlements.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  test('every key has eight nonempty templates with placeholder parity', () {
+  test('every key has fourteen nonempty templates with placeholder parity', () {
     final placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9]*)\}');
     Map<String, int> names(String text) {
       final counts = <String, int>{};
@@ -18,7 +18,7 @@ void main() {
       return counts;
     }
 
-    expect(MotionAccountLocalizations.supportedLocales, hasLength(8));
+    expect(MotionAccountLocalizations.supportedLocales, hasLength(14));
     for (final key in MotionAccountString.values) {
       final english = MotionAccountLocalizations.templateFor(
         const Locale('en'),
@@ -45,8 +45,24 @@ void main() {
       const Locale('pt', 'BR'),
     );
     expect(MotionAccountLocalizations.localeFor(null), const Locale('en'));
+    const hans = Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans');
+    expect(MotionAccountLocalizations.localeFor(const Locale('zh', 'CN')), hans);
+    expect(MotionAccountLocalizations.localeFor(hans), hans);
+    for (final locale in const [Locale('zh', 'TW'), Locale('zh', 'HK'), Locale('zh', 'MO'),
+      Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+      Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Latn')]) {
+      expect(MotionAccountLocalizations.localeFor(locale), const Locale('en'));
+      expect(MotionAccountLocalizations.delegate.isSupported(locale), isFalse);
+      expect(MotionAccountLocalizations.localeListResolutionCallback(
+        [locale, const Locale('fr')], MotionAccountLocalizations.supportedLocales), const Locale('fr'));
+    }
+    expect(MotionAccountLocalizations.localeListResolutionCallback(
+      const [Locale('de'), Locale('fr')], const [Locale('tr'), Locale('fr')]), const Locale('fr'));
+    expect(MotionAccountLocalizations.localeResolutionCallback(hans,
+      const [Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'), Locale('en')]), const Locale('en'));
+
     expect(
-      MotionAccountLocalizations.localeFor(const Locale('zh')),
+      MotionAccountLocalizations.localeFor(const Locale('xx')),
       const Locale('en'),
     );
     expect(
