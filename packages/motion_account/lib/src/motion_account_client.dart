@@ -53,6 +53,11 @@ class MotionAccountClient {
   // that independent cleanup uses; the page never builds a second client.
   final Future<bool> Function(String userId)? _deletionReceipt;
 
+  /// The receipt probe, so a host wrapper that `extends` this client can pass
+  /// `deletionReceipt: original.deletionReceipt` (and the same timeouts) to
+  /// `super` and keep lost-reply deletion readback.
+  Future<bool> Function(String userId)? get deletionReceipt => _deletionReceipt;
+
   /// Total budget for one mutation, including SDK preflight and decoding.
   final Duration operationTimeout;
 
