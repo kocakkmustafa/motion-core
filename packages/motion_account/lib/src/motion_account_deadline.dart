@@ -13,6 +13,8 @@ enum MotionAccountOperation {
   continueAsGuest,
   saveProfile,
   deleteAccount,
+  declareAge,
+  parentalConsent,
 }
 
 /// No definite server answer arrived before the operation's total deadline,

@@ -355,3 +355,39 @@ Host startup (`Supabase.initialize` before `runApp`) is not bounded by Core:
 hosts show a first waiting frame and own a startup observer and late-runtime
 disposal (Choreia's 20 s pattern). Store purchase/provider budgets stay with
 the paid path, which remains closed for the first release.
+
+## 13+ age gate and parental consent
+
+The shared account is 13+ in every country. `MotionAgePolicy` maps an ISO
+3166-1 alpha-2 region to its digital-consent age (EU/EEA GDPR Art. 8 values,
+US 13, others in the source table; unknown regions use 16). These are
+engineering defaults pending counsel review, not legal advice; the SQL copy in
+`supabase/migrations/20261021190000_motion_age_consent_retention.sql` must stay
+identical (a package test checks parity).
+
+`MotionAccountPage` asks a neutral birth month and year (no preselection, no
+day) before sign-up. Pass the store/device region as `countryCode`. Under 13 no
+request is sent, `onAgeBlocked` fires so the host can persist the result, and
+`ageBlocked: true` keeps sign-up closed on later visits. `signUpWithAge(age:)` sends
+only `{birth_year_month, country, policy_version}` as Auth metadata; a server
+trigger stores it in `motion_age_declarations`, strips it from metadata and
+rejects an under-13 declaration.
+
+Signed-in hosts read `ageStatus()` (`MotionAgeStatus`): `declared`, `consent`
+and `restrictedOn(today)`. A restricted account (below its consent age without
+parent approval) keeps local practice but cannot write the shared profile
+(RLS). The page shows the parent/guardian request form and calls
+`requestParentalConsent(parentEmail:, locale:)`; refusals arrive as
+`MotionConsentRequestRefused` and a lost reply as `MotionOperationUnknown`.
+An undeclared legacy account is asked once (`recordAgeDeclaration`).
+`MotionAgePolicy.marketingAllowed(band)` is false and
+`analyticsNeedsOptIn(band)` is true for every user under 18: hosts must not
+send teen marketing, personalised ads, or default-on analytics.
+
+The parent approves or declines on the YULAlab site consent page through the
+`motion-parental-consent` Edge Function. Approval lifts the restriction; denial
+deletes the account (deletion receipt included). The parent address is stored
+only as a digest. Mail delivery needs `MOTION_MAIL_API_URL`, `MOTION_MAIL_API_KEY`
+and `MOTION_MAIL_FROM`; without them the request fails closed with
+`mail_unavailable`. Retention and restore re-application are described in
+`docs/compliance/YAS-VELI-VE-SAKLAMA.md`.

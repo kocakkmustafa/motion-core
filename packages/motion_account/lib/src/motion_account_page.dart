@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'motion_account_client.dart';
 import 'motion_account_deadline.dart';
 import 'motion_account_localizations.dart';
+import 'motion_age_policy.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
 
@@ -17,6 +18,11 @@ enum _ProfileReadState { idle, loading, ready, failed }
 /// A host must provide [clearLocalData] before offering common-account
 /// deletion. The callback receives the captured user ID after the server
 /// confirms deletion. A deletion receipt retries cleanup after a crash.
+///
+/// Sign-up asks a neutral birth month/year first (13+, country rules in
+/// [MotionAgePolicy]). Under 13 no account is created and [onAgeBlocked] lets
+/// the host persist that result; pass it back as [ageBlocked] so re-entering
+/// another age on this device does not reopen sign-up.
 class MotionAccountPage extends StatefulWidget {
   const MotionAccountPage({
     super.key,
@@ -26,6 +32,10 @@ class MotionAccountPage extends StatefulWidget {
     this.onRetryIdentity,
     this.onManageSubscription,
     this.paidFeaturesAvailable = motionPaidFeaturesAvailable,
+    this.countryCode,
+    this.ageBlocked = false,
+    this.onAgeBlocked,
+    this.clock = DateTime.now,
   });
 
   final MotionAccountClient account;
@@ -34,6 +44,13 @@ class MotionAccountPage extends StatefulWidget {
   final Future<void> Function()? onRetryIdentity;
   final VoidCallback? onManageSubscription;
   final bool paidFeaturesAvailable;
+
+  /// ISO 3166-1 alpha-2 region (e.g. the store storefront). Defaults to the
+  /// device region; unknown regions use [MotionAgePolicy.defaultRule].
+  final String? countryCode;
+  final bool ageBlocked;
+  final VoidCallback? onAgeBlocked;
+  final DateTime Function() clock;
 
   @override
   State<MotionAccountPage> createState() => _MotionAccountPageState();
@@ -67,6 +84,13 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   // A mutation whose outcome is unknown. Every mutation stays disabled until
   // the user acknowledges it or the owner changes; nothing retries it.
   MotionAccountOperation? _unresolved;
+  final _parentEmail = TextEditingController();
+  int? _birthYear;
+  int? _birthMonth;
+  late bool _ageBlocked = widget.ageBlocked;
+  // Loaded per owner; null while unknown (the server still enforces RLS).
+  MotionAgeStatus? _ageStatus;
+  int _ageStatusGeneration = 0;
 
   bool get _canSaveProfile => _displayNameEdited || _profileReadSucceeded;
   bool get _isBusy => _busy || _profileSaveBusy || _unresolved != null;
@@ -78,6 +102,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     _lastUserId = widget.account.currentUser?.id;
     _refreshMembership();
     _loadDisplayName();
+    _loadAgeStatus();
     _authSubscription = widget.account.authChanges.listen(
       (state) {
         if (!mounted) return;
@@ -111,6 +136,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
           _loadDisplayName(resetDraft: accountChanged);
         }
+        if (accountChanged) _loadAgeStatus();
       },
       onError: (Object _, StackTrace _) {
         if (!mounted) return;
@@ -140,10 +166,127 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     _profileSaveGeneration++;
     _cancelProfileRead();
     _authSubscription?.cancel();
+    _parentEmail.dispose();
     _email.dispose();
     _password.dispose();
     _displayName.dispose();
     super.dispose();
+  }
+
+  String? get _country {
+    final code =
+        (widget.countryCode ??
+                WidgetsBinding.instance.platformDispatcher.locale.countryCode)
+            ?.toUpperCase();
+    return code != null && RegExp(r'^[A-Z]{2}$').hasMatch(code) ? code : null;
+  }
+
+  MotionAgeDeclaration? get _declaration =>
+      _birthYear == null || _birthMonth == null
+      ? null
+      : MotionAgeDeclaration(
+          birthYear: _birthYear!,
+          birthMonth: _birthMonth!,
+          countryCode: _country,
+          policyVersion: MotionAgePolicy.version,
+        );
+
+  bool get _restricted => _ageStatus?.restrictedOn(widget.clock()) ?? false;
+
+  /// Owner-scoped status read. Failure shows nothing extra: the server's RLS
+  /// still closes restricted writes, and no unobserved state is invented.
+  Future<void> _loadAgeStatus() async {
+    final generation = ++_ageStatusGeneration;
+    final userId = widget.account.currentUser?.id;
+    _ageStatus = null;
+    if (userId == null) return;
+    try {
+      final status = await Future<MotionAgeStatus>.sync(
+        widget.account.ageStatus,
+      );
+      if (!mounted ||
+          generation != _ageStatusGeneration ||
+          widget.account.currentUser?.id != userId) {
+        return;
+      }
+      setState(() => _ageStatus = status);
+    } catch (_) {
+      // Unknown status: keep the page usable; enforcement is server-side.
+    }
+  }
+
+  void _blockAge() {
+    _ageBlocked = true;
+    _message = MotionAccountString.ageBlocked;
+    widget.onAgeBlocked?.call();
+  }
+
+  Future<void> _confirmDeclaredAge() async {
+    final declaration = _declaration;
+    if (declaration == null) {
+      setState(() => _message = MotionAccountString.ageRequired);
+      return;
+    }
+    if (MotionAgePolicy.bandFor(declaration, today: widget.clock()) ==
+        MotionAgeBand.blocked) {
+      setState(_blockAge);
+      return;
+    }
+    await _run(() async {
+      await widget.account.recordAgeDeclaration(declaration);
+    });
+    if (mounted) await _loadAgeStatus();
+  }
+
+  Future<void> _requestConsent() async {
+    if (_isBusy) return;
+    final owner = widget.account.currentUser?.id;
+    // The resolved catalog locale (en, es-419, pt-BR, zh-Hans, …) selects the
+    // parent email copy; a raw device tag like en-US would miss variants.
+    final locale = MotionAccountLocalizations.of(
+      context,
+    ).locale.toLanguageTag();
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.account.requestParentalConsent(
+        parentEmail: _parentEmail.text,
+        locale: locale,
+      );
+      if (!mounted || widget.account.currentUser?.id != owner) return;
+      setState(() => _message = MotionAccountString.consentPending);
+      await _loadAgeStatus();
+    } on MotionConsentRequestRefused catch (refused) {
+      if (!mounted || widget.account.currentUser?.id != owner) return;
+      setState(() {
+        _message = switch (refused.reason) {
+          MotionConsentRequestError.tooSoon ||
+          MotionConsentRequestError.dailyLimit =>
+            MotionAccountString.consentTooSoon,
+          MotionConsentRequestError.invalidParentEmail ||
+          MotionConsentRequestError.parentEmailIsTeen =>
+            MotionAccountString.consentEmailInvalid,
+          MotionConsentRequestError.mailUnavailable =>
+            MotionAccountString.requestFailed,
+          MotionConsentRequestError.notRequired ||
+          MotionConsentRequestError.alreadyApproved => null,
+        };
+      });
+      await _loadAgeStatus();
+    } on MotionOperationUnknown {
+      if (!mounted || widget.account.currentUser?.id != owner) return;
+      setState(() {
+        _unresolved = MotionAccountOperation.parentalConsent;
+        _message = MotionAccountString.emailRequestUnknown;
+      });
+    } catch (_) {
+      if (!mounted || widget.account.currentUser?.id != owner) return;
+      setState(() => _message = MotionAccountString.requestFailed);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _refreshMembership() {
@@ -302,7 +445,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   ) => switch (operation) {
     MotionAccountOperation.signUp ||
     MotionAccountOperation.passwordReset ||
-    MotionAccountOperation.resendConfirmation =>
+    MotionAccountOperation.resendConfirmation ||
+    MotionAccountOperation.parentalConsent =>
       MotionAccountString.emailRequestUnknown,
     MotionAccountOperation.updatePassword =>
       MotionAccountString.passwordUpdateUnknown,
@@ -404,8 +548,26 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       return;
     }
     if (_register) {
+      if (_ageBlocked) {
+        setState(() => _message = MotionAccountString.ageBlocked);
+        return;
+      }
+      final age = _declaration;
+      if (age == null) {
+        setState(() => _message = MotionAccountString.ageRequired);
+        return;
+      }
+      if (MotionAgePolicy.bandFor(age, today: widget.clock()) ==
+          MotionAgeBand.blocked) {
+        setState(_blockAge);
+        return;
+      }
       await _run(() async {
-        await widget.account.signUp(email: email, password: _password.text);
+        await widget.account.signUpWithAge(
+          email: email,
+          password: _password.text,
+          age: age,
+        );
       }, success: MotionAccountString.verificationThenSignIn);
       return;
     }
@@ -426,7 +588,15 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         final strings = MotionAccountLocalizations.of(dialogContext);
         return AlertDialog(
           title: Text(strings.text(MotionAccountString.deleteMotionAccount)),
-          content: Text(strings.text(MotionAccountString.deleteExplanation)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(strings.text(MotionAccountString.deleteExplanation)),
+              const SizedBox(height: 12),
+              Text(strings.text(MotionAccountString.deleteOtherDevices)),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -518,9 +688,12 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           labelText: _text(MotionAccountString.password),
         ),
       ),
+      if (_register) ...[const SizedBox(height: 16), ..._ageFields()],
       const SizedBox(height: 16),
       FilledButton(
-        onPressed: _isBusy ? null : _submitCredentials,
+        onPressed: _isBusy || (_register && _ageBlocked)
+            ? null
+            : _submitCredentials,
         child: Text(
           _register
               ? _text(MotionAccountString.createAccount)
@@ -597,11 +770,92 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     ],
   );
 
+  /// Neutral age screen: no preselected values, no hint of a cutoff, no day.
+  List<Widget> _ageFields() {
+    final thisYear = widget.clock().year;
+    return [
+      Text(_text(MotionAccountString.ageIntro)),
+      DropdownButtonFormField<int>(
+        key: const ValueKey('motion-birth-year'),
+        initialValue: _birthYear,
+        decoration: InputDecoration(
+          labelText: _text(MotionAccountString.birthYear),
+        ),
+        items: [
+          for (var year = thisYear; year >= thisYear - 100; year--)
+            DropdownMenuItem(value: year, child: Text('$year')),
+        ],
+        onChanged: _isBusy || _ageBlocked
+            ? null
+            : (year) => setState(() => _birthYear = year),
+      ),
+      DropdownButtonFormField<int>(
+        key: const ValueKey('motion-birth-month'),
+        initialValue: _birthMonth,
+        decoration: InputDecoration(
+          labelText: _text(MotionAccountString.birthMonth),
+        ),
+        items: [
+          for (var month = 1; month <= 12; month++)
+            DropdownMenuItem(
+              value: month,
+              child: Text(month.toString().padLeft(2, '0')),
+            ),
+        ],
+        onChanged: _isBusy || _ageBlocked
+            ? null
+            : (month) => setState(() => _birthMonth = month),
+      ),
+    ];
+  }
+
+  List<Widget> _ageSection() {
+    final status = _ageStatus;
+    if (status == null) return const [];
+    if (!status.declared) {
+      return [
+        Text(_text(MotionAccountString.ageUndeclared)),
+        ..._ageFields(),
+        FilledButton.tonal(
+          onPressed: _isBusy || _ageBlocked ? null : _confirmDeclaredAge,
+          child: Text(_text(MotionAccountString.confirmAge)),
+        ),
+        const SizedBox(height: 16),
+      ];
+    }
+    if (!_restricted) return const [];
+    return [
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          _text(switch (status.consent) {
+            MotionParentalConsent.pending => MotionAccountString.consentPending,
+            MotionParentalConsent.expired => MotionAccountString.consentExpired,
+            _ => MotionAccountString.parentalConsentNeeded,
+          }),
+        ),
+      ),
+      TextField(
+        controller: _parentEmail,
+        keyboardType: TextInputType.emailAddress,
+        decoration: InputDecoration(
+          labelText: _text(MotionAccountString.parentEmail),
+        ),
+      ),
+      FilledButton.tonal(
+        onPressed: _isBusy ? null : _requestConsent,
+        child: Text(_text(MotionAccountString.sendConsentRequest)),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
   Widget _profile(User user) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(user.email ?? '', style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 12),
+      ..._ageSection(),
       TextField(
         controller: _displayName,
         onChanged: (_) => setState(() => _displayNameEdited = true),
@@ -631,7 +885,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         ),
       ],
       FilledButton.tonal(
-        onPressed: _isBusy || !_canSaveProfile
+        // A consent-pending account cannot write the shared profile (RLS).
+        onPressed: _isBusy || !_canSaveProfile || _restricted
             ? null
             : () => _saveDisplayName(user.id),
         child: Text(_text(MotionAccountString.saveProfile)),

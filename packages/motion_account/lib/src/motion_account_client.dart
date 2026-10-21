@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'motion_account_deadline.dart';
+import 'motion_age_policy.dart';
 
 export 'motion_account_deadline.dart'
     show MotionAccountOperation, MotionOperationUnknown;
@@ -18,6 +19,52 @@ class MotionMembershipStatus {
 
   final bool active;
   final bool anyActive;
+}
+
+/// Parent/guardian approval state of a teen account below its consent age.
+enum MotionParentalConsent { none, pending, approved, denied, expired }
+
+/// Age declaration and consent state of the signed-in account.
+class MotionAgeStatus {
+  const MotionAgeStatus({required this.declaration, required this.consent});
+
+  /// Null for an account created before age declarations (ask once).
+  final MotionAgeDeclaration? declaration;
+  final MotionParentalConsent consent;
+
+  bool get declared => declaration != null;
+
+  /// Band on the device clock. The server recomputes it for enforcement.
+  MotionAgeBand? bandOn(DateTime today) => declaration == null
+      ? null
+      : MotionAgePolicy.bandFor(declaration!, today: today);
+
+  /// Account features stay closed until a required parent approves.
+  bool restrictedOn(DateTime today) {
+    final band = bandOn(today);
+    return band == MotionAgeBand.blocked ||
+        (band == MotionAgeBand.parentalConsentRequired &&
+            consent != MotionParentalConsent.approved);
+  }
+}
+
+/// Typed reasons a parental consent request was refused by the server.
+enum MotionConsentRequestError {
+  invalidParentEmail,
+  parentEmailIsTeen,
+  notRequired,
+  alreadyApproved,
+  tooSoon,
+  dailyLimit,
+  mailUnavailable,
+}
+
+class MotionConsentRequestRefused implements Exception {
+  const MotionConsentRequestRefused(this.reason);
+  final MotionConsentRequestError reason;
+
+  @override
+  String toString() => 'MotionConsentRequestRefused(${reason.name})';
 }
 
 /// Remote deletion succeeded, but this device could not clear its own files.
@@ -108,6 +155,24 @@ class MotionAccountClient {
       email: email.trim(),
       password: password,
       emailRedirectTo: emailRedirectTo,
+    ),
+  );
+
+  /// Sign-up with the neutral age screen result. The server stores it once
+  /// and rejects an under-13 declaration; only `YYYY-MM`, country and policy
+  /// version are sent, and Auth metadata is stripped after capture. A separate
+  /// method keeps existing [signUp] overrides in host wrappers source-compatible.
+  Future<AuthResponse> signUpWithAge({
+    required String email,
+    required String password,
+    required MotionAgeDeclaration age,
+  }) => _mutation(
+    MotionAccountOperation.signUp,
+    (_) => _supabase.auth.signUp(
+      email: email.trim(),
+      password: password,
+      emailRedirectTo: emailRedirectTo,
+      data: {'motion_age': age.toJson()},
     ),
   );
 
@@ -270,6 +335,107 @@ class MotionAccountClient {
           })
           .abortSignal(deadline.signal),
     );
+  }
+
+  /// Reads the signed-in account's age declaration and consent state.
+  Future<MotionAgeStatus> ageStatus() async {
+    final user = _requireUser();
+    return _read((deadline) async {
+      final declaration = await _supabase
+          .from('motion_age_declarations')
+          .select('birth_year_month,country,policy_version')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .abortSignal(deadline.signal);
+      final consent = await _supabase
+          .from('motion_parental_consents')
+          .select('status')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .abortSignal(deadline.signal);
+      return MotionAgeStatus(
+        declaration: MotionAgeDeclaration.fromJson(declaration),
+        consent: switch (consent?['status']) {
+          'pending' => MotionParentalConsent.pending,
+          'approved' => MotionParentalConsent.approved,
+          'denied' => MotionParentalConsent.denied,
+          'expired' => MotionParentalConsent.expired,
+          _ => MotionParentalConsent.none,
+        },
+      );
+    });
+  }
+
+  /// One-time declaration for an account without one. Returns the server's
+  /// band. An under-13 declaration is refused with [PostgrestException]
+  /// code `P0013`; a second declaration with `23505`.
+  Future<MotionAgeBand> recordAgeDeclaration(
+    MotionAgeDeclaration declaration,
+  ) async {
+    _requireUser();
+    final band = await _mutation(
+      MotionAccountOperation.declareAge,
+      (deadline) => _supabase
+          .rpc(
+            'motion_record_age_declaration',
+            params: {
+              'p_birth_year_month': declaration.birthYearMonth,
+              'p_country': declaration.countryCode,
+              'p_policy_version': declaration.policyVersion,
+            },
+          )
+          .abortSignal(deadline.signal),
+    );
+    return switch (band) {
+      'parental_consent_required' => MotionAgeBand.parentalConsentRequired,
+      'teen' => MotionAgeBand.teen,
+      'adult' => MotionAgeBand.adult,
+      _ => throw StateError('Unexpected age band'),
+    };
+  }
+
+  /// Mails one approval link to the parent/guardian. A lost reply is
+  /// [MotionOperationUnknown] (a mail may still arrive); a refusal is
+  /// [MotionConsentRequestRefused]. The address is not stored in clear.
+  Future<void> requestParentalConsent({
+    required String parentEmail,
+    required String locale,
+  }) async {
+    _requireUser();
+    final token = _supabase.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sign in required');
+    }
+    try {
+      await _mutation(
+        MotionAccountOperation.parentalConsent,
+        (deadline) => _supabase.functions.invoke(
+          'motion-parental-consent',
+          headers: {'Authorization': 'Bearer $token'},
+          body: {
+            'action': 'request',
+            'parentEmail': parentEmail.trim(),
+            'locale': locale,
+          },
+          abortSignal: deadline.signal,
+        ),
+      );
+    } on FunctionException catch (error) {
+      final code = error.details is Map ? error.details['error'] : null;
+      final reason = switch (code) {
+        'invalid_parent_email' => MotionConsentRequestError.invalidParentEmail,
+        'parent_email_is_teen' => MotionConsentRequestError.parentEmailIsTeen,
+        'consent_not_required' => MotionConsentRequestError.notRequired,
+        'already_approved' => MotionConsentRequestError.alreadyApproved,
+        'too_soon' => MotionConsentRequestError.tooSoon,
+        'daily_limit' => MotionConsentRequestError.dailyLimit,
+        _ => null,
+      };
+      if (reason != null) throw MotionConsentRequestRefused(reason);
+      rethrow;
+    } on MotionOperationUnknown {
+      rethrow;
+    }
   }
 
   /// Refreshes each currently granting purchase with its store before
