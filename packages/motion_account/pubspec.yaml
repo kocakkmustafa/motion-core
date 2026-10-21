@@ -1,6 +1,6 @@
 name: motion_account
 description: Shared Motion account and app-scoped membership client.
-version: 0.2.0
+version: 0.3.0
 publish_to: none
 
 environment:

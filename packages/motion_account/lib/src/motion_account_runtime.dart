@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'motion_account_client.dart';
+import 'motion_account_deadline.dart';
 
 enum MotionIdentityPhase { signedOut, verifying, verified, unavailable }
 
@@ -86,6 +87,10 @@ class MotionAccountRuntime with WidgetsBindingObserver {
     this._receiptClient,
     this._receiptRetryDelay,
     this._identityVerificationTimeout,
+    this._identityTotalTimeout,
+    this._receiptReadTimeout,
+    this._reconcileTimeout,
+    this._guestTimeout,
   ) : _userId = _OwnedValueNotifier<String?>(null),
       _phase = _OwnedValueNotifier<MotionIdentityPhase>(
         _client.auth.currentUser == null
@@ -151,6 +156,19 @@ class MotionAccountRuntime with WidgetsBindingObserver {
   final SupabaseClient? _receiptClient;
   final Duration _receiptRetryDelay;
   final Duration _identityVerificationTimeout;
+  // One budget covers getUser plus any admitted cleanup/logout it triggers.
+  final Duration _identityTotalTimeout;
+  // Per-UUID receipt read and the whole reconciliation pass.
+  final Duration _receiptReadTimeout;
+  final Duration _reconcileTimeout;
+  final Duration _guestTimeout;
+  // Admitted per-UUID cleanup. A UUID's erase runs at most once at a time:
+  // identity, receipt and retried passes join the same ticket. A caller's
+  // deadline ends only its own wait, never the admitted cleanup.
+  final Map<String, Future<void>> _admittedCleanups = {};
+  final _OwnedValueNotifier<bool> _cleanupPending = _OwnedValueNotifier<bool>(
+    false,
+  );
   final _OwnedValueNotifier<String?> _userId;
   final _OwnedValueNotifier<MotionIdentityPhase> _phase;
   final _OwnedValueNotifier<bool> _passwordRecovery;
@@ -165,6 +183,7 @@ class MotionAccountRuntime with WidgetsBindingObserver {
   int _verificationGeneration = 0;
   String? _recoveryUserId;
   Future<void>? _reconciliation;
+  Object? _reconciliationPass;
   Timer? _receiptRetry;
   bool _disposed = false;
   static final RegExp _uuid = RegExp(
@@ -180,22 +199,42 @@ class MotionAccountRuntime with WidgetsBindingObserver {
     Future<bool> Function(String userId)? wasAccountDeleted,
     Duration receiptRetryDelay = const Duration(minutes: 2),
     Duration identityVerificationTimeout = const Duration(seconds: 10),
-  }) => MotionAccountRuntime._(
-    MotionAccountClient(
-      supabase: client,
-      app: app,
-      emailRedirectTo: 'com.yulalab.${app.name}://auth/callback',
-    ),
-    client,
-    onDeletedAccount,
-    localAccountIds ?? () async => const <String>[],
-    wasAccountDeleted ?? (_) async => false,
-    null,
-    receiptRetryDelay,
-    identityVerificationTimeout,
-  );
+    Duration identityTotalTimeout = const Duration(seconds: 20),
+    Duration receiptReadTimeout = const Duration(seconds: 10),
+    Duration reconcileTimeout = const Duration(seconds: 20),
+    Duration guestTimeout = const Duration(seconds: 20),
+    Duration operationTimeout = const Duration(seconds: 20),
+  }) {
+    final receipt = wasAccountDeleted ?? (_) async => false;
+    return MotionAccountRuntime._(
+      MotionAccountClient(
+        supabase: client,
+        app: app,
+        emailRedirectTo: 'com.yulalab.${app.name}://auth/callback',
+        deletionReceipt: receipt,
+        operationTimeout: operationTimeout,
+        readTimeout: receiptReadTimeout,
+      ),
+      client,
+      onDeletedAccount,
+      localAccountIds ?? () async => const <String>[],
+      receipt,
+      null,
+      receiptRetryDelay,
+      identityVerificationTimeout,
+      identityTotalTimeout,
+      receiptReadTimeout,
+      reconcileTimeout,
+      guestTimeout,
+    );
+  }
 
   ValueListenable<String?> get userId => _userId;
+
+  /// True while an admitted, server-confirmed local cleanup is still running
+  /// after its caller stopped waiting. Hosts may show "cleanup pending"; this
+  /// is never a success receipt and never authority to erase anything else.
+  ValueListenable<bool> get localCleanupPending => _cleanupPending;
   ValueListenable<MotionIdentityPhase> get phase => _phase;
 
   /// Runtime retirement is distinct from a temporarily absent Auth proof.
@@ -257,7 +296,19 @@ class MotionAccountRuntime with WidgetsBindingObserver {
     _clearIdentityProof();
     _notifyIdentityVerification();
     if (_disposed) return;
-    await _client.auth.signOut(scope: SignOutScope.local);
+    // The SDK discards the memory Session before remote logout. A stalled
+    // logout ends this wait as unknown: no guest success is fabricated, and a
+    // later explicit retry completes locally because no token remains.
+    final deadline = MotionDeadline(_guestTimeout);
+    try {
+      await deadline.race(_client.auth.signOut(scope: SignOutScope.local));
+    } on TimeoutException {
+      throw const MotionOperationUnknown(
+        MotionAccountOperation.continueAsGuest,
+      );
+    } finally {
+      deadline.close();
+    }
     if (_disposed) return;
     _observeCurrentSession();
     if (_disposed) return;
@@ -295,45 +346,119 @@ class MotionAccountRuntime with WidgetsBindingObserver {
 
   /// Checks only IDs for which this app still owns local files. A normal
   /// sign-out never deletes history; a server deletion receipt does.
-  Future<void> reconcileDeletedLocalAccounts() => _reconciliation ??=
-      _scanDeletedLocalAccounts().whenComplete(() => _reconciliation = null);
+  ///
+  /// One pass has a total budget. A stalled listing, receipt or cleanup ends
+  /// the pass as inconclusive (it throws), releases single-flight and lets the
+  /// retry timer run. A receipt read that times out or fails is never a
+  /// negative receipt; other UUIDs still progress. An admitted cleanup keeps
+  /// running in its per-UUID ticket and a later pass joins it.
+  Future<void> reconcileDeletedLocalAccounts() {
+    final existing = _reconciliation;
+    if (existing != null) return existing;
+    final pass = Object();
+    final deadline = MotionDeadline(_reconcileTimeout);
+    final future = deadline
+        .race(_scanDeletedLocalAccounts(pass, deadline))
+        .whenComplete(() {
+          deadline.close();
+          if (identical(_reconciliationPass, pass)) {
+            _reconciliationPass = null;
+            _reconciliation = null;
+          }
+        });
+    _reconciliationPass = pass;
+    _reconciliation = future;
+    return future;
+  }
 
-  Future<void> _scanDeletedLocalAccounts() async {
+  bool _isCurrentPass(Object pass, MotionDeadline deadline) =>
+      !_disposed && !deadline.isExpired && identical(_reconciliationPass, pass);
+
+  Future<void> _scanDeletedLocalAccounts(
+    Object pass,
+    MotionDeadline deadline,
+  ) async {
     final ids = await _localAccountIds();
+    Object? inconclusive;
+    StackTrace? inconclusiveStack;
     for (final id in ids.toSet()) {
-      if (_disposed) return;
+      if (!_isCurrentPass(pass, deadline)) return;
       if (!_uuid.hasMatch(id)) continue;
-      if (!await _wasAccountDeleted(id)) continue;
-      if (_disposed) return;
-      _observeCurrentSession();
-      int? deletionGeneration;
-      String? deletionToken;
-      Session? deletionSession;
-      // Receipt admission already succeeded. A proof callback may retire the
-      // runtime; skip its bookkeeping then, but retain this UUID's cleanup.
-      if (!_disposed && _client.auth.currentUser?.id == id) {
-        deletionSession = _client.auth.currentSession;
-        deletionToken = deletionSession?.accessToken;
-        deletionGeneration = ++_verificationGeneration;
-        _clearIdentityProof();
-        _userId.value = null;
-        _phase.value = MotionIdentityPhase.unavailable;
-        _notifyIdentityVerification();
+      final bool deleted;
+      try {
+        deleted = await deadline.raceWithin(
+          _receiptReadTimeout,
+          Future.sync(() => _wasAccountDeleted(id)),
+        );
+      } catch (error, stack) {
+        // Unavailable or late: keep this UUID's files, try the next one.
+        inconclusive ??= error;
+        inconclusiveStack ??= stack;
+        continue;
       }
-      await _onDeletedAccount(id);
-      _observeCurrentSession();
-      if (deletionGeneration != null &&
-          _isCurrentVerification(
-            deletionGeneration,
-            id,
-            deletionToken,
-            deletionSession,
-          )) {
-        try {
-          await _client.auth.signOut(scope: SignOutScope.local);
-        } catch (_) {
-          // A deleted remote account cannot revoke an expired session.
-        }
+      // A late positive from an abandoned pass admits nothing; the next pass
+      // reads the receipt again under its own budget.
+      if (!_isCurrentPass(pass, deadline)) return;
+      if (!deleted) continue;
+      await _admitDeletedAccount(id);
+    }
+    if (inconclusive != null) {
+      Error.throwWithStackTrace(inconclusive, inconclusiveStack!);
+    }
+  }
+
+  /// Admits confirmed cleanup for [id] once; concurrent callers join it.
+  Future<void> _admitDeletedAccount(String id) {
+    final existing = _admittedCleanups[id];
+    if (existing != null) return existing;
+    final ticket = _runDeletedAccountCleanup(id);
+    _admittedCleanups[id] = ticket;
+    _cleanupPending.value = true;
+    ticket.ignore(); // Observed by every waiter; never an unhandled error.
+    ticket.whenComplete(() {
+      if (identical(_admittedCleanups[id], ticket))
+        _admittedCleanups.remove(id);
+      if (!_disposed) _cleanupPending.value = _admittedCleanups.isNotEmpty;
+    }).ignore();
+    return ticket;
+  }
+
+  Future<void> _runDeletedAccountCleanup(String id) async {
+    _observeCurrentSession();
+    int? deletionGeneration;
+    String? deletionToken;
+    Session? deletionSession;
+    // Receipt admission already succeeded. A proof callback may retire the
+    // runtime; skip its bookkeeping then, but retain this UUID's cleanup.
+    if (!_disposed && _client.auth.currentUser?.id == id) {
+      deletionSession = _client.auth.currentSession;
+      deletionToken = deletionSession?.accessToken;
+      deletionGeneration = ++_verificationGeneration;
+      _clearIdentityProof();
+      _userId.value = null;
+      _phase.value = MotionIdentityPhase.unavailable;
+      _notifyIdentityVerification();
+    }
+    await _onDeletedAccount(id);
+    _observeCurrentSession();
+    // Bound to the exact deleted Session, not to the verification generation
+    // that opened this ticket: a later Retry joins the ticket instead of
+    // starting a second erase, and the dead Session must still be discarded.
+    // A replacement Session (even same UUID/token) is never signed out.
+    if (deletionGeneration != null &&
+        !_disposed &&
+        _client.auth.currentUser?.id == id &&
+        identical(_client.auth.currentSession, deletionSession) &&
+        _client.auth.currentSession?.accessToken == deletionToken) {
+      // The SDK drops the memory Session before remote logout; a stalled
+      // logout must not keep this ticket (and its joiners) pending forever.
+      final deadline = MotionDeadline(_guestTimeout);
+      try {
+        await deadline.race(_client.auth.signOut(scope: SignOutScope.local));
+      } catch (_) {
+        // A deleted remote account cannot revoke an expired session.
+      } finally {
+        deadline.close();
       }
     }
   }
@@ -385,10 +510,13 @@ class MotionAccountRuntime with WidgetsBindingObserver {
     }
 
     if (_disposed) return;
+    // One total budget for getUser and any cleanup/logout it admits.
+    final deadline = MotionDeadline(_identityTotalTimeout);
     try {
-      final verified = await _client.auth
-          .getUser(claimedToken)
-          .timeout(_identityVerificationTimeout);
+      final verified = await deadline.raceWithin(
+        _identityVerificationTimeout,
+        _client.auth.getUser(claimedToken),
+      );
       // Observe the actual Session, not the stale request's Session. A newer
       // accepted proof for the actual Session must survive this completion.
       _observeCurrentSession();
@@ -426,19 +554,13 @@ class MotionAccountRuntime with WidgetsBindingObserver {
       _phase.value = MotionIdentityPhase.unavailable;
       _notifyIdentityVerification();
       if (error.code == 'user_not_found') {
-        await _onDeletedAccount(claimedId);
-        _observeCurrentSession();
-        if (!_isCurrentVerification(
-          generation,
-          claimedId,
-          claimedToken,
-          claimedSession,
-        ))
-          return;
+        // Explicit matching user_not_found admits this UUID's cleanup. When the
+        // budget ends first the cleanup keeps running; this call reports it as
+        // pending (not success) and the gate stays closed.
         try {
-          await _client.auth.signOut(scope: SignOutScope.local);
-        } catch (_) {
-          // The deleted account has no remote session to revoke.
+          await deadline.race(_admitDeletedAccount(claimedId));
+        } on TimeoutException {
+          throw const MotionLocalCleanupPending();
         }
         return;
       }
@@ -457,6 +579,8 @@ class MotionAccountRuntime with WidgetsBindingObserver {
         _notifyIdentityVerification();
       }
       rethrow;
+    } finally {
+      deadline.close();
     }
   }
 
@@ -504,26 +628,41 @@ class MotionAccountRuntime with WidgetsBindingObserver {
       publishableKey,
       authOptions: const AuthClientOptions(autoRefreshToken: false),
     );
+    const receiptReadTimeout = Duration(seconds: 10);
+    Future<bool> wasAccountDeleted(String userId) async {
+      // Abort releases the anonymous read; callers also race their own budget.
+      final deadline = MotionDeadline(receiptReadTimeout);
+      try {
+        final result = await deadline.race(
+          receiptClient
+              .rpc('motion_was_account_deleted', params: {'p_user_id': userId})
+              .abortSignal(deadline.signal),
+        );
+        if (result is! bool) throw StateError('Invalid deletion receipt');
+        return result;
+      } finally {
+        deadline.close();
+      }
+    }
+
     return MotionAccountRuntime._(
       MotionAccountClient(
         supabase: client,
         app: app,
         emailRedirectTo: emailRedirectTo,
+        deletionReceipt: wasAccountDeleted,
       ),
       client,
       onDeletedAccount,
       localAccountIds,
-      (userId) async {
-        final result = await receiptClient.rpc(
-          'motion_was_account_deleted',
-          params: {'p_user_id': userId},
-        );
-        if (result is! bool) throw StateError('Invalid deletion receipt');
-        return result;
-      },
+      wasAccountDeleted,
       receiptClient,
       const Duration(minutes: 2),
       const Duration(seconds: 10),
+      const Duration(seconds: 20),
+      receiptReadTimeout,
+      const Duration(seconds: 20),
+      const Duration(seconds: 20),
     );
   }
 
@@ -542,5 +681,6 @@ class MotionAccountRuntime with WidgetsBindingObserver {
     _userId.close();
     _phase.close();
     _passwordRecovery.close();
+    _cleanupPending.close();
   }
 }

@@ -4,6 +4,9 @@ One Supabase identity serves Ostinato, Gravita, Choreia, JabLab, and Lissom.
 Subscription rights remain scoped to the signed-in user **and** one app.
 Version 0.2.0 adds the recovery listenable below and requires the deletion
 response upgrade described here. Entitlement fixes ship as version 0.1.1.
+Version 0.3.0 adds per-method deadlines and typed unknown mutation outcomes
+(`MotionOperationUnknown`, K08): hosts that caught raw SDK errors from account
+mutations must also handle it.
 
 Host apps initialize `MotionAccountRuntime` once before `runApp` with the same
 Motion project URL and publishable key, their own `MotionApp` value, and the
@@ -277,13 +280,9 @@ A retained save callback also checks the captured user before dispatch and the
 widget must still be mounted. This is form ownership, not server-side identity
 proof, transport cancellation or a backend write-isolation test.
 
-No generic timeout was added to sign-in, profile-save, recovery, deletion or store
-mutations. A timeout cannot establish whether a remote mutation happened. The
-remaining finite-action design requires per-action deadlines, transport abort
-capability, uncertain-outcome readback/idempotency semantics and the host's live
-owner/resource ticket across awaits. The existing identity-verification deadline
-does not bound total Auth/reconciliation time. These broader contracts, provider
-deployment and Choreia's readiness/owner seam require separate acceptance.
+Per-method total deadlines and unknown mutation outcomes are described in
+"Deadlines and unknown outcomes (K08)" below; provider deployment and
+Choreia's readiness/owner seam still require separate acceptance.
 
 The candidate adds `test/account_localizations_test.dart` and updates
 `test/profile_draft_test.dart`. Catalog/source checks using Python are not Flutter
@@ -309,3 +308,50 @@ This local follow-up is separate from published commit `8f38158e`; consumers
 must adopt an exact remote commit and run their own regressions. Fourteen-locale
 copy belongs to this separate local catalog checkpoint; the published eight-locale
 CI result does not establish this checkpoint, a live-auth check or device acceptance.
+
+
+## Deadlines and unknown outcomes (K08)
+
+Every network method has one total budget started once (`MotionDeadline`):
+stages race the same expiry, so per-stage timeouts never reset the total.
+
+| Method | Budget | On expiry or lost reply |
+|---|---|---|
+| `refreshIdentity` | getUser 10 s inside a 20 s total | latest matching timeout closes the gate; a `user_not_found` cleanup still running at 20 s throws `MotionLocalCleanupPending` |
+| reconciliation pass | 10 s per receipt read, 20 s per pass | the pass throws (inconclusive), single-flight is released and the retry timer runs; a stalled receipt is never `false` |
+| `continueAsGuest` | 20 s | `MotionOperationUnknown(continueAsGuest)`; no guest success is fabricated. A retry completes locally (the SDK already dropped the token) |
+| sign-up, sign-in, reset, resend, password update, sign-out | 20 s | `MotionOperationUnknown(operation)` |
+| `saveDisplayName` | 20 s | `MotionOperationUnknown(saveProfile)` |
+| `deleteCommonAccount` | 20 s + one 10 s receipt read | positive receipt for the captured UUID continues as a confirmed deletion; otherwise `MotionOperationUnknown(deleteAccount)` and every local file is kept |
+| `loadProfile`, `membershipStatus`, receipt read | 10 s | `TimeoutException`; unknown membership never grants access |
+
+Only a definite server rejection (HTTP 4xx, or a decoded PostgREST error) is
+rethrown as-is. A timeout, transport loss, retryable/5xx reply or unknown error
+after dispatch may follow a committed effect, so it becomes
+`MotionOperationUnknown`. Nothing retries a mutation automatically. PostgREST
+and Functions requests receive the budget as `abortSignal`, which releases the
+local request but never rolls back a server effect. Auth methods have no
+per-request abort: a late reply can still publish a Session or event, which the
+runtime proof and the page's owner fences handle as an ordinary Auth change.
+
+Admitted cleanup is a per-UUID ticket. Identity, receipt and later passes join
+the running ticket instead of erasing twice; a caller's deadline ends only its
+own wait. `localCleanupPending` (`ValueListenable<bool>`) is true while such a
+ticket outlives its caller. It carries no UUID and is never a success receipt.
+The ticket signs out only the exact deleted Session (identity + token), never a
+replacement Session, and its logout is bounded too.
+
+`MotionAccountPage` shows an operation-specific explanation for an unknown
+outcome and keeps every mutation disabled until the user taps OK or the owner
+changes. A delayed sign-in Session simply replaces the unknown state. An
+unknown profile save reads the profile once (10 s) and reports whether the
+current name equals the entry, without overwriting the draft or replaying the
+write; equality is the current postcondition, not an exactly-once receipt. An
+unknown sign-out with the local Session gone says the device is signed out and
+the remote revoke is unconfirmed. Unknown results for an owner that already
+changed are not published.
+
+Host startup (`Supabase.initialize` before `runApp`) is not bounded by Core:
+hosts show a first waiting frame and own a startup observer and late-runtime
+disposal (Choreia's 20 s pattern). Store purchase/provider budgets stay with
+the paid path, which remains closed for the first release.

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'motion_account_client.dart';
+import 'motion_account_deadline.dart';
 import 'motion_account_localizations.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
@@ -63,9 +64,12 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   Timer? _profileReadTimer;
   Completer<Map<String, dynamic>?>? _profileReadDeadline;
   static const _profileReadTimeout = Duration(seconds: 10);
+  // A mutation whose outcome is unknown. Every mutation stays disabled until
+  // the user acknowledges it or the owner changes; nothing retries it.
+  MotionAccountOperation? _unresolved;
 
   bool get _canSaveProfile => _displayNameEdited || _profileReadSucceeded;
-  bool get _isBusy => _busy || _profileSaveBusy;
+  bool get _isBusy => _busy || _profileSaveBusy || _unresolved != null;
 
   @override
   void initState() {
@@ -85,6 +89,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           // eventual outcome cannot hold or publish into the new owner's UI.
           _profileSaveGeneration++;
           _profileSaveBusy = false;
+          // The visible account is now the current state (for example a late
+          // sign-in reply); the old unknown outcome no longer applies here.
+          _unresolved = null;
         }
         setState(() {
           if (state.event == AuthChangeEvent.passwordRecovery) {
@@ -94,7 +101,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
               state.event == AuthChangeEvent.userUpdated) {
             _recovering = false;
           }
-          _message = null;
+          // An unacknowledged unknown outcome keeps its explanation visible
+          // across same-owner events such as token refresh.
+          if (_unresolved == null) _message = null;
           if (accountChanged || state.event == AuthChangeEvent.userUpdated) {
             _refreshMembership();
           }
@@ -246,6 +255,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     MotionAccountString? success,
   }) async {
     if (_isBusy) return;
+    final owner = widget.account.currentUser?.id;
     setState(() {
       _busy = true;
       _message = null;
@@ -260,6 +270,21 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
             : widget.account.hasActiveMembership();
         _message = success;
       });
+    } on MotionOperationUnknown catch (unknown) {
+      if (!mounted) return;
+      final operation = unknown.operation;
+      final current = widget.account.currentUser?.id;
+      setState(() {
+        if (operation == MotionAccountOperation.signOut && current == null) {
+          // Local discard is observed; only remote revocation is unconfirmed.
+          _message = MotionAccountString.signedOutOnDevice;
+        } else if (current == owner) {
+          _unresolved = operation;
+          _message = _unknownMessage(operation);
+        }
+        // Otherwise the account already changed: the new state is visible
+        // and the old unknown outcome is not published into it.
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -270,6 +295,29 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  static MotionAccountString _unknownMessage(
+    MotionAccountOperation operation,
+  ) => switch (operation) {
+    MotionAccountOperation.signUp ||
+    MotionAccountOperation.passwordReset ||
+    MotionAccountOperation.resendConfirmation =>
+      MotionAccountString.emailRequestUnknown,
+    MotionAccountOperation.updatePassword =>
+      MotionAccountString.passwordUpdateUnknown,
+    MotionAccountOperation.deleteAccount => MotionAccountString.deletionUnknown,
+    MotionAccountOperation.saveProfile =>
+      MotionAccountString.profileSaveUnknown,
+    _ => MotionAccountString.operationUnknown,
+  };
+
+  void _acknowledgeUnknown() {
+    if (!mounted || _unresolved == null) return;
+    setState(() {
+      _unresolved = null;
+      _message = null;
+    });
   }
 
   bool _canPublishProfileSave(int generation, String userId) =>
@@ -299,6 +347,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       await widget.account.saveDisplayName(displayName);
       if (!_canPublishProfileSave(generation, userId)) return;
       setState(() => _message = MotionAccountString.profileSaved);
+    } on MotionOperationUnknown {
+      if (!_canPublishProfileSave(generation, userId)) return;
+      await _checkUnknownSave(generation, userId, displayName.trim());
     } catch (_) {
       if (!_canPublishProfileSave(generation, userId)) return;
       setState(() => _message = MotionAccountString.requestFailed);
@@ -306,6 +357,37 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       if (_canPublishProfileSave(generation, userId)) {
         setState(() => _profileSaveBusy = false);
       }
+    }
+  }
+
+  /// Reads the owner's current profile once after an unknown save. Equality is
+  /// the current postcondition, not an exactly-once acknowledgement. The draft
+  /// is never overwritten and no write is replayed.
+  Future<void> _checkUnknownSave(
+    int generation,
+    String userId,
+    String sent,
+  ) async {
+    final deadline = MotionDeadline(_profileReadTimeout);
+    try {
+      final profile = await deadline.race(
+        Future<Map<String, dynamic>?>.sync(widget.account.loadProfile),
+      );
+      if (!_canPublishProfileSave(generation, userId)) return;
+      final current = (profile?['display_name'] as String? ?? '').trim();
+      setState(() {
+        _message = current == sent
+            ? MotionAccountString.profileSaveMatches
+            : MotionAccountString.profileSaveDiffers;
+      });
+    } catch (_) {
+      if (!_canPublishProfileSave(generation, userId)) return;
+      setState(() {
+        _unresolved = MotionAccountOperation.saveProfile;
+        _message = MotionAccountString.profileSaveUnknown;
+      });
+    } finally {
+      deadline.close();
     }
   }
 
@@ -380,6 +462,14 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           children: [
             if (_message != null) ...[
               Semantics(liveRegion: true, child: Text(_text(_message!))),
+              if (_unresolved != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    onPressed: _acknowledgeUnknown,
+                    child: Text(_text(MotionAccountString.acknowledgeUnknown)),
+                  ),
+                ),
               const SizedBox(height: 16),
             ],
             if (_isBusy) const LinearProgressIndicator(),
