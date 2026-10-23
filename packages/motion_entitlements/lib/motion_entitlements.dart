@@ -11,4 +11,5 @@ export 'src/purchase_coordinator.dart';
 export 'src/purchase_state.dart';
 export 'src/server_adapter.dart';
 export 'src/store_product_ref.dart';
+export 'src/storefront_country.dart';
 export 'src/supabase_server_adapter.dart';

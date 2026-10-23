@@ -232,6 +232,37 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    for (final (label, explicit, store, device, expected) in [
+      ('store region wins over device', null, 'TUR', 'US', 'TR'),
+      ('explicit override wins over store', 'gb', 'TUR', 'US', 'GB'),
+      ('device region when the store is unknown', null, null, 'FR', 'FR'),
+      ('unknown everywhere stays null', null, null, null, null),
+    ]) {
+      testWidgets('country source: $label', (tester) async {
+        tester.platformDispatcher.localeTestValue = Locale('en', device);
+        addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+        var storeReads = 0;
+        final account = _AgeAccount(userId: null);
+        await _pump(
+          tester,
+          account,
+          countryCode: explicit,
+          storefront: () async {
+            storeReads++;
+            return store;
+          },
+        );
+        await _openRegister(tester);
+        await _chooseAge(tester, 2011, 3);
+        await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+        await tester.pump();
+        await tester.pump();
+        expect(account.signUps.single.countryCode, expected);
+        expect(storeReads, explicit == null ? 1 : 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('under 13 creates nothing and stays blocked', (tester) async {
       final account = _AgeAccount(userId: null);
       var blocked = 0;
@@ -405,6 +436,8 @@ Future<void> _pump(
   _AgeAccount account, {
   VoidCallback? onAgeBlocked,
   bool ageBlocked = false,
+  String? countryCode = 'DE',
+  Future<String?> Function()? storefront,
 }) async {
   tester.view.physicalSize = const Size(1200, 2400);
   tester.view.devicePixelRatio = 1;
@@ -419,7 +452,8 @@ Future<void> _pump(
       home: MotionAccountPage(
         account: account,
         paidFeaturesAvailable: false,
-        countryCode: 'DE',
+        countryCode: countryCode,
+        storefrontCountry: storefront ?? () async => null,
         clock: () => _today,
         ageBlocked: ageBlocked,
         onAgeBlocked: onAgeBlocked,

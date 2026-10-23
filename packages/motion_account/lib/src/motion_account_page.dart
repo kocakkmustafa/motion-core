@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:motion_entitlements/motion_entitlements.dart'
+    show motionAlpha2Country, motionStorefrontCountry;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -33,6 +35,7 @@ class MotionAccountPage extends StatefulWidget {
     this.onManageSubscription,
     this.paidFeaturesAvailable = motionPaidFeaturesAvailable,
     this.countryCode,
+    this.storefrontCountry = motionStorefrontCountry,
     this.ageBlocked = false,
     this.onAgeBlocked,
     this.clock = DateTime.now,
@@ -45,9 +48,15 @@ class MotionAccountPage extends StatefulWidget {
   final VoidCallback? onManageSubscription;
   final bool paidFeaturesAvailable;
 
-  /// ISO 3166-1 alpha-2 region (e.g. the store storefront). Defaults to the
-  /// device region; unknown regions use [MotionAgePolicy.defaultRule].
+  /// Explicit ISO 3166-1 region override (alpha-2 or alpha-3). When null the
+  /// page asks [storefrontCountry] (the store account region) once at sign-up
+  /// or age confirmation and falls back to the device region; an unknown
+  /// region uses [MotionAgePolicy.defaultRule].
   final String? countryCode;
+
+  /// Store region reader; returns null when unavailable. Defaults to the
+  /// App Store storefront / Google Play billing country.
+  final Future<String?> Function() storefrontCountry;
   final bool ageBlocked;
   final VoidCallback? onAgeBlocked;
   final DateTime Function() clock;
@@ -173,23 +182,37 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     super.dispose();
   }
 
-  String? get _country {
-    final code =
-        (widget.countryCode ??
-                WidgetsBinding.instance.platformDispatcher.locale.countryCode)
-            ?.toUpperCase();
-    return code != null && RegExp(r'^[A-Z]{2}$').hasMatch(code) ? code : null;
+  Future<String?>? _storeCountry;
+
+  /// Explicit override, then the store account region, then device region.
+  Future<String?> _country() async {
+    final explicit = motionAlpha2Country(widget.countryCode);
+    if (explicit != null) return explicit;
+    String? store;
+    try {
+      store = motionAlpha2Country(
+        await (_storeCountry ??= widget.storefrontCountry()),
+      );
+    } catch (_) {
+      store = null;
+    }
+    return store ??
+        motionAlpha2Country(
+          WidgetsBinding.instance.platformDispatcher.locale.countryCode,
+        );
   }
 
-  MotionAgeDeclaration? get _declaration =>
-      _birthYear == null || _birthMonth == null
-      ? null
-      : MotionAgeDeclaration(
-          birthYear: _birthYear!,
-          birthMonth: _birthMonth!,
-          countryCode: _country,
-          policyVersion: MotionAgePolicy.version,
-        );
+  Future<MotionAgeDeclaration?> _declaration() async {
+    final year = _birthYear;
+    final month = _birthMonth;
+    if (year == null || month == null) return null;
+    return MotionAgeDeclaration(
+      birthYear: year,
+      birthMonth: month,
+      countryCode: await _country(),
+      policyVersion: MotionAgePolicy.version,
+    );
+  }
 
   bool get _restricted => _ageStatus?.restrictedOn(widget.clock()) ?? false;
 
@@ -221,18 +244,24 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     widget.onAgeBlocked?.call();
   }
 
+  /// Under 13 is blocked in every country, so the gate needs no region.
+  bool get _declaredUnder13 =>
+      MotionAgePolicy.ageOn(_birthYear!, _birthMonth!, widget.clock()) <
+      MotionAgePolicy.minimumAge;
+
   Future<void> _confirmDeclaredAge() async {
-    final declaration = _declaration;
-    if (declaration == null) {
+    if (_birthYear == null || _birthMonth == null) {
       setState(() => _message = MotionAccountString.ageRequired);
       return;
     }
-    if (MotionAgePolicy.bandFor(declaration, today: widget.clock()) ==
-        MotionAgeBand.blocked) {
+    if (_declaredUnder13) {
       setState(_blockAge);
       return;
     }
+    // The region read runs inside the busy action: no second dispatch.
     await _run(() async {
+      final declaration = await _declaration();
+      if (declaration == null) return;
       await widget.account.recordAgeDeclaration(declaration);
     });
     if (mounted) await _loadAgeStatus();
@@ -293,7 +322,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     _membership =
         !widget.paidFeaturesAvailable || widget.account.currentUser == null
         ? null
-        : widget.account.hasActiveMembership();
+        : Future<bool>.sync(widget.account.hasActiveMembership);
   }
 
   Future<void> _loadDisplayName({bool resetDraft = false}) async {
@@ -410,7 +439,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         _membership =
             !widget.paidFeaturesAvailable || widget.account.currentUser == null
             ? null
-            : widget.account.hasActiveMembership();
+            : Future<bool>.sync(widget.account.hasActiveMembership);
         _message = success;
       });
     } on MotionOperationUnknown catch (unknown) {
@@ -552,17 +581,17 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         setState(() => _message = MotionAccountString.ageBlocked);
         return;
       }
-      final age = _declaration;
-      if (age == null) {
+      if (_birthYear == null || _birthMonth == null) {
         setState(() => _message = MotionAccountString.ageRequired);
         return;
       }
-      if (MotionAgePolicy.bandFor(age, today: widget.clock()) ==
-          MotionAgeBand.blocked) {
+      if (_declaredUnder13) {
         setState(_blockAge);
         return;
       }
       await _run(() async {
+        final age = await _declaration();
+        if (age == null) return;
         await widget.account.signUpWithAge(
           email: email,
           password: _password.text,
