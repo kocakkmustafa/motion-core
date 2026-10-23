@@ -36,6 +36,25 @@ begin
     raise exception 'declaration was not captured';
   end if;
 
+  -- GoTrue rewrites the user row after insert; a later write that carries
+  -- the metadata again must neither keep it nor restate the age.
+  update auth.users
+    set raw_user_meta_data = raw_user_meta_data || jsonb_build_object(
+      'motion_age', jsonb_build_object('birth_year_month', ym_adult,
+        'country', 'US', 'policy_version', '2026-10-21.1'),
+      'email_verified', true)
+    where id = teen;
+  select raw_user_meta_data into meta from auth.users where id = teen;
+  if meta ? 'motion_age' or not (meta ? 'email_verified') then
+    raise exception 'metadata rewrite was not stripped: %', meta;
+  end if;
+  if not exists (
+    select 1 from public.motion_age_declarations
+    where user_id = teen and birth_year_month = ym_teen and country = 'DE'
+  ) then
+    raise exception 'a metadata rewrite restated the declaration';
+  end if;
+
   -- Under 13 cannot sign up.
   begin
     insert into auth.users
