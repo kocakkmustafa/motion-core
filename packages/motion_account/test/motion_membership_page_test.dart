@@ -78,6 +78,20 @@ class _MembershipAccount extends MotionAccountClient {
   @override
   Future<MotionMembershipStatus> membershipStatus() async =>
       MotionMembershipStatus(active: active, anyActive: anyActive);
+
+  // Declared adult unless a test says otherwise; no network read.
+  MotionAgeStatus age = const MotionAgeStatus(
+    declaration: MotionAgeDeclaration(
+      birthYear: 1990,
+      birthMonth: 1,
+      countryCode: 'TR',
+      policyVersion: MotionAgePolicy.version,
+    ),
+    consent: MotionParentalConsent.none,
+  );
+
+  @override
+  Future<MotionAgeStatus> ageStatus() async => age;
 }
 
 class _AuthStreamAccount extends _MembershipAccount {
@@ -171,6 +185,73 @@ Future<_MembershipAccount> _account(bool active, {bool? anyActive}) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('a consent-pending teen is offered no purchase; restore stays', (
+    tester,
+  ) async {
+    final account = await _account(false);
+    account.age = MotionAgeStatus(
+      declaration: MotionAgeDeclaration(
+        birthYear: DateTime.now().year - 14,
+        birthMonth: 1,
+        countryCode: 'DE',
+        policyVersion: MotionAgePolicy.version,
+      ),
+      consent: MotionParentalConsent.pending,
+    );
+    final store = _Store(const [_streamOffer]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: store,
+          serverAdapter: _Server(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'A parent or guardian needs to approve this account before account features open. Practice on this device keeps working.',
+      ),
+      findsOneWidget,
+    );
+    expect(store.fetchCount, 0);
+    expect(find.widgetWithText(FilledButton, 'Choose'), findsNothing);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Restore purchases'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    account.supabase.dispose();
+  });
+
+  testWidgets('an approved or adult account still sees the offers', (
+    tester,
+  ) async {
+    final account = await _account(false);
+    final store = _Store(const [_streamOffer]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: store,
+          serverAdapter: _Server(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(store.fetchCount, 1);
+    expect(find.widgetWithText(FilledButton, 'Choose'), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    account.supabase.dispose();
+  });
 
   testWidgets('same-token silent recovery blocks a retained sale action', (
     tester,

@@ -38,6 +38,9 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   bool _active = false;
   bool _anyActive = false;
   bool _authStreamFailed = false;
+  // A teen below the consent age without parent approval is not offered a
+  // purchase. Restoring an existing store purchase stays available.
+  bool _consentRequired = false;
   MotionAccountString? _message;
 
   String get _appId => widget.account.app.name;
@@ -137,6 +140,15 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       _message = null;
     });
     try {
+      final restricted = await _restrictedByAge();
+      if (!mounted || !_sameUser) return;
+      if (restricted) {
+        setState(() {
+          _consentRequired = true;
+          _offers = const [];
+        });
+        return;
+      }
       final status = await widget.account.membershipStatus();
       if (!mounted || !_sameUser) return;
       final offers = status.active
@@ -158,8 +170,23 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     }
   }
 
+  /// Unknown status does not invent a restriction; the server's RLS and the
+  /// account page still enforce consent for account features.
+  Future<bool> _restrictedByAge() async {
+    try {
+      final status = await Future.sync(widget.account.ageStatus);
+      return status.restrictedOn(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _buy(StoreProductRef offer) async {
-    if (_busy || _active || !_sameUser || (_anyActive && _isMotionPlus(offer)))
+    if (_busy ||
+        _active ||
+        _consentRequired ||
+        !_sameUser ||
+        (_anyActive && _isMotionPlus(offer)))
       return;
     setState(() {
       _busy = true;
@@ -314,6 +341,8 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
             ],
             if (!_sameUser)
               Text(_text(MotionAccountString.signInFirst))
+            else if (_consentRequired)
+              Text(_text(MotionAccountString.parentalConsentNeeded))
             else if (_active)
               Text(_text(MotionAccountString.yourMembershipActive))
             else if (!_busy &&

@@ -32,6 +32,13 @@ const _user = User(
 );
 
 void main() {
+  test('first release sells subscriptions but keeps paid sessions closed', () {
+    // Hosts gate camera launch on motionPaidFeaturesAvailable; sales must
+    // never open it implicitly.
+    expect(motionSubscriptionSalesAvailable, isTrue);
+    expect(motionPaidFeaturesAvailable, isFalse);
+  });
+
   testWidgets('first release keeps paid sessions and purchase route closed', (
     tester,
   ) async {

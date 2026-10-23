@@ -373,6 +373,12 @@ only `{birth_year_month, country, policy_version}` as Auth metadata; a server
 trigger stores it in `motion_age_declarations`, strips it from metadata and
 rejects an under-13 declaration.
 
+Region source (founder decision 23 Oct): an explicit `countryCode` wins;
+otherwise the page reads the store account region once at sign-up or age
+confirmation (`storefrontCountry`, default `motionStorefrontCountry` from
+`motion_entitlements`: App Store storefront alpha-3 or Play billing alpha-2,
+normalised to alpha-2, bounded to 3 s) and falls back to the device region.
+
 Signed-in hosts read `ageStatus()` (`MotionAgeStatus`): `declared`, `consent`
 and `restrictedOn(today)`. A restricted account (below its consent age without
 parent approval) keeps local practice but cannot write the shared profile
@@ -391,3 +397,16 @@ only as a digest. Mail delivery needs `MOTION_MAIL_API_URL`, `MOTION_MAIL_API_KE
 and `MOTION_MAIL_FROM`; without them the request fails closed with
 `mail_unavailable`. Retention and restore re-application are described in
 `docs/compliance/YAS-VELI-VE-SAKLAMA.md`.
+
+## Subscription sales (first release)
+
+`motionSubscriptionSalesAvailable` is true (founder decision 23 Oct 2026): all
+five apps sell their own subscription and Motion+. `motionPaidFeaturesAvailable`
+stays false because hosts use it as their camera-session/measurement gate;
+opening sales never opens camera coaching. The account page default is
+unchanged, so each host opts in with
+`MotionAccountPage(paidFeaturesAvailable: motionSubscriptionSalesAvailable)`
+and runs its own regression (the page then checks membership on open).
+`MotionMembershipPage` offers no purchase to an account restricted by missing
+parental consent; restoring an existing store purchase stays available and
+server verification is unchanged (a paid store purchase is never refused).
