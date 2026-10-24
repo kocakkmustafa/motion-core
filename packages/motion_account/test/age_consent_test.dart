@@ -302,6 +302,8 @@ void main() {
             .onPressed,
         isNull,
       );
+      // The reason is shown on reopening too (Lissom LIS-01 report), once.
+      expect(find.text(_blockedText), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -588,3 +590,7 @@ class _Auth implements GoTrueClient {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+const _blockedText =
+    "Sorry, you can't create a Motion account. Motion accounts are for "
+    'people 13 and older.';

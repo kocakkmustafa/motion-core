@@ -754,6 +754,14 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         ),
       ),
       if (_register) ...[const SizedBox(height: 16), ..._ageFields()],
+      // A block persisted by the host (for example after a restart) must say
+      // why sign-up is closed, not only disable the button.
+      if (_register &&
+          _ageBlocked &&
+          _message != MotionAccountString.ageBlocked) ...[
+        const SizedBox(height: 16),
+        Text(_text(MotionAccountString.ageBlocked)),
+      ],
       const SizedBox(height: 16),
       FilledButton(
         onPressed: _isBusy || (_register && _ageBlocked)
