@@ -1,6 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.1";
 import { consentEmail } from "../_shared/motion_consent_copy.ts";
 import { allowedOrigins, preflight, withCors } from "../_shared/motion_cors.ts";
+import {
+  sendSmtpMail,
+  type SmtpConfig,
+  smtpConfigFromEnv,
+} from "../_shared/motion_smtp.ts";
 
 // Parental/guardian consent for a Motion teen account below its country's
 // digital-consent age. Three actions:
@@ -8,7 +13,9 @@ import { allowedOrigins, preflight, withCors } from "../_shared/motion_cors.ts";
 //   view (token): masked request summary for the consent page.
 //   decide (token): approve opens account features; deny deletes the account.
 // The parent address is never stored in clear; the link token only as digest.
-// Mail delivery uses a configured provider endpoint (not deployed here).
+// Mail goes out through Google Workspace SMTP (465, implicit TLS; see
+// _shared/motion_smtp.ts). Without a complete MOTION_SMTP_* configuration the
+// request fails closed with mail_unavailable.
 // The consent page calls view/decide from the browser: origins listed in
 // MOTION_CONSENT_ALLOWED_ORIGINS (default https://yulalab.com) get CORS.
 
@@ -43,9 +50,7 @@ type Env = {
   url: string;
   publishable: string;
   serviceKey: string;
-  mailUrl?: string;
-  mailKey?: string;
-  mailFrom?: string;
+  smtp: SmtpConfig | null;
   pageUrl: string;
 };
 
@@ -58,30 +63,20 @@ function readEnv(): Env | null {
     url,
     publishable,
     serviceKey,
-    mailUrl: Deno.env.get("MOTION_MAIL_API_URL"),
-    mailKey: Deno.env.get("MOTION_MAIL_API_KEY"),
-    mailFrom: Deno.env.get("MOTION_MAIL_FROM"),
+    smtp: smtpConfigFromEnv(),
     pageUrl: Deno.env.get("MOTION_CONSENT_PAGE_URL") ??
       "https://yulalab.com/motion/consent",
   };
 }
 
-async function sendMail(
+function sendMail(
   env: Env,
   to: string,
   subject: string,
   text: string,
 ): Promise<boolean> {
-  if (!env.mailUrl || !env.mailKey || !env.mailFrom) return false;
-  const response = await fetch(env.mailUrl, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${env.mailKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: env.mailFrom, to: [to], subject, text }),
-  });
-  return response.ok;
+  if (!env.smtp) return Promise.resolve(false);
+  return sendSmtpMail(env.smtp, { to, subject, text });
 }
 
 async function handleRequest(

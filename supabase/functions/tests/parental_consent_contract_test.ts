@@ -1,15 +1,17 @@
 // Exercise the production consent handler with a fixture transport; no remote
-// accounts, no mail provider. The parent address never reaches storage.
+// accounts. Mail goes over real SMTP to a loopback fake server (plain text is
+// allowed only towards loopback). The parent address never reaches storage.
 import {
   consentEmail,
   consentLocales,
 } from "../_shared/motion_consent_copy.ts";
+import { FakeSmtp } from "./fake_smtp.ts";
 
 const teen = "00000000-0000-4000-8000-000000000003";
 let handler: (request: Request) => Promise<Response>;
 let restricted = true;
-let mailOk = true;
-let mails: { to: string[]; subject: string; text: string }[] = [];
+const smtp = new FakeSmtp();
+const mails = smtp.mails;
 let upserts: Record<string, unknown>[] = [];
 let updates: Record<string, unknown>[] = [];
 let deleted: string[] = [];
@@ -18,8 +20,11 @@ let stored: Record<string, unknown> | null = null;
 Deno.env.set("SUPABASE_URL", "http://127.0.0.1:54321");
 Deno.env.set("SUPABASE_ANON_KEY", "fixture-public");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "fixture-server");
-Deno.env.set("MOTION_MAIL_API_URL", "http://127.0.0.1:9/mail");
-Deno.env.set("MOTION_MAIL_API_KEY", "fixture-mail");
+Deno.env.set("MOTION_SMTP_HOST", "127.0.0.1");
+Deno.env.set("MOTION_SMTP_PORT", String(smtp.port));
+Deno.env.set("MOTION_SMTP_TLS", "none");
+Deno.env.set("MOTION_SMTP_USER", "consent@example.invalid");
+Deno.env.set("MOTION_SMTP_PASSWORD", "fixture-app-password");
 Deno.env.set("MOTION_MAIL_FROM", "Motion <no-reply@example.invalid>");
 Deno.env.set("MOTION_CONSENT_PAGE_URL", "https://example.invalid/consent");
 Deno.serve = ((callback: unknown) => {
@@ -32,10 +37,6 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = init?.method ??
     (input instanceof Request ? input.method : "GET");
   const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-  if (url.endsWith("/mail")) {
-    if (mailOk) mails.push(body);
-    return new Response(null, { status: mailOk ? 200 : 500 });
-  }
   if (url.endsWith("/auth/v1/user")) {
     return Response.json({
       id: teen,
@@ -93,8 +94,8 @@ await import("../motion-parental-consent/index.ts");
 
 function reset() {
   restricted = true;
-  mailOk = true;
-  mails = [];
+  smtp.options = {};
+  mails.length = 0;
   upserts = [];
   updates = [];
   deleted = [];
@@ -142,7 +143,7 @@ Deno.test("request mails one link and stores only digests", async () => {
   );
   assert(response.status === 200, `status ${response.status}`);
   assert(mails.length === 1, "one mail");
-  assert(mails[0].to[0] === "parent@example.invalid", "normalised recipient");
+  assert(mails[0].to === "<parent@example.invalid>", "normalised recipient");
   assert(mails[0].subject.includes("Motion"), "localized subject");
   assert(
     mails[0].text.includes("https://example.invalid/consent#token="),
@@ -190,7 +191,7 @@ Deno.test("request rejects own address, bad address and unavailable mail", async
     "teen-token",
   );
   assert(response.status === 400, "invalid address");
-  mailOk = false;
+  smtp.options = { authReply: "535 5.7.8 bad credentials" };
   response = await post(
     { action: "request", parentEmail: "p@example.invalid" },
     "teen-token",
@@ -415,4 +416,20 @@ Deno.test("GET stays 405 and app requests without Origin are unchanged", async (
   const app = await fromOrigin("POST", null, { action: "nope" });
   assert(app.status === 400, "invalid action");
   assert(!app.headers.has("Access-Control-Allow-Origin"), "no ACAO for app");
+});
+
+Deno.test("mail is submitted over SMTP with the configured sender", () => {
+  // Every mail above went through the real SMTP client to the loopback server.
+  assert(smtp.commands.includes("EHLO motion.yulalab.com"), "EHLO seen");
+  assert(
+    smtp.commands.includes("MAIL FROM:<no-reply@example.invalid>"),
+    "envelope sender",
+  );
+});
+
+Deno.test({
+  name: "close the loopback SMTP server",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => smtp.close(),
 });

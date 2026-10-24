@@ -393,9 +393,14 @@ send teen marketing, personalised ads, or default-on analytics.
 The parent approves or declines on the YULAlab site consent page through the
 `motion-parental-consent` Edge Function. Approval lifts the restriction; denial
 deletes the account (deletion receipt included). The parent address is stored
-only as a digest. Mail delivery needs `MOTION_MAIL_API_URL`, `MOTION_MAIL_API_KEY`
-and `MOTION_MAIL_FROM`; without them the request fails closed with
-`mail_unavailable`. The consent page calls `view`/`decide` from the browser:
+only as a digest. Mail goes out through Google Workspace SMTP on port 465
+with implicit TLS (Supabase Edge blocks 25 and 587): `MOTION_SMTP_HOST`
+(`smtp.gmail.com`), `MOTION_SMTP_PORT` (default 465), `MOTION_SMTP_USER`,
+`MOTION_SMTP_PASSWORD` (a Workspace app password), `MOTION_SMTP_TLS` (default
+`implicit`; `none` is accepted only towards a loopback/Docker-host sink for
+local E2E) and `MOTION_MAIL_FROM` (the authenticated account or one of its
+"send as" aliases). Without a complete configuration the request fails closed
+with `mail_unavailable`; credentials, addresses and bodies are never logged. The consent page calls `view`/`decide` from the browser:
 origins listed in `MOTION_CONSENT_ALLOWED_ORIGINS` (comma-separated, default
 `https://yulalab.com`) receive CORS headers; no wildcard, and app requests
 without an `Origin` header are unchanged. Retention and restore re-application are described in
