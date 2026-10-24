@@ -15,14 +15,16 @@ import {
 
 // App Store IDs were read back from App Store Connect on 2026-09-24. Store
 // responses are also checked against the corresponding bundle and app ID.
-const appleApps: Record<MotionAppId, { bundleId: string; appAppleId: number }> =
-  {
-    ostinato: { bundleId: "com.yulalab.ostinato", appAppleId: 6794717868 },
-    gravita: { bundleId: "com.yulalab.gravita", appAppleId: 6794714365 },
-    choreia: { bundleId: "com.yulalab.choreia", appAppleId: 6794721329 },
-    jablab: { bundleId: "com.yulalab.jablab", appAppleId: 6794715669 },
-    lissom: { bundleId: "com.yulalab.lissom", appAppleId: 6794715023 },
-  };
+export const appleApps: Record<
+  MotionAppId,
+  { bundleId: string; appAppleId: number }
+> = {
+  ostinato: { bundleId: "com.yulalab.ostinato", appAppleId: 6794717868 },
+  gravita: { bundleId: "com.yulalab.gravita", appAppleId: 6794714365 },
+  choreia: { bundleId: "com.yulalab.choreia", appAppleId: 6794721329 },
+  jablab: { bundleId: "com.yulalab.jablab", appAppleId: 6794715669 },
+  lissom: { bundleId: "com.yulalab.lissom", appAppleId: 6794715023 },
+};
 
 export interface StoreEvidence {
   originatingAppId: MotionAppId;
@@ -39,7 +41,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function appleRootCertificates(): Buffer[] {
+export function appleRootCertificates(): Buffer[] {
   let encoded: unknown;
   try {
     encoded = JSON.parse(requiredEnv("MOTION_APPLE_ROOT_CAS_BASE64"));
