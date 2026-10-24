@@ -6,7 +6,7 @@ description: >-
   a local cache, a server verification interface with user/app scoped
   access, and the generic free-lesson rule (counts only). Holds no paywall
   design or hard-coded price.
-version: 0.2.0
+version: 0.3.0
 publish_to: none
 
 environment:
@@ -19,6 +19,7 @@ dependencies:
     sdk: flutter
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.3
+  in_app_purchase_storekit: ^0.4.13
   supabase_flutter: 2.17.2
 
 dev_dependencies:

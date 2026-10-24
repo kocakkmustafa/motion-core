@@ -170,3 +170,73 @@ Deno.test("invalid Play evidence never produces a claim", async () => {
     })).length !== 0
   ) throw Error("oversized token accepted");
 });
+
+// CORE-03: a Play subscription in its free-trial phase is an ordinary active
+// subscription bought through a trial offer. The claim keeps the base plan
+// scope and the trial's expiry; nothing treats the free phase as unpaid.
+Deno.test("a Play free-trial phase verifies as an active base-plan claim", async () => {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const privateKey = new Uint8Array(
+    await crypto.subtle.exportKey("pkcs8", key.privateKey),
+  );
+  const previousSecret = Deno.env.get("MOTION_GOOGLE_PLAY_SERVICE_ACCOUNT");
+  const originalFetch = globalThis.fetch;
+  Deno.env.set(
+    "MOTION_GOOGLE_PLAY_SERVICE_ACCOUNT",
+    JSON.stringify({
+      client_email: "motion-test@example.iam.gserviceaccount.com",
+      private_key: `-----BEGIN PRIVATE KEY-----\n${
+        toBase64(privateKey)
+      }\n-----END PRIVATE KEY-----`,
+    }),
+  );
+  const trialEnds = "2026-11-08T16:00:00Z";
+  try {
+    globalThis.fetch = (input) => {
+      const url = String(input);
+      if (url === "https://oauth2.googleapis.com/token") {
+        return Promise.resolve(
+          Response.json({ access_token: "test-oauth-token" }),
+        );
+      }
+      return Promise.resolve(Response.json({
+        subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+        externalAccountIdentifiers: {
+          obfuscatedExternalAccountId: "a".repeat(64),
+        },
+        lineItems: [{
+          productId: "jablab_individual",
+          expiryTime: trialEnds,
+          autoRenewingPlan: { autoRenewEnabled: true },
+          offerDetails: {
+            basePlanId: "monthly",
+            offerId: "free-trial",
+            offerTags: [],
+          },
+        }],
+      }));
+    };
+    const claims = await verifyGooglePurchase(evidence);
+    if (
+      claims.length !== 1 || claims[0].productId !== "jablab_individual" ||
+      claims[0].basePlanId !== "monthly" || claims[0].state !== "active" ||
+      claims[0].expiresAt !== trialEnds
+    ) throw Error("trial phase claim mismatch");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousSecret === undefined) {
+      Deno.env.delete("MOTION_GOOGLE_PLAY_SERVICE_ACCOUNT");
+    } else {
+      Deno.env.set("MOTION_GOOGLE_PLAY_SERVICE_ACCOUNT", previousSecret);
+    }
+  }
+});

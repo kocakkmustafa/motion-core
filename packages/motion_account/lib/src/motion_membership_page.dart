@@ -315,9 +315,20 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
     final period = offer.planId == 'yearly'
         ? _text(MotionAccountString.yearly)
         : _text(MotionAccountString.monthly);
+    // A free trial is shown only when the store offered it to this account
+    // (StoreProductRef.freeTrialPeriod); the recurring price follows it.
+    final trialDays = offer.freeTrialDays;
     return ListTile(
       title: Text(period),
-      subtitle: Text(offer.localizedPrice),
+      subtitle: Text(
+        trialDays == null
+            ? offer.localizedPrice
+            : MotionAccountLocalizations.of(context).trialThenPrice(
+                yearly: offer.planId == 'yearly',
+                days: trialDays,
+                price: offer.localizedPrice,
+              ),
+      ),
       trailing: FilledButton(
         onPressed: _busy ? null : () => _buy(offer),
         child: Text(_text(MotionAccountString.choose)),
@@ -370,6 +381,8 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
               ],
               const SizedBox(height: 12),
               Text(_text(MotionAccountString.autoRenewTerms)),
+              if (_offers.any((offer) => offer.freeTrialDays != null))
+                Text(_text(MotionAccountString.trialRenewTerms)),
             ],
             const SizedBox(height: 16),
             OutlinedButton(

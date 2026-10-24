@@ -474,6 +474,83 @@ void main() {
     account.supabase.dispose();
   });
 
+  testWidgets('a store-offered free trial shows its length and next price', (
+    tester,
+  ) async {
+    final account = await _account(false);
+    final store = _Store([
+      const StoreProductRef(
+        productId: 'ostinato_individual',
+        platform: StorePlatform.android,
+        planId: 'monthly',
+        localizedPrice: '₺399,99',
+        freeTrialPeriod: 'P14D',
+      ),
+      const StoreProductRef(
+        productId: 'ostinato_individual',
+        platform: StorePlatform.android,
+        planId: 'yearly',
+        localizedPrice: '₺2.299,99',
+      ),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        locale: const Locale('tr'),
+        supportedLocales: const [Locale('tr'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: store,
+          serverAdapter: _Server(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('14 gün ücretsiz, ardından aylık ₺399,99'),
+      findsOneWidget,
+    );
+    // No trial was offered for the yearly plan: no trial claim there.
+    expect(find.text('₺2.299,99'), findsOneWidget);
+    expect(
+      find.textContaining('en az 24 saat önce iptal etmezsen'),
+      findsOneWidget,
+    );
+    account.supabase.dispose();
+  });
+
+  testWidgets('without a store trial no trial terms are shown', (tester) async {
+    final account = await _account(false);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        locale: const Locale('en'),
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: _Store([
+            const StoreProductRef(
+              productId: 'ostinato_individual',
+              platform: StorePlatform.android,
+              planId: 'monthly',
+              localizedPrice: r'$11.99',
+            ),
+          ]),
+          serverAdapter: _Server(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(r'$11.99'), findsOneWidget);
+    expect(find.textContaining('free'), findsNothing);
+    expect(find.textContaining('24 hours'), findsNothing);
+    account.supabase.dispose();
+  });
+
   testWidgets('an existing membership hides duplicate sale offers', (
     tester,
   ) async {

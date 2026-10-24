@@ -28,7 +28,7 @@ void main() {
         final template = MotionAccountLocalizations.templateFor(locale, key);
         expect(template.trim(), isNotEmpty, reason: '$locale/$key');
         expect(names(template), names(english), reason: '$locale/$key');
-        if (key != MotionAccountString.appMembership) {
+        if (!_typedKeys.contains(key)) {
           expect(MotionAccountLocalizations(locale).text(key), template);
         }
       }
@@ -105,6 +105,31 @@ void main() {
       expect(
         MotionAccountLocalizations(locale).textDirection,
         locale.languageCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
+      );
+    }
+  });
+
+  test('trial copy carries the store price and the trial length', () {
+    for (final locale in MotionAccountLocalizations.supportedLocales) {
+      final strings = MotionAccountLocalizations(locale);
+      for (final yearly in [false, true]) {
+        final text = strings.trialThenPrice(
+          yearly: yearly,
+          days: 14,
+          price: 'PRICE{days}',
+        );
+        expect(text, contains('14'), reason: '$locale');
+        expect('PRICE{days}'.allMatches(text), hasLength(1), reason: '$locale');
+        expect(text, isNot(contains('{price}')), reason: '$locale');
+      }
+      expect(
+        () => strings.text(MotionAccountString.trialThenMonthly),
+        throwsArgumentError,
+      );
+      expect(
+        strings.text(MotionAccountString.trialRenewTerms),
+        contains('24'),
+        reason: '$locale',
       );
     }
   });
@@ -673,3 +698,9 @@ class _CatalogServer implements ServerAdapter {
   Future<EntitlementStatus?> verify(StorePurchaseEvidence evidence) async =>
       null;
 }
+
+const _typedKeys = {
+  MotionAccountString.appMembership,
+  MotionAccountString.trialThenMonthly,
+  MotionAccountString.trialThenYearly,
+};

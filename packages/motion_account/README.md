@@ -424,6 +424,15 @@ measurement and scoring stay closed behind `motionCameraCoachingAvailable`
   override for an approved per-course count) and `isPracticeUnlocked`.
   Recorded progress is always readable.
 
+Free trial (0.5.0): `StoreProductRef.freeTrialPeriod` is filled only when the
+store offers this account a free trial — on Google Play a free-trial offer
+attached to the base plan (bought through that offer's token), on the App
+Store the StoreKit 2 introductory free trial confirmed by
+`isIntroductoryOfferEligible`. The membership page then shows "N days free,
+then {store price} per month/year" and the trial renewal/cancellation terms;
+without a store trial nothing about a trial is shown. No price or trial length
+is hard-coded.
+
 `MotionMembershipPage` offers no purchase to an account restricted by missing
 parental consent; restoring an existing store purchase stays available and
 server verification is unchanged (a paid store purchase is never refused).

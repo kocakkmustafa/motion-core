@@ -110,6 +110,9 @@ enum MotionAccountString {
   consentTooSoon,
   consentEmailInvalid,
   deleteOtherDevices,
+  trialThenMonthly,
+  trialThenYearly,
+  trialRenewTerms,
 }
 
 /// Fourteen-locale account copy. Existing hosts may keep their locale resolver;
@@ -245,6 +248,19 @@ class MotionAccountLocalizations {
 
   String membershipForApp(String appName) =>
       _format(MotionAccountString.appMembership, {'appName': appName});
+
+  /// "{days} days free, then {price} per month/year". [price] is the store's
+  /// localized recurring price; nothing is hard-coded.
+  String trialThenPrice({
+    required bool yearly,
+    required int days,
+    required String price,
+  }) => _format(
+    yearly
+        ? MotionAccountString.trialThenYearly
+        : MotionAccountString.trialThenMonthly,
+    {'days': '$days', 'price': price},
+  );
 
   static final _placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9]*)\}');
 
@@ -2098,5 +2114,55 @@ const _messages = <MotionAccountString, _Translations>{
     pl: "Inne aplikacje i urządzenia Motion usuną historię tego konta przy następnym uruchomieniu z dostępem do internetu.",
     hi: "दूसरे Motion ऐप और डिवाइस अगली बार ऑनलाइन खुलने पर इस खाते का इतिहास मिटा देंगे।",
     zhHans: "其他 Motion 应用和设备会在下次联网打开时删除此账户的历史记录。",
+  ),
+  MotionAccountString.trialThenMonthly: _Translations(
+    tr: "{days} gün ücretsiz, ardından aylık {price}",
+    en: "{days} days free, then {price} per month",
+    es419: "{days} días gratis y luego {price} al mes",
+    ptBR: "{days} dias grátis, depois {price} por mês",
+    de: "{days} Tage kostenlos, danach {price} pro Monat",
+    fr: "{days} jours gratuits, puis {price} par mois",
+    ja: "{days}日間無料、その後は月額{price}",
+    ar: "{days} يومًا مجانًا، ثم {price} شهريًا",
+    it: "{days} giorni gratis, poi {price} al mese",
+    ko: "{days}일 무료, 이후 월 {price}",
+    id: "Gratis {days} hari, lalu {price} per bulan",
+    pl: "{days} dni za darmo, potem {price} miesięcznie",
+    hi: "{days} दिन मुफ़्त, फिर {price} प्रति माह",
+    zhHans: "免费 {days} 天，之后每月 {price}",
+  ),
+  MotionAccountString.trialThenYearly: _Translations(
+    tr: "{days} gün ücretsiz, ardından yıllık {price}",
+    en: "{days} days free, then {price} per year",
+    es419: "{days} días gratis y luego {price} al año",
+    ptBR: "{days} dias grátis, depois {price} por ano",
+    de: "{days} Tage kostenlos, danach {price} pro Jahr",
+    fr: "{days} jours gratuits, puis {price} par an",
+    ja: "{days}日間無料、その後は年額{price}",
+    ar: "{days} يومًا مجانًا، ثم {price} سنويًا",
+    it: "{days} giorni gratis, poi {price} all'anno",
+    ko: "{days}일 무료, 이후 연 {price}",
+    id: "Gratis {days} hari, lalu {price} per tahun",
+    pl: "{days} dni za darmo, potem {price} rocznie",
+    hi: "{days} दिन मुफ़्त, फिर {price} प्रति वर्ष",
+    zhHans: "免费 {days} 天，之后每年 {price}",
+  ),
+  MotionAccountString.trialRenewTerms: _Translations(
+    tr: "Ücretsiz deneme, bitiminden en az 24 saat önce iptal etmezsen seçtiğin pakete mağazada gösterilen tutardan otomatik olarak geçer. Denemeyi ve aboneliği mağaza hesabından yönetebilir veya iptal edebilirsin.",
+    en: "Unless you cancel at least 24 hours before the free trial ends, it automatically continues as the selected plan at the displayed store price. Manage or cancel the trial and subscription in your store account.",
+    es419:
+        "Si no cancelas al menos 24 horas antes de que termine la prueba gratuita, continúa automáticamente como el plan elegido al precio mostrado en la tienda. Administra o cancela la prueba y la suscripción en tu cuenta de la tienda.",
+    ptBR:
+        "Se você não cancelar pelo menos 24 horas antes do fim do teste gratuito, ele continua automaticamente como o plano escolhido, ao preço exibido na loja. Gerencie ou cancele o teste e a assinatura na sua conta da loja.",
+    de: "Wenn du nicht mindestens 24 Stunden vor Ende des kostenlosen Testzeitraums kündigst, geht er automatisch zum angezeigten Store-Preis in den gewählten Plan über. Verwalte oder kündige Test und Abo in deinem Store-Konto.",
+    fr: "Sauf résiliation au moins 24 heures avant la fin de l’essai gratuit, celui-ci se poursuit automatiquement avec la formule choisie au prix affiché dans la boutique. Gère ou résilie l’essai et l’abonnement dans ton compte de boutique.",
+    ja: "無料トライアル終了の24時間前までに解約しない場合、ストア表示価格で選択したプランに自動的に移行します。トライアルとサブスクリプションの管理・解約はストアのアカウントから行えます。",
+    ar: "ما لم تُلغِ قبل 24 ساعة على الأقل من انتهاء الفترة التجريبية المجانية، تستمر تلقائيًا بالخطة المختارة وبالسعر المعروض في المتجر. أدِر الفترة التجريبية والاشتراك أو ألغِهما من حسابك في المتجر.",
+    it: "Se non annulli almeno 24 ore prima della fine della prova gratuita, questa prosegue automaticamente con il piano scelto al prezzo mostrato nello store. Gestisci o annulla la prova e l'abbonamento dal tuo account dello store.",
+    ko: "무료 체험 종료 최소 24시간 전에 취소하지 않으면 스토어에 표시된 가격으로 선택한 요금제가 자동으로 시작됩니다. 체험과 구독은 스토어 계정에서 관리하거나 취소할 수 있습니다.",
+    id: "Kecuali kamu membatalkan paling lambat 24 jam sebelum uji coba gratis berakhir, uji coba otomatis berlanjut ke paket yang dipilih dengan harga yang ditampilkan di toko aplikasi. Kelola atau batalkan uji coba dan langganan melalui akun toko aplikasimu.",
+    pl: "Jeśli nie anulujesz co najmniej 24 godziny przed końcem bezpłatnego okresu próbnego, automatycznie przejdzie on w wybrany plan po cenie wyświetlanej w sklepie. Okresem próbnym i subskrypcją zarządzasz lub je anulujesz na swoim koncie w sklepie.",
+    hi: "यदि आप मुफ़्त ट्रायल खत्म होने से कम से कम 24 घंटे पहले रद्द नहीं करते, तो यह स्टोर में दिखाई गई कीमत पर चुनी गई योजना में अपने-आप जारी रहता है। ट्रायल और सदस्यता को अपने स्टोर खाते में प्रबंधित या रद्द करें।",
+    zhHans: "除非在免费试用结束前至少 24 小时取消，否则试用将按商店显示的价格自动转为所选方案。请在商店账户中管理或取消试用和订阅。",
   ),
 };
