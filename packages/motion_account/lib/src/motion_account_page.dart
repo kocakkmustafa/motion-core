@@ -74,6 +74,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   final _displayName = TextEditingController();
   StreamSubscription<AuthState>? _authSubscription;
   Future<bool>? _membership;
+  // Each membership check belongs to one page lifetime and one owner. A newer
+  // check, an owner change or dispose stops an older one from publishing.
+  int _membershipGeneration = 0;
   bool _register = false;
   bool _recovering = false;
   bool _busy = false;
@@ -153,6 +156,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         // publishing pending profile/membership observations; keep the form.
         _profileRequestGeneration++;
         _cancelProfileRead();
+        _membershipGeneration++;
         setState(() {
           _membership = null;
           _profileReadState = _ProfileReadState.failed;
@@ -173,6 +177,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   @override
   void dispose() {
     _profileSaveGeneration++;
+    _membershipGeneration++;
     _cancelProfileRead();
     _authSubscription?.cancel();
     _parentEmail.dispose();
@@ -319,10 +324,33 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   }
 
   void _refreshMembership() {
-    _membership =
-        !widget.paidFeaturesAvailable || widget.account.currentUser == null
-        ? null
-        : Future<bool>.sync(widget.account.hasActiveMembership);
+    _membership = _startMembershipCheck();
+  }
+
+  /// Starts one owner-scoped membership check. Its result or error reaches
+  /// the FutureBuilder only while this check is still the current one for the
+  /// same owner on a mounted page; a superseded check is observed and dropped,
+  /// never left as an uncaught zone error.
+  Future<bool>? _startMembershipCheck() {
+    final generation = ++_membershipGeneration;
+    final owner = widget.account.currentUser?.id;
+    if (!widget.paidFeaturesAvailable || owner == null) return null;
+    bool current() =>
+        mounted &&
+        generation == _membershipGeneration &&
+        widget.account.currentUser?.id == owner;
+    final published = Completer<bool>();
+    Future<bool>.sync(widget.account.hasActiveMembership).then(
+      (active) {
+        if (current()) published.complete(active);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (current()) published.completeError(error, stackTrace);
+      },
+    );
+    // The FutureBuilder still receives the error; a page state that is not
+    // showing the builder (for example password recovery) does not leak it.
+    return published.future..ignore();
   }
 
   Future<void> _loadDisplayName({bool resetDraft = false}) async {
@@ -436,10 +464,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       await action();
       if (!mounted) return;
       setState(() {
-        _membership =
-            !widget.paidFeaturesAvailable || widget.account.currentUser == null
-            ? null
-            : Future<bool>.sync(widget.account.hasActiveMembership);
+        _refreshMembership();
         _message = success;
       });
     } on MotionOperationUnknown catch (unknown) {
