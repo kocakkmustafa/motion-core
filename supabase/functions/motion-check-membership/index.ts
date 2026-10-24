@@ -1,25 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.1";
 import {
-  entitlementWriteFromProvider,
   isMotionAppId,
   type MotionAppId,
-  type MotionStore,
-  originatingAppForStoredProduct,
 } from "../_shared/motion_purchase_claim.ts";
 import {
-  StoreConfigurationError,
-  verifyApplePurchase,
-  verifyGooglePurchase,
-} from "../_shared/motion_store_provider.ts";
+  refreshStoredEntitlement,
+  type StoredEntitlement,
+} from "../_shared/motion_entitlement_refresh.ts";
 import { reviewGrantIsActive } from "../_shared/motion_review_access.ts";
-
-interface StoredEntitlement {
-  user_id: string;
-  app_id: string;
-  store: MotionStore;
-  product_id: string;
-  original_transaction_id: string;
-}
 
 function response(error: string, status: number): Response {
   return Response.json({ error }, { status });
@@ -85,87 +73,15 @@ Deno.serve(async (request: Request) => {
   let active = false;
   let anyActive = false;
   for (const rawRow of rows) {
-    const row = rawRow as StoredEntitlement;
-    if (row.store !== "apple" && row.store !== "google") {
-      return response("membership_unavailable", 503);
-    }
-    const origin = originatingAppForStoredProduct(row.store, row.product_id);
-    if (!origin || !row.original_transaction_id) {
-      return response("membership_unavailable", 503);
-    }
-    let claims;
-    try {
-      const evidence = {
-        originatingAppId: origin,
-        productId: row.product_id,
-        transactionId: row.store === "apple"
-          ? row.original_transaction_id
-          : undefined,
-        verificationData: row.store === "google"
-          ? row.original_transaction_id
-          : "",
-      };
-      claims = row.store === "apple"
-        ? await verifyApplePurchase(evidence)
-        : await verifyGooglePurchase(evidence);
-    } catch (error) {
-      return response(
-        error instanceof StoreConfigurationError
-          ? "store_not_configured"
-          : "store_unavailable",
-        503,
-      );
-    }
-    const matching = claims.filter(
-      (claim) => claim.reference === row.original_transaction_id,
-    );
-    if (matching.length > 1) return response("membership_unavailable", 503);
-    if (matching.length === 0) {
-      // A provider-confirmed missing transaction must not retain an older
-      // active row until its original expiry or be retried every refresh.
-      const { error } = await admin.from("motion_entitlements")
-        .update({
-          state: "revoked",
-          expires_at: now.toISOString(),
-          verified_at: now.toISOString(),
-        })
-        .eq("store", row.store)
-        .eq("original_transaction_id", row.original_transaction_id)
-        .eq("user_id", data.user.id);
-      if (error) return response("membership_unavailable", 503);
-      continue;
-    }
-    const verified = await entitlementWriteFromProvider(
-      matching[0],
-      data.user.id,
+    const result = await refreshStoredEntitlement(
+      admin,
+      { ...(rawRow as StoredEntitlement), user_id: data.user.id },
       now,
     );
-    if (!verified) {
-      // Account token mismatch or unsupported product is an explicit denial.
-      const { error } = await admin.from("motion_entitlements")
-        .update({
-          state: "revoked",
-          expires_at: now.toISOString(),
-          verified_at: now.toISOString(),
-        })
-        .eq("store", row.store)
-        .eq("original_transaction_id", row.original_transaction_id)
-        .eq("user_id", data.user.id);
-      if (error) return response("membership_unavailable", 503);
-      continue;
-    }
-    const { error: updateError } = await admin.from("motion_entitlements")
-      .update(verified)
-      .eq("store", row.store)
-      .eq("original_transaction_id", row.original_transaction_id)
-      .eq("user_id", data.user.id);
-    if (updateError) return response("membership_unavailable", 503);
-    if (
-      (verified.state === "active" || verified.state === "grace") &&
-      new Date(verified.expires_at) > now
-    ) {
+    if (!result.ok) return response(result.error, 503);
+    if (result.granting) {
       anyActive = true;
-      if (verified.app_id === appId || verified.app_id === "motion_plus") {
+      if (result.appId === appId || result.appId === "motion_plus") {
         active = true;
       }
     }
