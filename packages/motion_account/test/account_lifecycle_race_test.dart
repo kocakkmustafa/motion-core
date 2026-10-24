@@ -154,6 +154,7 @@ void main() {
     expect(replacementAccount.deletionDispatches, 0);
     expect(openingCleanupCalls, 1);
     expect(replacementCleanupCalls, 0);
+    await _settleMembershipReads(tester);
   });
 
   testWidgets('same-token Session cannot inherit a pending deletion dialog', (
@@ -195,6 +196,7 @@ void main() {
     expect(account.deletionDispatches, 0);
     expect(cleanupCalls, 0);
     expect(identical(client.auth.currentSession, replacement), isTrue);
+    await _settleMembershipReads(tester);
   });
 
   for (final holdCleanup in [false, true]) {
@@ -745,4 +747,14 @@ void main() {
       expect(observations, [true, false, true, false]);
     },
   );
+}
+
+/// Sales are open, so the page checks membership with the real client. Its
+/// HTTP reply never arrives in the fake-async zone; let the client's read
+/// deadline (10 s) expire so no timer outlives the test. The late timeout is
+/// dropped by the page (CORE-01), never thrown.
+Future<void> _settleMembershipReads(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 11));
+  await tester.pumpAndSettle();
+  expect(tester.takeException(), isNull);
 }

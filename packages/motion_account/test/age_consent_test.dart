@@ -451,7 +451,7 @@ Future<void> _pump(
       locale: const Locale('en'),
       home: MotionAccountPage(
         account: account,
-        paidFeaturesAvailable: false,
+        membershipAvailable: false,
         countryCode: countryCode,
         storefrontCountry: storefront ?? () async => null,
         clock: () => _today,

@@ -15,7 +15,7 @@ void main() {
         home: ValueListenableBuilder<bool>(
           valueListenable: visible,
           builder: (_, show, _) => show
-              ? MotionAccountPage(account: account, paidFeaturesAvailable: true)
+              ? MotionAccountPage(account: account, membershipAvailable: true)
               : const Scaffold(body: Text('REPLACEMENT_PAGE')),
         ),
       );

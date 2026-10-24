@@ -6,6 +6,7 @@ library;
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_status.dart';
 export 'src/flutter_purchase_adapter.dart';
+export 'src/lesson_access.dart';
 export 'src/purchase_adapter.dart';
 export 'src/purchase_coordinator.dart';
 export 'src/purchase_state.dart';

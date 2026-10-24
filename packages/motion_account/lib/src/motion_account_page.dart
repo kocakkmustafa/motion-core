@@ -33,7 +33,8 @@ class MotionAccountPage extends StatefulWidget {
     this.clearLocalData,
     this.onRetryIdentity,
     this.onManageSubscription,
-    this.paidFeaturesAvailable = motionPaidFeaturesAvailable,
+    this.membershipAvailable = motionSubscriptionSalesAvailable,
+    @Deprecated('Use membershipAvailable') this.paidFeaturesAvailable,
     this.countryCode,
     this.storefrontCountry = motionStorefrontCountry,
     this.ageBlocked = false,
@@ -46,7 +47,15 @@ class MotionAccountPage extends StatefulWidget {
   final Future<void> Function(String userId)? clearLocalData;
   final Future<void> Function()? onRetryIdentity;
   final VoidCallback? onManageSubscription;
-  final bool paidFeaturesAvailable;
+
+  /// Shows the membership row and options (and checks membership on open).
+  /// Defaults to [motionSubscriptionSalesAvailable]; pass false for a host
+  /// that does not sell in this build.
+  final bool membershipAvailable;
+
+  /// Former name of [membershipAvailable]; when non-null it wins.
+  @Deprecated('Use membershipAvailable')
+  final bool? paidFeaturesAvailable;
 
   /// Explicit ISO 3166-1 region override (alpha-2 or alpha-3). When null the
   /// page asks [storefrontCountry] (the store account region) once at sign-up
@@ -105,6 +114,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   int _ageStatusGeneration = 0;
 
   bool get _canSaveProfile => _displayNameEdited || _profileReadSucceeded;
+  // ignore: deprecated_member_use_from_same_package
+  bool get _sells => widget.paidFeaturesAvailable ?? widget.membershipAvailable;
   bool get _isBusy => _busy || _profileSaveBusy || _unresolved != null;
 
   @override
@@ -334,7 +345,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   Future<bool>? _startMembershipCheck() {
     final generation = ++_membershipGeneration;
     final owner = widget.account.currentUser?.id;
-    if (!widget.paidFeaturesAvailable || owner == null) return null;
+    if (!_sells || owner == null) return null;
     bool current() =>
         mounted &&
         generation == _membershipGeneration &&
@@ -440,7 +451,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   }
 
   Future<void> _openMembership() async {
-    if (!widget.paidFeaturesAvailable) return;
+    if (!_sells) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => MotionMembershipPage(account: widget.account),
@@ -946,7 +957,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         child: Text(_text(MotionAccountString.saveProfile)),
       ),
       const SizedBox(height: 16),
-      if (widget.paidFeaturesAvailable)
+      if (_sells)
         FutureBuilder<bool>(
           future: _membership,
           builder: (context, snapshot) => Text(
@@ -959,7 +970,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
                 : _text(MotionAccountString.noMembershipInApp),
           ),
         ),
-      if (widget.paidFeaturesAvailable)
+      if (_sells)
         FilledButton.tonal(
           onPressed: _isBusy ? null : _openMembership,
           child: Text(_text(MotionAccountString.membershipOptions)),
@@ -971,7 +982,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
                 await widget.onRetryIdentity?.call();
               }),
         child: Text(
-          widget.paidFeaturesAvailable
+          _sells
               ? _text(MotionAccountString.refreshAccountAndMembership)
               : _text(MotionAccountString.refreshAccount),
         ),

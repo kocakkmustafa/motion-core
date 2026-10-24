@@ -401,12 +401,26 @@ and `MOTION_MAIL_FROM`; without them the request fails closed with
 ## Subscription sales (first release)
 
 `motionSubscriptionSalesAvailable` is true (founder decision 23 Oct 2026): all
-five apps sell their own subscription and Motion+. `motionPaidFeaturesAvailable`
-stays false because hosts use it as their camera-session/measurement gate;
-opening sales never opens camera coaching. The account page default is
-unchanged, so each host opts in with
-`MotionAccountPage(paidFeaturesAvailable: motionSubscriptionSalesAvailable)`
-and runs its own regression (the page then checks membership on open).
+five apps sell their own subscription and Motion+. Camera coaching,
+measurement and scoring stay closed behind `motionCameraCoachingAvailable`
+(false). Since 0.4.0:
+
+- `MotionAccountPage(membershipAvailable:)` defaults to the sales constant, so
+  the page shows the membership row and checks membership on open. Pass
+  `membershipAvailable: false` for a build that does not sell. The old
+  `paidFeaturesAvailable` parameter is a deprecated alias that wins when set.
+- `requireMotionPaidAccess` (paid lesson / practice start) follows the sales
+  constant through `salesAvailable`; the old `paidFeaturesAvailable` is a
+  deprecated alias. A host that relied on the old closed default to keep a
+  camera path shut must gate that path with `requireMotionCameraAccess` (or
+  `motionCameraCoachingAvailable`) first.
+- `motionPaidFeaturesAvailable` is deprecated and stays false; it was the
+  camera gate in every host. Never switch it on.
+- The free-lesson rule (paywall A) lives in `motion_entitlements`:
+  `motionFreeLessonLimit`, `isLessonUnlocked` (with a `freeLessonLimit`
+  override for an approved per-course count) and `isPracticeUnlocked`.
+  Recorded progress is always readable.
+
 `MotionMembershipPage` offers no purchase to an account restricted by missing
 parental consent; restoring an existing store purchase stays available and
 server verification is unchanged (a paid store purchase is never refused).

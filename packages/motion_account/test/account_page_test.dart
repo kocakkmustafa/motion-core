@@ -147,7 +147,7 @@ void main() {
     await account.dispose();
   });
 
-  testWidgets('first release keeps account tools without subscription sales', (
+  testWidgets('first release shows membership on the account page by default', (
     tester,
   ) async {
     final account = _SignedInAccount();
@@ -155,6 +155,23 @@ void main() {
       MaterialApp(
         locale: const Locale('en'),
         home: MotionAccountPage(account: account),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save profile'), findsOneWidget);
+    expect(find.text('Refresh account and membership'), findsOneWidget);
+    expect(find.text('Membership options'), findsOneWidget);
+    expect(find.text('No active membership in this app.'), findsOneWidget);
+    expect(account.membershipChecks, 1);
+  });
+
+  testWidgets('a host without sales keeps account tools only', (tester) async {
+    final account = _SignedInAccount();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        home: MotionAccountPage(account: account, membershipAvailable: false),
       ),
     );
     await tester.pumpAndSettle();

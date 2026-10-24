@@ -415,7 +415,7 @@ Future<void> _pumpAccount(
       locale: const Locale('en'),
       home: MotionAccountPage(
         account: account,
-        paidFeaturesAvailable: false,
+        membershipAvailable: false,
         onRetryIdentity: onRetryIdentity,
       ),
     ),

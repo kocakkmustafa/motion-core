@@ -32,14 +32,75 @@ const _user = User(
 );
 
 void main() {
-  test('first release sells subscriptions but keeps paid sessions closed', () {
-    // Hosts gate camera launch on motionPaidFeaturesAvailable; sales must
-    // never open it implicitly.
-    expect(motionSubscriptionSalesAvailable, isTrue);
-    expect(motionPaidFeaturesAvailable, isFalse);
-  });
+  test(
+    'first release sells subscriptions but keeps camera coaching closed',
+    () {
+      expect(motionSubscriptionSalesAvailable, isTrue);
+      expect(motionCameraCoachingAvailable, isFalse);
+      // Hosts still read the deprecated flag as their camera gate.
+      // ignore: deprecated_member_use
+      expect(motionPaidFeaturesAvailable, isFalse);
+    },
+  );
 
-  testWidgets('first release keeps paid sessions and purchase route closed', (
+  final closedGates = <String, Future<bool> Function(BuildContext, _Account)>{
+    'camera coaching (first release)': (context, account) =>
+        requireMotionCameraAccess(
+          context,
+          account: account,
+          accountPageBuilder: (_) => const Scaffold(body: Text('ACCOUNT')),
+          membershipPageBuilder: (_) => const Scaffold(body: Text('PURCHASE')),
+        ),
+    'paid lesson without sales': (context, account) => requireMotionPaidAccess(
+      context,
+      account: account,
+      salesAvailable: false,
+      accountPageBuilder: (_) => const Scaffold(body: Text('ACCOUNT')),
+      membershipPageBuilder: (_) => const Scaffold(body: Text('PURCHASE')),
+    ),
+    'deprecated paidFeaturesAvailable: false': (context, account) =>
+        requireMotionPaidAccess(
+          context,
+          account: account,
+          // ignore: deprecated_member_use_from_same_package
+          paidFeaturesAvailable: false,
+          accountPageBuilder: (_) => const Scaffold(body: Text('ACCOUNT')),
+          membershipPageBuilder: (_) => const Scaffold(body: Text('PURCHASE')),
+        ),
+  };
+  for (final MapEntry(key: name, value: gate) in closedGates.entries) {
+    testWidgets('$name stays closed without account or purchase', (
+      tester,
+    ) async {
+      final account = _Account()..user = _user;
+      bool? allowed;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async => allowed = await gate(context, account),
+                child: const Text('START'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('START'));
+      await tester.pump();
+
+      expect(allowed, isFalse);
+      expect(account.checks, 0);
+      expect(find.text('ACCOUNT'), findsNothing);
+      expect(find.text('PURCHASE'), findsNothing);
+      expect(
+        find.text('This session will open in a future update.'),
+        findsOneWidget,
+      );
+    });
+  }
+
+  testWidgets('a paid lesson opens the purchase route by default', (
     tester,
   ) async {
     final account = _Account()..user = _user;
@@ -54,8 +115,12 @@ void main() {
                 account: account,
                 accountPageBuilder: (_) =>
                     const Scaffold(body: Text('ACCOUNT')),
-                membershipPageBuilder: (_) =>
-                    const Scaffold(body: Text('PURCHASE')),
+                membershipPageBuilder: (pageContext) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => Navigator.of(pageContext).pop(),
+                    child: const Text('CLOSE PURCHASE'),
+                  ),
+                ),
               ),
               child: const Text('START'),
             ),
@@ -64,15 +129,16 @@ void main() {
       ),
     );
     await tester.tap(find.text('START'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('CLOSE PURCHASE'), findsOneWidget);
+    await tester.tap(find.text('CLOSE PURCHASE'));
+    await tester.pumpAndSettle();
 
     expect(allowed, isFalse);
-    expect(account.checks, 0);
-    expect(find.text('ACCOUNT'), findsNothing);
-    expect(find.text('PURCHASE'), findsNothing);
+    expect(account.checks, 2);
     expect(
       find.text('This session will open in a future update.'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -92,7 +158,6 @@ void main() {
                 onPressed: () async => allowed = await requireMotionPaidAccess(
                   context,
                   account: account,
-                  paidFeaturesAvailable: true,
                   accountPageBuilder: (_) =>
                       const Scaffold(body: Text('ACCOUNT')),
                   membershipPageBuilder: (_) =>
@@ -128,7 +193,6 @@ void main() {
                 onPressed: () async => allowed = await requireMotionPaidAccess(
                   context,
                   account: account,
-                  paidFeaturesAvailable: true,
                   accountPageBuilder: (pageContext) => Scaffold(
                     body: TextButton(
                       onPressed: () {
@@ -185,7 +249,6 @@ void main() {
                 onPressed: () async => allowed = await requireMotionPaidAccess(
                   context,
                   account: account,
-                  paidFeaturesAvailable: true,
                   accountPageBuilder: (_) =>
                       const Scaffold(body: Text('ACCOUNT')),
                   membershipPageBuilder: (_) =>

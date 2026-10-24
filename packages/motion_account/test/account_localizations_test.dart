@@ -235,7 +235,7 @@ void main() {
                   context,
                   account: guest,
                   accountPageBuilder: (_) => const SizedBox.shrink(),
-                  paidFeaturesAvailable: false,
+                  salesAvailable: false,
                 ),
                 child: const Text('CLOSED_ACCESS'),
               ),

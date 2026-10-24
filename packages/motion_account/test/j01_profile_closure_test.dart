@@ -202,7 +202,7 @@ Future<void> _pump(WidgetTester tester, _Account account) async {
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
-      home: MotionAccountPage(account: account, paidFeaturesAvailable: false),
+      home: MotionAccountPage(account: account, membershipAvailable: false),
     ),
   );
 }

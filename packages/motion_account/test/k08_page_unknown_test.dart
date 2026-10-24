@@ -256,7 +256,7 @@ Future<void> _pump(WidgetTester tester, _FakeAccount account) async {
       locale: const Locale('en'),
       home: MotionAccountPage(
         account: account,
-        paidFeaturesAvailable: false,
+        membershipAvailable: false,
         clearLocalData: (id) async => account.cleared.add(id),
       ),
     ),
