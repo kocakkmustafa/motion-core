@@ -133,6 +133,9 @@ async function refreshTransaction(
     const result = await deps.refresh(row, now);
     // A non-2xx answer makes Apple / Pub/Sub retry the delivery later.
     if (!result.ok) return json({ error: result.error }, 503);
+    if (!result.trialRecorded) {
+      return json({ error: "server_unavailable" }, 503);
+    }
   }
   // An unknown transaction is fine: the app's verify call records it.
   return json({ ok: true, refreshed: rows.length }, 200);

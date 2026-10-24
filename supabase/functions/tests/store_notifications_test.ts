@@ -118,6 +118,7 @@ function deps(overrides: Partial<NotificationDeps> = {}) {
         granting: false,
         appId: null,
         claim: null,
+        trialRecorded: true,
       });
     },
     now: () => now,
@@ -335,4 +336,23 @@ Deno.test("only POST to a known store path", async () => {
     )).status === 404,
     "unknown path",
   );
+});
+
+Deno.test("a verified trial that cannot be recorded is retried", async () => {
+  const { d } = deps({
+    verifyApple: () =>
+      Promise.resolve({ kind: "transaction", originalTransactionId: "1" }),
+    refresh: () =>
+      Promise.resolve({
+        ok: true,
+        granting: true,
+        appId: "motion_plus",
+        claim: null,
+        trialRecorded: false,
+      }),
+  });
+  const response = await createNotificationHandler(d)(
+    apple({ signedPayload: "x.y.z" }),
+  );
+  assert(response.status === 503, "ledger failure asks for a retry");
 });

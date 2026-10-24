@@ -8,6 +8,7 @@ import {
   type StoredEntitlement,
 } from "../_shared/motion_entitlement_refresh.ts";
 import { reviewGrantIsActive } from "../_shared/motion_review_access.ts";
+import { motionPlusTrialUsed } from "../_shared/motion_trial_ledger.ts";
 
 function response(error: string, status: number): Response {
   return Response.json({ error }, { status });
@@ -56,7 +57,11 @@ Deno.serve(async (request: Request) => {
     .maybeSingle();
   if (reviewLookupError) return response("membership_unavailable", 503);
   if (reviewGrantIsActive(reviewGrant, data.user.id, now)) {
-    return Response.json({ active: true, anyActive: true });
+    return Response.json({
+      active: true,
+      anyActive: true,
+      motionPlusTrialAvailable: false,
+    });
   }
   const recentExpiry = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
   const { data: rows, error: lookupError } = await admin
@@ -86,5 +91,12 @@ Deno.serve(async (request: Request) => {
       }
     }
   }
-  return Response.json({ active, anyActive });
+  // One Motion+ free trial per account (read after the refresh above, which
+  // records a newly verified trial). Unknown → no trial is offered.
+  const trialUsed = await motionPlusTrialUsed(admin, data.user.id);
+  return Response.json({
+    active,
+    anyActive,
+    motionPlusTrialAvailable: trialUsed === false,
+  });
 });

@@ -180,6 +180,9 @@ export async function verifyApplePurchase(
         reference: transaction.originalTransactionId,
         state: transaction.revocationDate ? "revoked" : state,
         expiresAt: new Date(expiry).toISOString(),
+        // Introductory offer (offerType 1) taken as a free trial.
+        freeTrial: transaction.offerType === 1 &&
+          String(transaction.offerDiscountType) === "FREE_TRIAL",
       });
     }
   }
@@ -284,6 +287,26 @@ function googleState(value: unknown): ProviderState | null {
   }
 }
 
+/** Play tag on the developer-determined Motion+ trial offer (CORE-09). */
+export const MOTION_PLUS_TRIAL_OFFER_TAG = "motion-plus-trial";
+
+// A purchase in (or bought through) a free-trial phase: the offer carries the
+// Motion trial tag, or Play reports the free-trial offer phase (field placement
+// differs between Play API notes, so both the line item and the purchase are
+// read; confirmed only in sandbox).
+export function googleFreeTrial(
+  record: Record<string, unknown>,
+  line: Record<string, unknown>,
+): boolean {
+  const offer = line.offerDetails as { offerTags?: unknown } | undefined;
+  const tags = Array.isArray(offer?.offerTags) ? offer.offerTags : [];
+  const phase = (line.offerPhase ?? record.offerPhase) as
+    | Record<string, unknown>
+    | undefined;
+  return tags.includes(MOTION_PLUS_TRIAL_OFFER_TAG) ||
+    (typeof phase === "object" && phase !== null && "freeTrial" in phase);
+}
+
 export async function verifyGooglePurchase(
   evidence: StoreEvidence,
 ): Promise<ProviderVerifiedPurchase[]> {
@@ -339,6 +362,7 @@ export async function verifyGooglePurchase(
       reference: token,
       state,
       expiresAt: line.expiryTime,
+      freeTrial: googleFreeTrial(record, line),
     });
   }
   return claims;

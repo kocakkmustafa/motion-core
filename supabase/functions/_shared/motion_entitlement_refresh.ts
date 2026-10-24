@@ -10,6 +10,7 @@ import {
   verifyApplePurchase,
   verifyGooglePurchase,
 } from "./motion_store_provider.ts";
+import { recordMotionPlusTrial } from "./motion_trial_ledger.ts";
 
 // One stored entitlement row re-verified with its store. Shared by the
 // membership check (pull) and the store server notifications (push): a
@@ -38,6 +39,8 @@ export type RefreshResult =
     appId: string | null;
     /** The store-verified claim the row was written from, if any. */
     claim: ProviderVerifiedPurchase | null;
+    /** False when a verified Motion+ trial could not be recorded. */
+    trialRecorded: boolean;
   }
   | { ok: false; error: RefreshError };
 
@@ -54,7 +57,7 @@ const defaultVerifiers: StoreVerifiers = {
 /** The minimal admin-client surface this module writes through. */
 export interface EntitlementTable {
   // deno-lint-ignore no-explicit-any
-  from(table: "motion_entitlements"): any;
+  from(table: "motion_entitlements" | "motion_trial_ledger"): any;
 }
 
 async function updateRow(
@@ -121,7 +124,13 @@ export async function refreshStoredEntitlement(
     if (!await updateRow(admin, row, revoked)) {
       return fail("membership_unavailable");
     }
-    return { ok: true, granting: false, appId: null, claim: null };
+    return {
+      ok: true,
+      granting: false,
+      appId: null,
+      claim: null,
+      trialRecorded: true,
+    };
   }
   const verified = await entitlementWriteFromProvider(
     matching[0],
@@ -133,7 +142,13 @@ export async function refreshStoredEntitlement(
     if (!await updateRow(admin, row, revoked)) {
       return fail("membership_unavailable");
     }
-    return { ok: true, granting: false, appId: null, claim: null };
+    return {
+      ok: true,
+      granting: false,
+      appId: null,
+      claim: null,
+      trialRecorded: true,
+    };
   }
   if (!await updateRow(admin, row, { ...verified })) {
     return fail("membership_unavailable");
@@ -144,5 +159,6 @@ export async function refreshStoredEntitlement(
       new Date(verified.expires_at) > now,
     appId: verified.app_id,
     claim: matching[0],
+    trialRecorded: await recordMotionPlusTrial(admin, row.user_id, matching[0]),
   };
 }

@@ -9,6 +9,7 @@ import {
   verifyApplePurchase,
   verifyGooglePurchase,
 } from "../_shared/motion_store_provider.ts";
+import { recordMotionPlusTrial } from "../_shared/motion_trial_ledger.ts";
 
 type PurchaseRequest = StoreEvidence & { store: "apple" | "google" };
 
@@ -128,7 +129,12 @@ Deno.serve(async (request: Request) => {
     : admin.from("motion_entitlements")
       .upsert(row, { onConflict: "user_id,app_id,store,product_id" });
   const { error: writeError } = await write;
-  if (writeError) {
+  // A Motion+ purchase that started a free trial is recorded once per
+  // account; a failed record keeps the verification retryable.
+  if (
+    writeError ||
+    !await recordMotionPlusTrial(admin, data.user.id, matching[0])
+  ) {
     return Response.json({ error: "verification_write_failed" }, {
       status: 503,
     });

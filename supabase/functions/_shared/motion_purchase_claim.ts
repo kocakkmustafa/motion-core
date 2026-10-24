@@ -27,6 +27,8 @@ export interface ProviderVerifiedPurchase {
   reference: string;
   state: ProviderState;
   expiresAt: string;
+  /** The store reports this purchase as a free-trial (introductory) one. */
+  freeTrial?: boolean;
 }
 
 export interface EntitlementWrite {

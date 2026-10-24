@@ -36,6 +36,12 @@ function fakeAdmin(fail = false) {
           entry.values = values;
           return chain;
         },
+        upsert(values: Record<string, unknown>) {
+          entry.values = values;
+          entry.filters.push(`ledger:${values.user_id}`);
+          updates.push(entry);
+          return Promise.resolve({ error: fail ? { message: "db" } : null });
+        },
         eq(column: string, value: string) {
           entry.filters.push(`${column}=${value}`);
           if (entry.filters.length === 3) {
@@ -148,4 +154,17 @@ Deno.test("an unknown product is rejected before any store call", async () => {
   );
   assert(!result.ok && result.error === "membership_unavailable", "rejected");
   assert(v.calls === 0, "no store call");
+});
+
+Deno.test("a verified Motion+ free trial is recorded for the account", async () => {
+  const admin = fakeAdmin();
+  const result = await refreshStoredEntitlement(
+    admin,
+    row,
+    now,
+    verifiers([claim({ freeTrial: true })]),
+  );
+  assert(result.ok && result.trialRecorded, "recorded");
+  assert(admin.updates.length === 2, "entitlement + ledger");
+  assert(admin.updates[1].filters[0] === `ledger:${userId}`, "ledger write");
 });
