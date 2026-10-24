@@ -395,7 +395,10 @@ The parent approves or declines on the YULAlab site consent page through the
 deletes the account (deletion receipt included). The parent address is stored
 only as a digest. Mail delivery needs `MOTION_MAIL_API_URL`, `MOTION_MAIL_API_KEY`
 and `MOTION_MAIL_FROM`; without them the request fails closed with
-`mail_unavailable`. Retention and restore re-application are described in
+`mail_unavailable`. The consent page calls `view`/`decide` from the browser:
+origins listed in `MOTION_CONSENT_ALLOWED_ORIGINS` (comma-separated, default
+`https://yulalab.com`) receive CORS headers; no wildcard, and app requests
+without an `Origin` header are unchanged. Retention and restore re-application are described in
 `docs/compliance/YAS-VELI-VE-SAKLAMA.md`.
 
 ## Subscription sales (first release)

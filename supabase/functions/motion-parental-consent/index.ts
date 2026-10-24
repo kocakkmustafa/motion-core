@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.1";
 import { consentEmail } from "../_shared/motion_consent_copy.ts";
+import { allowedOrigins, preflight, withCors } from "../_shared/motion_cors.ts";
 
 // Parental/guardian consent for a Motion teen account below its country's
 // digital-consent age. Three actions:
@@ -8,6 +9,8 @@ import { consentEmail } from "../_shared/motion_consent_copy.ts";
 //   decide (token): approve opens account features; deny deletes the account.
 // The parent address is never stored in clear; the link token only as digest.
 // Mail delivery uses a configured provider endpoint (not deployed here).
+// The consent page calls view/decide from the browser: origins listed in
+// MOTION_CONSENT_ALLOWED_ORIGINS (default https://yulalab.com) get CORS.
 
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEND_AFTER_MS = 10 * 60 * 1000;
@@ -249,6 +252,14 @@ async function handleDecide(
 }
 
 Deno.serve(async (request: Request) => {
+  const allowed = allowedOrigins(
+    Deno.env.get("MOTION_CONSENT_ALLOWED_ORIGINS"),
+  );
+  if (request.method === "OPTIONS") return preflight(request, allowed);
+  return withCors(request, await handle(request), allowed);
+});
+
+async function handle(request: Request): Promise<Response> {
   if (request.method !== "POST") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
@@ -276,4 +287,4 @@ Deno.serve(async (request: Request) => {
     default:
       return Response.json({ error: "invalid_action" }, { status: 400 });
   }
-});
+}

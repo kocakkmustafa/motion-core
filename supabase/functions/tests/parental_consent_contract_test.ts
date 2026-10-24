@@ -294,3 +294,125 @@ Deno.test("fourteen locales fill both placeholders once", () => {
     "fallback",
   );
 });
+
+// CORE-04: the YULAlab consent page calls view/decide from the browser.
+function fromOrigin(method: string, origin: string | null, body?: unknown) {
+  const headers: Record<string, string> = {};
+  if (origin !== null) headers.Origin = origin;
+  if (method === "OPTIONS") {
+    headers["Access-Control-Request-Method"] = "POST";
+    headers["Access-Control-Request-Headers"] = "content-type";
+  }
+  return handler(
+    new Request("http://local/motion-parental-consent", {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  );
+}
+
+Deno.test("preflight from the site origin is allowed without wildcard", async () => {
+  Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
+  const response = await fromOrigin("OPTIONS", "https://yulalab.com");
+  assert(response.status === 204, "preflight 204");
+  const h = response.headers;
+  assert(
+    h.get("Access-Control-Allow-Origin") === "https://yulalab.com",
+    "echoed origin",
+  );
+  assert(h.get("Access-Control-Allow-Methods") === "POST, OPTIONS", "methods");
+  assert(
+    h.get("Access-Control-Allow-Headers") ===
+      "authorization, x-client-info, apikey, content-type",
+    "headers",
+  );
+  assert(h.get("Access-Control-Max-Age") === "600", "max age");
+  assert(h.get("Vary") === "Origin", "vary");
+});
+
+Deno.test("an unlisted origin gets no CORS grant", async () => {
+  Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
+  for (
+    const origin of ["https://evil.example", "https://www.yulalab.com", "null"]
+  ) {
+    const pre = await fromOrigin("OPTIONS", origin);
+    assert(pre.status === 403, `${origin} preflight refused`);
+    assert(
+      !pre.headers.has("Access-Control-Allow-Origin"),
+      `${origin} no ACAO`,
+    );
+    const view = await fromOrigin("POST", origin, {
+      action: "view",
+      token: "x".repeat(43),
+    });
+    assert(!view.headers.has("Access-Control-Allow-Origin"), `${origin} view`);
+    assert(view.headers.get("Vary") === "Origin", `${origin} vary`);
+  }
+});
+
+Deno.test("view, decide and error answers carry the allowed origin", async () => {
+  reset();
+  restricted = true;
+  Deno.env.set(
+    "MOTION_CONSENT_ALLOWED_ORIGINS",
+    "https://yulalab.com/, https://preview.example.invalid",
+  );
+  try {
+    await post({
+      action: "request",
+      parentEmail: "p@example.invalid",
+      locale: "en",
+    }, "t");
+    const token = linkToken();
+    for (
+      const origin of ["https://yulalab.com", "https://preview.example.invalid"]
+    ) {
+      const pre = await fromOrigin("OPTIONS", origin);
+      assert(pre.status === 204, `${origin} listed`);
+    }
+    const origin = "https://preview.example.invalid";
+    const view = await fromOrigin("POST", origin, { action: "view", token });
+    assert(view.status === 200, "view ok");
+    assert(view.headers.get("Access-Control-Allow-Origin") === origin, "view");
+    assert((await view.json()).status === "pending", "view body intact");
+    const bad = await fromOrigin("POST", origin, {
+      action: "decide",
+      token,
+      decision: "maybe",
+    });
+    assert(bad.status === 400, "invalid decision");
+    assert(bad.headers.get("Access-Control-Allow-Origin") === origin, "error");
+    const decide = await fromOrigin("POST", origin, {
+      action: "decide",
+      token,
+      decision: "approve",
+    });
+    assert(decide.status === 200, "decide ok");
+    assert(
+      decide.headers.get("Access-Control-Allow-Origin") === origin,
+      "decide",
+    );
+    assert((await decide.json()).status === "approved", "decide body intact");
+    const gone = await fromOrigin("POST", origin, { action: "view", token });
+    assert(
+      gone.headers.get("Access-Control-Allow-Origin") === origin,
+      "404/410",
+    );
+  } finally {
+    Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
+  }
+});
+
+Deno.test("GET stays 405 and app requests without Origin are unchanged", async () => {
+  Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
+  const get = await fromOrigin("GET", "https://yulalab.com");
+  assert(get.status === 405, "GET 405");
+  assert(
+    get.headers.get("Access-Control-Allow-Origin") === "https://yulalab.com",
+    "405 readable by the page",
+  );
+  const app = await fromOrigin("POST", null, { action: "nope" });
+  assert(app.status === 400, "invalid action");
+  assert(!app.headers.has("Access-Control-Allow-Origin"), "no ACAO for app");
+});
