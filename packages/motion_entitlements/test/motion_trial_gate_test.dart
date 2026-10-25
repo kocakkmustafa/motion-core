@@ -312,6 +312,8 @@ void main() {
           return http.Response(
             body,
             status,
+            // postgrest reads the originating request from the response.
+            request: request,
             headers: {'content-type': 'application/json'},
           );
         });
@@ -338,6 +340,7 @@ void main() {
             'introductoryOfferEligibilityJws': 'signed.denial.jws',
           }),
           200,
+          request: request,
           headers: {'content-type': 'application/json'},
         );
       });
