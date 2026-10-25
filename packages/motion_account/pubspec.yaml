@@ -1,6 +1,6 @@
 name: motion_account
 description: Shared Motion account and app-scoped membership client.
-version: 0.5.0
+version: 0.6.0
 publish_to: none
 
 environment:
@@ -15,6 +15,8 @@ dependencies:
   url_launcher: 6.3.2
   motion_entitlements:
     path: ../motion_entitlements
+  motion_platform_signals:
+    path: ../motion_platform_signals
 
 dev_dependencies:
   flutter_test:

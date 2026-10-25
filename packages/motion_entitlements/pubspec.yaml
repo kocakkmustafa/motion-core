@@ -6,7 +6,7 @@ description: >-
   a local cache, a server verification interface with user/app scoped
   access, and the generic free-lesson rule (counts only). Holds no paywall
   design or hard-coded price.
-version: 0.3.0
+version: 0.4.0
 publish_to: none
 
 environment:

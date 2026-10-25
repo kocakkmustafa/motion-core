@@ -93,6 +93,7 @@ jobs:
           - motion_store
           - motion_entitlements
           - motion_account
+          - motion_platform_signals
           - motion_telemetry
     defaults:
       run:

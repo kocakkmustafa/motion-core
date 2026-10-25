@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:motion_entitlements/motion_entitlements.dart';
+import 'package:motion_platform_signals/motion_platform_signals.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -60,6 +61,12 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
         FlutterPurchaseAdapter(
           appId: _appId,
           currentUserId: () => widget.account.currentUser?.id,
+          // One Motion+ free trial per Motion account (server ledger).
+          trialGate: SupabaseMotionTrialGate(
+            supabase: widget.account.supabase,
+            appId: _appId,
+            appTransactionId: MotionPlatformSignals.appTransactionId,
+          ),
         );
     _coordinator = PurchaseCoordinator(
       appId: _appId,

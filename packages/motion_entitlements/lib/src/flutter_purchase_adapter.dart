@@ -8,6 +8,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 import 'package:in_app_purchase_storekit/store_kit_2_wrappers.dart';
 
+import 'motion_trial_gate.dart';
 import 'purchase_adapter.dart';
 import 'store_product_ref.dart';
 
@@ -19,13 +20,20 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
     required this.currentUserId,
     InAppPurchase? billing,
     Future<bool> Function(String productId)? introductoryOfferEligible,
+    MotionTrialGate? trialGate,
   }) : _billing = billing ?? InAppPurchase.instance,
-       _introductoryOfferEligible = introductoryOfferEligible;
+       _introductoryOfferEligible = introductoryOfferEligible,
+       _trialGate = trialGate;
 
   final String appId;
   final String? Function() currentUserId;
   final InAppPurchase _billing;
   final Future<bool> Function(String productId)? _introductoryOfferEligible;
+
+  /// One Motion+ free trial per Motion account. Without a gate the stores'
+  /// own eligibility applies unchanged.
+  final MotionTrialGate? _trialGate;
+  bool _motionPlusTrialAvailable = true;
   final _offers = <(String, String), ProductDetails>{};
   // Play free-trial offer chosen for a base plan; buying uses its token.
   final _trialOffers = <(String, String), GooglePlayProductDetails>{};
@@ -98,6 +106,11 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
 
     _offers.clear();
     _trialOffers.clear();
+    final gate = _trialGate;
+    _motionPlusTrialAvailable =
+        gate == null ||
+        !response.productDetails.any((d) => isMotionPlusProduct(d.id)) ||
+        await _safeTrialAvailable(gate);
     // Play returns the base plan and every offer the user is eligible for as
     // separate details. A free-trial offer attaches to its base plan; other
     // offers (paid intro prices, promotions) are not sold.
@@ -108,6 +121,10 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
         continue;
       }
       if (_playFreeTrial(plan) == null) continue;
+      // Motion+ trial: once per Motion account (developer-determined offer).
+      if (isMotionPlusProduct(detail.id) && !_motionPlusTrialAvailable) {
+        continue;
+      }
       _trialOffers.putIfAbsent((detail.id, plan.basePlanId), () => detail);
     }
 
@@ -130,7 +147,8 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
       if (planId == null || (planId != 'monthly' && planId != 'yearly')) {
         continue;
       }
-      if (detail is AppStoreProduct2Details) {
+      if (detail is AppStoreProduct2Details &&
+          (!isMotionPlusProduct(detail.id) || _motionPlusTrialAvailable)) {
         trial = await _appStoreFreeTrial(detail);
       }
 
@@ -146,6 +164,18 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
       );
     }
     return result;
+  }
+
+  /// App Store `com.yulalab.<app>.motionplus.*` or Play `<app>_motion_plus`.
+  static bool isMotionPlusProduct(String productId) =>
+      productId.contains('.motionplus.') || productId.endsWith('_motion_plus');
+
+  static Future<bool> _safeTrialAvailable(MotionTrialGate gate) async {
+    try {
+      return await gate.motionPlusTrialAvailable();
+    } on Object {
+      return false;
+    }
   }
 
   static SubscriptionOfferDetailsWrapper? _playPlan(
@@ -233,9 +263,41 @@ class FlutterPurchaseAdapter implements PurchaseAdapter {
             offerToken: (trialOffer ?? detail).offerToken,
             applicationUserName: accountId,
           )
-        : PurchaseParam(productDetails: detail, applicationUserName: accountId);
+        : await _appStoreParam(detail, accountId);
     final started = await _billing.buyNonConsumable(purchaseParam: param);
     if (!started) throw StateError('The store did not start the purchase');
+  }
+
+  /// App Store: once the account used its Motion+ trial, the purchase carries
+  /// the server-signed `allowIntroductoryOffer=false` so Apple does not apply
+  /// the trial again in another app. Without a denial (no gate, trial still
+  /// available, no app transaction ID) Apple's own eligibility applies.
+  Future<PurchaseParam> _appStoreParam(
+    ProductDetails detail,
+    String accountId,
+  ) async {
+    final gate = _trialGate;
+    if (gate != null &&
+        isMotionPlusProduct(detail.id) &&
+        !_motionPlusTrialAvailable) {
+      String? denial;
+      try {
+        denial = await gate.appleIntroductoryOfferDenial(detail.id);
+      } on Object {
+        denial = null;
+      }
+      if (denial != null) {
+        return Sk2PurchaseParam(
+          productDetails: detail,
+          applicationUserName: accountId,
+          introductoryOfferEligibilityCompactJWS: denial,
+        );
+      }
+    }
+    return PurchaseParam(
+      productDetails: detail,
+      applicationUserName: accountId,
+    );
   }
 
   @override

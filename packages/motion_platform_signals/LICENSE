@@ -1,0 +1,15 @@
+MotionCamera - First-party copyright and distribution notice
+
+Copyright (c) 2026 Mustafa Kaan Koçak. All rights reserved.
+
+This notice applies only to first-party MotionCamera code whose copyright
+is held by Mustafa Kaan Koçak.
+
+The copyright holder authorizes distribution of that first-party code as
+part of the closed-source YulaLab applications Choreia, Gravita, JabLab,
+Lissom, and Ostinato. This notice grants no license for independent reuse
+or distribution of that first-party code.
+
+MediaPipe, model files, and all other third-party components remain subject
+to their respective licenses and notices. This notice does not alter or
+replace any third-party rights, licenses, or notices.
