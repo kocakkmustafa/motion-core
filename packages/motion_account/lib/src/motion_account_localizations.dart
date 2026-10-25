@@ -113,6 +113,7 @@ enum MotionAccountString {
   trialThenMonthly,
   trialThenYearly,
   trialRenewTerms,
+  ageStoreMismatch,
 }
 
 /// Fourteen-locale account copy. Existing hosts may keep their locale resolver;
@@ -2164,5 +2165,23 @@ const _messages = <MotionAccountString, _Translations>{
     pl: "Jeśli nie anulujesz co najmniej 24 godziny przed końcem bezpłatnego okresu próbnego, automatycznie przejdzie on w wybrany plan po cenie wyświetlanej w sklepie. Okresem próbnym i subskrypcją zarządzasz lub je anulujesz na swoim koncie w sklepie.",
     hi: "यदि आप मुफ़्त ट्रायल खत्म होने से कम से कम 24 घंटे पहले रद्द नहीं करते, तो यह स्टोर में दिखाई गई कीमत पर चुनी गई योजना में अपने-आप जारी रहता है। ट्रायल और सदस्यता को अपने स्टोर खाते में प्रबंधित या रद्द करें।",
     zhHans: "除非在免费试用结束前至少 24 小时取消，否则试用将按商店显示的价格自动转为所选方案。请在商店账户中管理或取消试用和订阅。",
+  ),
+  MotionAccountString.ageStoreMismatch: _Translations(
+    tr: "Bu doğum tarihi, mağaza hesabının paylaştığı yaş aralığıyla uyuşmuyor. Doğum ayını ve yılını kontrol et.",
+    en: "This birth date doesn't match the age range shared by your store account. Check your birth month and year.",
+    es419:
+        "Esta fecha de nacimiento no coincide con el rango de edad que comparte tu cuenta de la tienda. Revisa tu mes y año de nacimiento.",
+    ptBR:
+        "Esta data de nascimento não corresponde à faixa etária compartilhada pela sua conta da loja. Confira o mês e o ano de nascimento.",
+    de: "Dieses Geburtsdatum passt nicht zur Altersspanne, die dein Store-Konto teilt. Prüfe Geburtsmonat und -jahr.",
+    fr: "Cette date de naissance ne correspond pas à la tranche d’âge partagée par ton compte de boutique. Vérifie ton mois et ton année de naissance.",
+    ja: "この生年月は、ストアアカウントが共有している年齢範囲と一致しません。生まれた月と年を確認してください。",
+    ar: "تاريخ الميلاد هذا لا يطابق الفئة العمرية التي يشاركها حسابك في المتجر. تحقّق من شهر وسنة ميلادك.",
+    it: "Questa data di nascita non corrisponde alla fascia d'età condivisa dal tuo account dello store. Controlla mese e anno di nascita.",
+    ko: "이 생년월은 스토어 계정이 공유한 연령 범위와 일치하지 않습니다. 태어난 달과 연도를 확인하세요.",
+    id: "Tanggal lahir ini tidak cocok dengan rentang usia yang dibagikan akun toko aplikasimu. Periksa bulan dan tahun lahirmu.",
+    pl: "Ta data urodzenia nie zgadza się z przedziałem wieku udostępnionym przez Twoje konto w sklepie. Sprawdź miesiąc i rok urodzenia.",
+    hi: "यह जन्म तिथि आपके स्टोर खाते द्वारा साझा की गई आयु सीमा से मेल नहीं खाती। अपना जन्म माह और वर्ष जाँचें।",
+    zhHans: "此出生年月与你的商店账户共享的年龄范围不符。请检查出生月份和年份。",
   ),
 };

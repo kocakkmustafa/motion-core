@@ -10,7 +10,23 @@
 ///   approve the account before account features open.
 /// - Every user under [MotionAgePolicy.adultAge] (18) is a teen: no marketing,
 ///   no personalised advertising, analytics only with explicit opt-in.
+/// - A store-shared age range (Apple Declared Age Range, Google Play Age
+///   Signals) only tightens this: see [MotionAgePolicy.storeCheck].
 library;
+
+import 'package:motion_platform_signals/motion_platform_signals.dart';
+
+/// How a store-shared age range relates to the declared birth month/year.
+enum MotionStoreAgeCheck {
+  /// No signal, nothing shared, or the declaration fits: the country flow runs.
+  proceed,
+
+  /// The store says under 13: the same permanent block as a declaration.
+  under13,
+
+  /// The declaration is older than the store's range: it is not accepted.
+  mismatch,
+}
 
 /// The result of one neutral age screen.
 enum MotionAgeBand {
@@ -175,6 +191,23 @@ class MotionAgePolicy {
     }
     if (age < adultAge) return MotionAgeBand.teen;
     return MotionAgeBand.adult;
+  }
+
+  /// A store signal only ever tightens the age flow. Under 13 in the store
+  /// blocks like a declaration would; a declaration older than the store's
+  /// upper bound is refused (to be corrected); a younger or matching
+  /// declaration proceeds, so the stricter of the two always applies.
+  static MotionStoreAgeCheck storeCheck(
+    int declaredAge,
+    MotionStoreAgeSignal? signal,
+  ) {
+    final upper = signal?.upper;
+    if (signal == null || !signal.shared || upper == null) {
+      return MotionStoreAgeCheck.proceed;
+    }
+    if (upper < minimumAge) return MotionStoreAgeCheck.under13;
+    if (declaredAge > upper) return MotionStoreAgeCheck.mismatch;
+    return MotionStoreAgeCheck.proceed;
   }
 
   /// Teens never receive marketing or personalised ads.

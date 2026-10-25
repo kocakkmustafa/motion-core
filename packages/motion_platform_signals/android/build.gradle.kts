@@ -50,3 +50,9 @@ android {
         minSdk = 24
     }
 }
+
+dependencies {
+    // Play Age Signals (beta). Exact pin: a silent bump can change the
+    // age-band contract; upgrade deliberately.
+    implementation("com.google.android.play:age-signals:0.0.4")
+}

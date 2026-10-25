@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'motion_platform_signals'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Store/platform signals for the Yula Motion family.'
   s.description      = <<-DESC
 App Store app transaction ID (StoreKit 2, iOS 16+) for server-signed

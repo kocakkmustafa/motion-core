@@ -43,4 +43,55 @@ void main() {
       expect(await MotionPlatformSignals.appTransactionId(), isNull);
     },
   );
+
+  test('a shared store age range maps to the signal', () async {
+    answer((call) {
+      expect(call.method, 'requestAgeSignal');
+      expect(call.arguments, {
+        'ageGates': [13, 16, 18],
+      });
+      return {
+        'source': 'apple',
+        'shared': true,
+        'lower': 13,
+        'upper': 15,
+        'declaration': 'guardianDeclared',
+      };
+    });
+    final signal = await MotionPlatformSignals.requestAgeSignal();
+    expect(signal?.source, 'apple');
+    expect(signal?.shared, isTrue);
+    expect((signal?.lower, signal?.upper), (13, 15));
+    expect(signal?.declaration, 'guardianDeclared');
+  });
+
+  test('declined, open-ended and malformed answers', () async {
+    answer((_) => {'source': 'google', 'shared': false, 'lower': 13});
+    final declined = await MotionPlatformSignals.requestAgeSignal();
+    expect(declined?.shared, isFalse);
+    expect(declined?.lower, isNull, reason: 'bounds only when shared');
+
+    answer(
+      (_) => {'source': 'google', 'shared': true, 'lower': 18, 'upper': null},
+    );
+    final adult = await MotionPlatformSignals.requestAgeSignal();
+    expect((adult?.lower, adult?.upper), (18, null));
+
+    for (final raw in <Object?>[
+      null,
+      'x',
+      {'source': 'other', 'shared': true},
+      {'source': 'apple'},
+      {'source': 'apple', 'shared': true, 'lower': 16, 'upper': 13},
+    ]) {
+      answer((_) => raw);
+      expect(
+        await MotionPlatformSignals.requestAgeSignal(),
+        isNull,
+        reason: '$raw',
+      );
+    }
+    answer((_) => throw PlatformException(code: 'notAvailable'));
+    expect(await MotionPlatformSignals.requestAgeSignal(), isNull);
+  });
 }

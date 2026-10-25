@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:motion_entitlements/motion_entitlements.dart'
     show motionAlpha2Country, motionStorefrontCountry;
+import 'package:motion_platform_signals/motion_platform_signals.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -37,6 +38,7 @@ class MotionAccountPage extends StatefulWidget {
     @Deprecated('Use membershipAvailable') this.paidFeaturesAvailable,
     this.countryCode,
     this.storefrontCountry = motionStorefrontCountry,
+    this.storeAgeSignal = MotionPlatformSignals.requestAgeSignal,
     this.ageBlocked = false,
     this.onAgeBlocked,
     this.clock = DateTime.now,
@@ -66,6 +68,12 @@ class MotionAccountPage extends StatefulWidget {
   /// Store region reader; returns null when unavailable. Defaults to the
   /// App Store storefront / Google Play billing country.
   final Future<String?> Function() storefrontCountry;
+
+  /// Store-shared age range read once at sign-up or age confirmation (Apple
+  /// Declared Age Range on iOS 26+, Google Play Age Signals). It can only
+  /// tighten the declared age ([MotionAgePolicy.storeCheck]); null keeps the
+  /// country/declaration flow unchanged.
+  final Future<MotionStoreAgeSignal?> Function() storeAgeSignal;
   final bool ageBlocked;
   final VoidCallback? onAgeBlocked;
   final DateTime Function() clock;
@@ -199,6 +207,50 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   }
 
   Future<String?>? _storeCountry;
+  Future<MotionStoreAgeSignal?>? _storeAge;
+
+  Future<MotionStoreAgeSignal?> _readStoreAge() async {
+    try {
+      // The store may show its own sharing prompt; a stalled answer must not
+      // hold the form forever.
+      return await widget.storeAgeSignal().timeout(const Duration(minutes: 2));
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Reads the store signal once per page (busy meanwhile) and applies it to
+  /// the declared birth month/year. Null when another action is running.
+  Future<MotionStoreAgeCheck?> _storeAgeCheck() async {
+    if (_isBusy) return null;
+    setState(() => _busy = true);
+    try {
+      final signal = await (_storeAge ??= _readStoreAge());
+      return MotionAgePolicy.storeCheck(
+        MotionAgePolicy.ageOn(_birthYear!, _birthMonth!, widget.clock()),
+        signal,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// True when the form may continue; otherwise the block or the correction
+  /// message is shown.
+  Future<bool> _storeAgeAllows() async {
+    final check = await _storeAgeCheck();
+    if (!mounted || check == null) return false;
+    switch (check) {
+      case MotionStoreAgeCheck.proceed:
+        return true;
+      case MotionStoreAgeCheck.under13:
+        setState(_blockAge);
+        return false;
+      case MotionStoreAgeCheck.mismatch:
+        setState(() => _message = MotionAccountString.ageStoreMismatch);
+        return false;
+    }
+  }
 
   /// Explicit override, then the store account region, then device region.
   Future<String?> _country() async {
@@ -274,6 +326,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
       setState(_blockAge);
       return;
     }
+    if (!await _storeAgeAllows()) return;
     // The region read runs inside the busy action: no second dispatch.
     await _run(() async {
       final declaration = await _declaration();
@@ -625,6 +678,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         setState(_blockAge);
         return;
       }
+      if (!await _storeAgeAllows()) return;
       await _run(() async {
         final age = await _declaration();
         if (age == null) return;

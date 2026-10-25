@@ -2,9 +2,11 @@ name: motion_platform_signals
 description: >-
   Store/platform signals for the Yula Motion family: the App Store app
   transaction ID (StoreKit 2 AppTransaction, iOS 16+) for server-signed
-  introductory-offer eligibility. Every call degrades to null where the
-  platform API is unavailable; callers keep their own fallback.
-version: 0.1.0
+  introductory-offer eligibility, and the store-shared age range (Apple
+  Declared Age Range on iOS 26+, Google Play Age Signals 0.0.4). Every call
+  degrades to null where the platform API is unavailable; callers keep their
+  own fallback.
+version: 0.2.0
 publish_to: none
 
 environment:

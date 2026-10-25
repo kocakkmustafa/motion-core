@@ -390,6 +390,18 @@ An undeclared legacy account is asked once (`recordAgeDeclaration`).
 `analyticsNeedsOptIn(band)` is true for every user under 18: hosts must not
 send teen marketing, personalised ads, or default-on analytics.
 
+Store age range (0.7.0): at sign-up and at the one-time age confirmation the
+page asks the store account for an age range once
+(`MotionAccountPage(storeAgeSignal:)`, default
+`MotionPlatformSignals.requestAgeSignal`: Apple Declared Age Range on iOS 26+,
+Google Play Age Signals). The signal only tightens the flow
+(`MotionAgePolicy.storeCheck`): a store range under 13 is the same permanent
+block as an under-13 declaration (`onAgeBlocked`); a declaration older than
+the store's upper bound is refused with a correction message; otherwise the
+country/parental-consent flow runs unchanged. No signal (older OS, region,
+declined sharing, error) keeps today's flow. The store's own parental
+approval status and "significant change" notices are not used yet.
+
 The parent approves or declines on the YULAlab site consent page through the
 `motion-parental-consent` Edge Function. Approval lifts the restriction; denial
 deletes the account (deletion receipt included). The parent address is stored

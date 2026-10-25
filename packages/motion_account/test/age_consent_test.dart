@@ -290,6 +290,117 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    group('store age signal (Declared Age Range / Play Age Signals)', () {
+      MotionStoreAgeSignal signal(
+        int? lower,
+        int? upper, {
+        bool shared = true,
+      }) => MotionStoreAgeSignal(
+        source: 'apple',
+        shared: shared,
+        lower: lower,
+        upper: upper,
+      );
+
+      test('a store range only tightens the declared age', () {
+        final cases = <(int, MotionStoreAgeSignal?, MotionStoreAgeCheck)>[
+          (30, null, MotionStoreAgeCheck.proceed),
+          (30, signal(null, null, shared: false), MotionStoreAgeCheck.proceed),
+          (30, signal(18, null), MotionStoreAgeCheck.proceed),
+          (14, signal(18, null), MotionStoreAgeCheck.proceed),
+          (14, signal(13, 15), MotionStoreAgeCheck.proceed),
+          (16, signal(13, 15), MotionStoreAgeCheck.mismatch),
+          (30, signal(16, 17), MotionStoreAgeCheck.mismatch),
+          (30, signal(null, 12), MotionStoreAgeCheck.under13),
+          (14, signal(0, 12), MotionStoreAgeCheck.under13),
+        ];
+        for (final (age, store, expected) in cases) {
+          expect(
+            MotionAgePolicy.storeCheck(age, store),
+            expected,
+            reason: '$age vs ${store?.lower}-${store?.upper}',
+          );
+        }
+      });
+
+      testWidgets('a store range under 13 blocks sign-up permanently', (
+        tester,
+      ) async {
+        final account = _AgeAccount(userId: null);
+        var blocked = 0;
+        await _pump(
+          tester,
+          account,
+          onAgeBlocked: () => blocked++,
+          storeAge: () async => signal(null, 12),
+        );
+        await _openRegister(tester);
+        await _chooseAge(tester, 1990, 3);
+        await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+        await tester.pump();
+        await tester.pump();
+        expect(account.signUps, isEmpty);
+        expect(blocked, 1);
+        expect(find.text(_blockedText), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('an older declaration than the store range is refused', (
+        tester,
+      ) async {
+        final account = _AgeAccount(userId: null);
+        var reads = 0;
+        await _pump(
+          tester,
+          account,
+          storeAge: () async {
+            reads++;
+            return signal(13, 15);
+          },
+        );
+        await _openRegister(tester);
+        await _chooseAge(tester, 1990, 3);
+        await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+        await tester.pump();
+        await tester.pump();
+        expect(account.signUps, isEmpty);
+        expect(
+          find.text(
+            "This birth date doesn't match the age range shared by your store "
+            'account. Check your birth month and year.',
+          ),
+          findsOneWidget,
+        );
+
+        // The corrected declaration fits the range; the store is asked once.
+        await _chooseAge(tester, 2011, 3);
+        await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+        await tester.pump();
+        await tester.pump();
+        expect(account.signUps.single.birthYearMonth, '2011-03');
+        expect(reads, 1);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('no store signal keeps the declaration flow', (tester) async {
+        for (final store in <MotionStoreAgeSignal?>[
+          null,
+          signal(null, null, shared: false),
+        ]) {
+          final account = _AgeAccount(userId: null);
+          await _pump(tester, account, storeAge: () async => store);
+          await _openRegister(tester);
+          await _chooseAge(tester, 1990, 3);
+          await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+          await tester.pump();
+          await tester.pump();
+          expect(account.signUps.single.birthYearMonth, '1990-03');
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+        expect(tester.takeException(), isNull);
+      });
+    });
+
     testWidgets('a host-persisted block keeps sign-up closed', (tester) async {
       final account = _AgeAccount(userId: null);
       await _pump(tester, account, ageBlocked: true);
@@ -440,6 +551,7 @@ Future<void> _pump(
   bool ageBlocked = false,
   String? countryCode = 'DE',
   Future<String?> Function()? storefront,
+  Future<MotionStoreAgeSignal?> Function()? storeAge,
 }) async {
   tester.view.physicalSize = const Size(1200, 2400);
   tester.view.devicePixelRatio = 1;
@@ -456,6 +568,7 @@ Future<void> _pump(
         membershipAvailable: false,
         countryCode: countryCode,
         storefrontCountry: storefront ?? () async => null,
+        storeAgeSignal: storeAge ?? () async => null,
         clock: () => _today,
         ageBlocked: ageBlocked,
         onAgeBlocked: onAgeBlocked,
