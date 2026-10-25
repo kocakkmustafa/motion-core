@@ -372,13 +372,26 @@ void main() {
           findsOneWidget,
         );
 
-        // The corrected declaration fits the range; the store is asked once.
+        // A second attempt reuses the page's one store read.
+        await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+        await tester.pump();
+        await tester.pump();
+        expect(account.signUps, isEmpty);
+        expect(reads, 1);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a declaration inside the store range proceeds', (
+        tester,
+      ) async {
+        final account = _AgeAccount(userId: null);
+        await _pump(tester, account, storeAge: () async => signal(13, 15));
+        await _openRegister(tester);
         await _chooseAge(tester, 2011, 3);
         await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
         await tester.pump();
         await tester.pump();
         expect(account.signUps.single.birthYearMonth, '2011-03');
-        expect(reads, 1);
         expect(tester.takeException(), isNull);
       });
 
