@@ -38,12 +38,13 @@ class SupabaseMotionTrialGate implements MotionTrialGate {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
     try {
-      final row = await supabase
+      // A plain list read: an empty result is "unused", not an error.
+      final rows = await supabase
           .from('motion_trial_ledger')
           .select('user_id')
           .eq('user_id', userId)
-          .maybeSingle();
-      return row == null && supabase.auth.currentUser?.id == userId;
+          .limit(1);
+      return rows.isEmpty && supabase.auth.currentUser?.id == userId;
     } on Object {
       return false;
     }
