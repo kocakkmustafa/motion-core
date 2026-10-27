@@ -6,12 +6,12 @@ description: >-
   Declared Age Range on iOS 26+, Google Play Age Signals 0.0.4). Every call
   degrades to null where the platform API is unavailable; callers keep their
   own fallback.
-version: 0.2.0
+version: 0.3.0
 publish_to: none
 
 environment:
-  sdk: ^3.11.0
-  flutter: '>=3.35.0'
+  sdk: ^3.12.0
+  flutter: '>=3.44.0'
 
 dependencies:
   flutter:
