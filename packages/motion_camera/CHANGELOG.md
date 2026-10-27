@@ -3,8 +3,9 @@
 Android eklentisi Kotlin Gradle Plugin'i (`kotlin-android`) artık uygulamıyor;
 `kotlinOptions` yerine `kotlin.compilerOptions` (JVM 17) kullanılır (Flutter
 "migrate to built-in Kotlin — plugin authors" kılavuzu; `in_app_purchase_android`
-0.5.3 ile aynı desen). Asgari sürüm Flutter 3.44 / Dart 3.12. Dart API'si ve
-native davranış değişmedi.
+0.5.3 ile aynı desen). Asgari sürüm Flutter 3.44 (Dart 3.12 ile gelir); paketin
+Dart dil sürümü bilerek `^3.11.0`'da kalır (3.12 dil özellikleri lint/semantik
+kaydırmasın). Dart API'si ve native davranış değişmedi.
 
 ## 0.2.0 — 2026-10-02 — yerel kaynak, native kabul açık
 
