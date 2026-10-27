@@ -57,6 +57,45 @@ void main() {
       expect(_band(2008, 9, 'IN'), MotionAgeBand.adult);
     });
 
+    test('teen purchase policy differs only for a consent-pending teen', () {
+      const consent = MotionTeenPurchasePolicy.parentalConsentRequired;
+      const store = MotionTeenPurchasePolicy.storeFamilyControls;
+      MotionAgeStatus status(
+        int year,
+        String country,
+        MotionParentalConsent c,
+      ) => MotionAgeStatus(declaration: _born(year, 9, country), consent: c);
+      // (status, restricted under consent, restricted under store, store note)
+      final cases = <(MotionAgeStatus, bool, bool, bool)>[
+        (status(2012, 'DE', MotionParentalConsent.none), true, false, true),
+        (status(2012, 'DE', MotionParentalConsent.pending), true, false, true),
+        (status(2012, 'DE', MotionParentalConsent.denied), true, false, true),
+        (status(2012, 'DE', MotionParentalConsent.expired), true, false, true),
+        (
+          status(2012, 'DE', MotionParentalConsent.approved),
+          false,
+          false,
+          false,
+        ),
+        (status(2012, 'US', MotionParentalConsent.none), false, false, false),
+        (status(1990, 'TR', MotionParentalConsent.none), false, false, false),
+        // An under-13 band never buys, whatever the host chose.
+        (status(2014, 'US', MotionParentalConsent.none), true, true, false),
+      ];
+      for (final (age, underConsent, underStore, note) in cases) {
+        expect(age.purchaseRestrictedOn(_today, consent), underConsent);
+        expect(age.purchaseRestrictedOn(_today, store), underStore);
+        expect(age.storeDecidesPurchaseOn(_today, store), note);
+        expect(age.storeDecidesPurchaseOn(_today, consent), isFalse);
+      }
+      const undeclared = MotionAgeStatus(
+        declaration: null,
+        consent: MotionParentalConsent.none,
+      );
+      expect(undeclared.purchaseRestrictedOn(_today, consent), isFalse);
+      expect(undeclared.storeDecidesPurchaseOn(_today, store), isFalse);
+    });
+
     test('teens get no marketing and opt-in analytics only', () {
       for (final band in MotionAgeBand.values) {
         expect(

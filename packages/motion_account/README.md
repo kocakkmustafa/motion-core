@@ -402,6 +402,18 @@ country/parental-consent flow runs unchanged. No signal (older OS, region,
 declined sharing, error) keeps today's flow. The store's own parental
 approval status and "significant change" notices are not used yet.
 
+Teen purchases (0.8.0): each host picks `MotionTeenPurchasePolicy` and passes
+the same value as `teenPurchasePolicy:` to `MotionAccountPage`,
+`MotionMembershipPage`, `requireMotionPaidAccess` and
+`requireMotionCameraAccess` (each forwards it to the membership page it opens).
+The default `parentalConsentRequired` keeps the first-release behavior: a
+consent-pending teen is offered no purchase (restore stays). With
+`storeFamilyControls` the offers stay open and the store's own family controls
+(Ask to Buy, Google Play parental approval) decide the payment; the page adds
+one under-18 note. Account features stay consent-gated under both policies, an
+under-13 band never buys, and the server verifies purchases the same way
+(`MotionAgeStatus.purchaseRestrictedOn` / `storeDecidesPurchaseOn`).
+
 The parent approves or declines on the YULAlab site consent page through the
 `motion-parental-consent` Edge Function. Approval lifts the restriction; denial
 deletes the account (deletion receipt included). The parent address is stored

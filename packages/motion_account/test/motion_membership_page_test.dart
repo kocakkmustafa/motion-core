@@ -253,6 +253,107 @@ void main() {
     account.supabase.dispose();
   });
 
+  const familyNote =
+      "Purchases by users under 18 are subject to the store's family or parental controls, which may ask a parent to approve. Account features open after parental approval.";
+
+  MotionAgeStatus teen(int age, MotionParentalConsent consent) =>
+      MotionAgeStatus(
+        declaration: MotionAgeDeclaration(
+          birthYear: DateTime.now().year - age,
+          birthMonth: 1,
+          countryCode: 'DE',
+          policyVersion: MotionAgePolicy.version,
+        ),
+        consent: consent,
+      );
+
+  testWidgets('store family controls: a consent-pending teen can buy', (
+    tester,
+  ) async {
+    final account = await _account(false);
+    account.age = teen(14, MotionParentalConsent.pending);
+    final store = _Store(const [_streamOffer]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: store,
+          serverAdapter: _Server(),
+          teenPurchasePolicy: MotionTeenPurchasePolicy.storeFamilyControls,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(store.fetchCount, 1);
+    expect(find.text(familyNote), findsOneWidget);
+    expect(
+      find.text(
+        'A parent or guardian needs to approve this account before account features open. Practice on this device keeps working.',
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Choose'));
+    // The page stays busy until the store reports back; no settle.
+    await tester.pump();
+    await tester.pump();
+    expect(store.purchased, _streamOffer);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    account.supabase.dispose();
+  });
+
+  testWidgets('store family controls never sells to an under-13 band', (
+    tester,
+  ) async {
+    final account = await _account(false);
+    account.age = teen(10, MotionParentalConsent.none);
+    final store = _Store(const [_streamOffer]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: MotionMembershipPage(
+          account: account,
+          purchaseAdapter: store,
+          serverAdapter: _Server(),
+          teenPurchasePolicy: MotionTeenPurchasePolicy.storeFamilyControls,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(store.fetchCount, 0);
+    expect(find.widgetWithText(FilledButton, 'Choose'), findsNothing);
+    expect(find.text(familyNote), findsNothing);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    account.supabase.dispose();
+  });
+
+  testWidgets('store family controls adds no note for an adult or approved', (
+    tester,
+  ) async {
+    for (final age in [null, teen(14, MotionParentalConsent.approved)]) {
+      final account = await _account(false);
+      if (age != null) account.age = age;
+      final store = _Store(const [_streamOffer]);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.android),
+          home: MotionMembershipPage(
+            account: account,
+            purchaseAdapter: store,
+            serverAdapter: _Server(),
+            teenPurchasePolicy: MotionTeenPurchasePolicy.storeFamilyControls,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(store.fetchCount, 1);
+      expect(find.widgetWithText(FilledButton, 'Choose'), findsOneWidget);
+      expect(find.text(familyNote), findsNothing);
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      account.supabase.dispose();
+    }
+  });
+
   testWidgets('same-token silent recovery blocks a retained sale action', (
     tester,
   ) async {

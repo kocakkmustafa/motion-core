@@ -114,6 +114,7 @@ enum MotionAccountString {
   trialThenYearly,
   trialRenewTerms,
   ageStoreMismatch,
+  storeFamilyControlsNote,
 }
 
 /// Fourteen-locale account copy. Existing hosts may keep their locale resolver;
@@ -2183,5 +2184,23 @@ const _messages = <MotionAccountString, _Translations>{
     pl: "Ta data urodzenia nie zgadza się z przedziałem wieku udostępnionym przez Twoje konto w sklepie. Sprawdź miesiąc i rok urodzenia.",
     hi: "यह जन्म तिथि आपके स्टोर खाते द्वारा साझा की गई आयु सीमा से मेल नहीं खाती। अपना जन्म माह और वर्ष जाँचें।",
     zhHans: "此出生年月与你的商店账户共享的年龄范围不符。请检查出生月份和年份。",
+  ),
+  MotionAccountString.storeFamilyControlsNote: _Translations(
+    tr: "18 yaşından küçüklerin satın almaları mağazanın aile/ebeveyn denetimlerine tabidir; mağaza bir ebeveynin onayını isteyebilir. Hesap özellikleri veli onayından sonra açılır.",
+    en: "Purchases by users under 18 are subject to the store's family or parental controls, which may ask a parent to approve. Account features open after parental approval.",
+    es419:
+        "Las compras de menores de 18 años están sujetas a los controles familiares o parentales de la tienda, que pueden pedir la aprobación de un padre o madre. Las funciones de la cuenta se abren tras la aprobación parental.",
+    ptBR:
+        "Compras de menores de 18 anos estão sujeitas aos controles familiares ou parentais da loja, que podem pedir a aprovação de um responsável. Os recursos da conta são liberados após a aprovação do responsável.",
+    de: "Käufe von Personen unter 18 unterliegen den Familien- bzw. Jugendschutzeinstellungen des Stores, die eine Zustimmung der Eltern verlangen können. Kontofunktionen öffnen sich nach der Zustimmung der Eltern.",
+    fr: "Les achats des moins de 18 ans sont soumis au contrôle familial ou parental de la boutique, qui peut demander l’accord d’un parent. Les fonctions du compte s’ouvrent après l’accord parental.",
+    ja: "18歳未満の購入はストアのファミリー／保護者による管理の対象で、保護者の承認が求められる場合があります。アカウント機能は保護者の承認後に利用できます。",
+    ar: "تخضع مشتريات من هم دون 18 عامًا لأدوات الرقابة العائلية أو الأبوية في المتجر، وقد تطلب موافقة أحد الوالدين. تُفتح ميزات الحساب بعد موافقة الوالدين.",
+    it: "Gli acquisti dei minori di 18 anni sono soggetti al controllo familiare o parentale dello store, che può chiedere l'approvazione di un genitore. Le funzioni dell'account si aprono dopo l'approvazione del genitore.",
+    ko: "18세 미만 사용자의 구매는 스토어의 가족 또는 자녀 보호 설정을 따르며, 보호자의 승인을 요청할 수 있습니다. 계정 기능은 보호자 승인 후에 열립니다.",
+    id: "Pembelian oleh pengguna di bawah 18 tahun tunduk pada kontrol keluarga atau orang tua di toko aplikasi, yang dapat meminta persetujuan orang tua. Fitur akun terbuka setelah persetujuan orang tua.",
+    pl: "Zakupy osób poniżej 18 lat podlegają kontroli rodzicielskiej lub rodzinnej sklepu, która może wymagać zgody rodzica. Funkcje konta otwierają się po zgodzie rodzica.",
+    hi: "18 वर्ष से कम उम्र के उपयोगकर्ताओं की खरीदारी स्टोर के परिवार या अभिभावक नियंत्रणों के अधीन है, जो अभिभावक की स्वीकृति माँग सकते हैं। खाते की सुविधाएँ अभिभावक की स्वीकृति के बाद खुलती हैं।",
+    zhHans: "18 岁以下用户的购买受商店家庭或家长控制约束，商店可能会要求家长批准。账户功能在家长批准后开放。",
   ),
 };

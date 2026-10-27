@@ -20,6 +20,8 @@ Future<bool> requireMotionPaidAccess(
   WidgetBuilder? membershipPageBuilder,
   bool salesAvailable = motionSubscriptionSalesAvailable,
   @Deprecated('Use salesAvailable') bool? paidFeaturesAvailable,
+  MotionTeenPurchasePolicy teenPurchasePolicy =
+      MotionTeenPurchasePolicy.parentalConsentRequired,
 }) async {
   if (!(paidFeaturesAvailable ?? salesAvailable)) {
     _showFutureSession(context);
@@ -65,7 +67,10 @@ Future<bool> requireMotionPaidAccess(
     MaterialPageRoute<void>(
       builder:
           membershipPageBuilder ??
-          (_) => MotionMembershipPage(account: account),
+          (_) => MotionMembershipPage(
+            account: account,
+            teenPurchasePolicy: teenPurchasePolicy,
+          ),
     ),
   );
   if (!context.mounted || account.currentUser?.id != userId) return false;
@@ -84,6 +89,8 @@ Future<bool> requireMotionCameraAccess(
   required WidgetBuilder accountPageBuilder,
   WidgetBuilder? membershipPageBuilder,
   bool cameraCoachingAvailable = motionCameraCoachingAvailable,
+  MotionTeenPurchasePolicy teenPurchasePolicy =
+      MotionTeenPurchasePolicy.parentalConsentRequired,
 }) async {
   if (!cameraCoachingAvailable) {
     _showFutureSession(context);
@@ -94,6 +101,7 @@ Future<bool> requireMotionCameraAccess(
     account: account,
     accountPageBuilder: accountPageBuilder,
     membershipPageBuilder: membershipPageBuilder,
+    teenPurchasePolicy: teenPurchasePolicy,
   );
 }
 

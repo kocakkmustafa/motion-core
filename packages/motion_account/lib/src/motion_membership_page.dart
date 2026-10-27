@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'motion_account_client.dart';
 import 'motion_account_localizations.dart';
+import 'motion_release_policy.dart';
 
 /// One small store-owned membership surface shared by the five host apps.
 /// Prices are shown only after the installed app's store returns real offers.
@@ -17,11 +18,16 @@ class MotionMembershipPage extends StatefulWidget {
     required this.account,
     this.purchaseAdapter,
     this.serverAdapter,
+    this.teenPurchasePolicy = MotionTeenPurchasePolicy.parentalConsentRequired,
   });
 
   final MotionAccountClient account;
   final PurchaseAdapter? purchaseAdapter;
   final ServerAdapter? serverAdapter;
+
+  /// This host's rule for a consent-pending teen (see
+  /// [MotionTeenPurchasePolicy]). Defaults to no purchase until approval.
+  final MotionTeenPurchasePolicy teenPurchasePolicy;
 
   @override
   State<MotionMembershipPage> createState() => _MotionMembershipPageState();
@@ -40,8 +46,10 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
   bool _anyActive = false;
   bool _authStreamFailed = false;
   // A teen below the consent age without parent approval is not offered a
-  // purchase. Restoring an existing store purchase stays available.
+  // purchase unless the host leaves it to the store's family controls.
+  // Restoring an existing store purchase stays available.
   bool _consentRequired = false;
+  bool _storeFamilyControls = false;
   MotionAccountString? _message;
 
   String get _appId => widget.account.app.name;
@@ -147,9 +155,13 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       _message = null;
     });
     try {
-      final restricted = await _restrictedByAge();
+      final age = await _ageStatus();
       if (!mounted || !_sameUser) return;
-      if (restricted) {
+      final today = DateTime.now();
+      final policy = widget.teenPurchasePolicy;
+      _storeFamilyControls =
+          age?.storeDecidesPurchaseOn(today, policy) ?? false;
+      if (age?.purchaseRestrictedOn(today, policy) ?? false) {
         setState(() {
           _consentRequired = true;
           _offers = const [];
@@ -179,12 +191,11 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
 
   /// Unknown status does not invent a restriction; the server's RLS and the
   /// account page still enforce consent for account features.
-  Future<bool> _restrictedByAge() async {
+  Future<MotionAgeStatus?> _ageStatus() async {
     try {
-      final status = await Future.sync(widget.account.ageStatus);
-      return status.restrictedOn(DateTime.now());
+      return await Future.sync(widget.account.ageStatus);
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
@@ -388,6 +399,8 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
               ],
               const SizedBox(height: 12),
               Text(_text(MotionAccountString.autoRenewTerms)),
+              if (_storeFamilyControls)
+                Text(_text(MotionAccountString.storeFamilyControlsNote)),
               if (_offers.any((offer) => offer.freeTrialDays != null))
                 Text(_text(MotionAccountString.trialRenewTerms)),
             ],

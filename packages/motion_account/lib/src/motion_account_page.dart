@@ -42,6 +42,7 @@ class MotionAccountPage extends StatefulWidget {
     this.ageBlocked = false,
     this.onAgeBlocked,
     this.clock = DateTime.now,
+    this.teenPurchasePolicy = MotionTeenPurchasePolicy.parentalConsentRequired,
   });
 
   final MotionAccountClient account;
@@ -77,6 +78,10 @@ class MotionAccountPage extends StatefulWidget {
   final bool ageBlocked;
   final VoidCallback? onAgeBlocked;
   final DateTime Function() clock;
+
+  /// Passed to the membership page this page opens; account features stay
+  /// consent-gated under either [MotionTeenPurchasePolicy].
+  final MotionTeenPurchasePolicy teenPurchasePolicy;
 
   @override
   State<MotionAccountPage> createState() => _MotionAccountPageState();
@@ -507,7 +512,10 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     if (!_sells) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => MotionMembershipPage(account: widget.account),
+        builder: (_) => MotionMembershipPage(
+          account: widget.account,
+          teenPurchasePolicy: widget.teenPurchasePolicy,
+        ),
       ),
     );
     if (!mounted) return;

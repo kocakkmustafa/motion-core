@@ -41,6 +41,17 @@ IN 18 (DPDP); ID 18; SA 18; AE 18; TR 18; AU 16; CH 16; diğer → 16.
 5. Onaylanmayan hesap 30 gün sonra `motion_purge_unconsented_accounts()` ile
    silinir (zamanlama ayrı onaylı operasyon).
 
+**Satın alma (0.8.0, app başına `MotionTeenPurchasePolicy`):** varsayılan
+`parentalConsentRequired` — onay bekleyen gence satın alma teklifi gösterilmez
+(geri yükleme açık). `storeFamilyControls` seçen app'te teklifler açık kalır ve
+ödeme kararı mağazanın aile/ebeveyn denetimine (Ask to Buy, Google Play ebeveyn
+onayı) bırakılır; sayfa 18 yaş altı notunu gösterir. Hesap özellikleri iki
+politikada da onaya kadar kapalıdır; 13 yaş altı bandı hiç satın alamaz; sunucu
+doğrulaması değişmez. **Dikkat:** onaylanmayan hesap 30 gün sonra silinir
+(madde 5); mağaza aboneliği bununla iptal olmaz ve yeni hesapta geri yüklenir —
+`storeFamilyControls` ile satın alan ama veli onayı almayan genç için bu
+etkileşim hukuk/ürün kararına açıktır.
+
 E-posta 14 dilde (`_shared/motion_consent_copy.ts`). Gönderim sağlayıcısı
 yapılandırılmadıysa istek `503 mail_unavailable` döner ve kayıt oluşturulmaz.
 
