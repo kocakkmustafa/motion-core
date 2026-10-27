@@ -3,7 +3,11 @@
 // wildcard. Requests without an Origin header (apps, server-to-server) are
 // unaffected.
 
-export const DEFAULT_ALLOWED_ORIGINS = ["https://yulalab.com"];
+// Founder decision K-3 (27 Oct 2026): the apex and www site, no preview origin.
+export const DEFAULT_ALLOWED_ORIGINS = [
+  "https://yulalab.com",
+  "https://www.yulalab.com",
+];
 
 const ALLOW_METHODS = "POST, OPTIONS";
 const ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";

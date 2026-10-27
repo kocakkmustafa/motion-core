@@ -412,7 +412,9 @@ consent-pending teen is offered no purchase (restore stays). With
 (Ask to Buy, Google Play parental approval) decide the payment; the page adds
 one under-18 note. Account features stay consent-gated under both policies, an
 under-13 band never buys, and the server verifies purchases the same way
-(`MotionAgeStatus.purchaseRestrictedOn` / `storeDecidesPurchaseOn`).
+(`MotionAgeStatus.purchaseRestrictedOn` / `storeDecidesPurchaseOn`). All five
+apps pick `storeFamilyControls` (founder decision K-2, 27 Oct 2026); the
+package default stays `parentalConsentRequired`.
 
 The parent approves or declines on the YULAlab site consent page through the
 `motion-parental-consent` Edge Function. Approval lifts the restriction; denial
@@ -426,7 +428,7 @@ local E2E) and `MOTION_MAIL_FROM` (the authenticated account or one of its
 "send as" aliases). Without a complete configuration the request fails closed
 with `mail_unavailable`; credentials, addresses and bodies are never logged. The consent page calls `view`/`decide` from the browser:
 origins listed in `MOTION_CONSENT_ALLOWED_ORIGINS` (comma-separated, default
-`https://yulalab.com`) receive CORS headers; no wildcard, and app requests
+`https://yulalab.com` and `https://www.yulalab.com`) receive CORS headers; no wildcard, and app requests
 without an `Origin` header are unchanged. Retention and restore re-application are described in
 `docs/compliance/YAS-VELI-VE-SAKLAMA.md`.
 

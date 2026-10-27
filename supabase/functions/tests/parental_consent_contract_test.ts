@@ -313,29 +313,57 @@ function fromOrigin(method: string, origin: string | null, body?: unknown) {
   );
 }
 
-Deno.test("preflight from the site origin is allowed without wildcard", async () => {
+// K-3 (27 Oct 2026): exactly the apex and www site are allowed by default.
+const SITE_ORIGINS = ["https://yulalab.com", "https://www.yulalab.com"];
+
+Deno.test("preflight from the site origins is allowed without wildcard", async () => {
   Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
-  const response = await fromOrigin("OPTIONS", "https://yulalab.com");
-  assert(response.status === 204, "preflight 204");
-  const h = response.headers;
-  assert(
-    h.get("Access-Control-Allow-Origin") === "https://yulalab.com",
-    "echoed origin",
-  );
-  assert(h.get("Access-Control-Allow-Methods") === "POST, OPTIONS", "methods");
-  assert(
-    h.get("Access-Control-Allow-Headers") ===
-      "authorization, x-client-info, apikey, content-type",
-    "headers",
-  );
-  assert(h.get("Access-Control-Max-Age") === "600", "max age");
-  assert(h.get("Vary") === "Origin", "vary");
+  for (const origin of SITE_ORIGINS) {
+    const response = await fromOrigin("OPTIONS", origin);
+    assert(response.status === 204, `${origin} preflight 204`);
+    const h = response.headers;
+    assert(h.get("Access-Control-Allow-Origin") === origin, "echoed origin");
+    assert(
+      h.get("Access-Control-Allow-Methods") === "POST, OPTIONS",
+      "methods",
+    );
+    assert(
+      h.get("Access-Control-Allow-Headers") ===
+        "authorization, x-client-info, apikey, content-type",
+      "headers",
+    );
+    assert(h.get("Access-Control-Max-Age") === "600", "max age");
+    assert(h.get("Vary") === "Origin", "vary");
+  }
+});
+
+Deno.test("site origins read view answers from the default list", async () => {
+  reset();
+  Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
+  for (const origin of SITE_ORIGINS) {
+    const view = await fromOrigin("POST", origin, {
+      action: "view",
+      token: "x".repeat(43),
+    });
+    assert(
+      view.headers.get("Access-Control-Allow-Origin") === origin,
+      `${origin} view`,
+    );
+    assert(view.headers.get("Vary") === "Origin", `${origin} vary`);
+  }
 });
 
 Deno.test("an unlisted origin gets no CORS grant", async () => {
   Deno.env.delete("MOTION_CONSENT_ALLOWED_ORIGINS");
   for (
-    const origin of ["https://evil.example", "https://www.yulalab.com", "null"]
+    const origin of [
+      "https://evil.example",
+      "http://yulalab.com",
+      "https://yulalab.com.evil.example",
+      "https://preview.yulalab.com",
+      "https://www.yulalab.com:8443",
+      "null",
+    ]
   ) {
     const pre = await fromOrigin("OPTIONS", origin);
     assert(pre.status === 403, `${origin} preflight refused`);

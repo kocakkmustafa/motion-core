@@ -17,7 +17,8 @@ import {
 // _shared/motion_smtp.ts). Without a complete MOTION_SMTP_* configuration the
 // request fails closed with mail_unavailable.
 // The consent page calls view/decide from the browser: origins listed in
-// MOTION_CONSENT_ALLOWED_ORIGINS (default https://yulalab.com) get CORS.
+// MOTION_CONSENT_ALLOWED_ORIGINS (default https://yulalab.com and
+// https://www.yulalab.com) get CORS.
 
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEND_AFTER_MS = 10 * 60 * 1000;

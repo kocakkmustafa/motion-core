@@ -47,10 +47,12 @@ IN 18 (DPDP); ID 18; SA 18; AE 18; TR 18; AU 16; CH 16; diğer → 16.
 ödeme kararı mağazanın aile/ebeveyn denetimine (Ask to Buy, Google Play ebeveyn
 onayı) bırakılır; sayfa 18 yaş altı notunu gösterir. Hesap özellikleri iki
 politikada da onaya kadar kapalıdır; 13 yaş altı bandı hiç satın alamaz; sunucu
-doğrulaması değişmez. **Dikkat:** onaylanmayan hesap 30 gün sonra silinir
+doğrulaması değişmez. **Kurucu K-2 (2026-10-27):** beş app de
+`storeFamilyControls` seçer; Core varsayılanı (`parentalConsentRequired`) API
+için aynen kalır, hiçbir app'te kullanılmaz. **Dikkat:** onaylanmayan hesap 30 gün sonra silinir
 (madde 5); mağaza aboneliği bununla iptal olmaz ve yeni hesapta geri yüklenir —
-`storeFamilyControls` ile satın alan ama veli onayı almayan genç için bu
-etkileşim hukuk/ürün kararına açıktır.
+K-2 ile bu durum beş app'te de oluşabilir (veli onayı almadan mağaza
+denetimiyle satın alan genç); etkileşim hukuk/ürün kararına açıktır.
 
 E-posta 14 dilde (`_shared/motion_consent_copy.ts`). Gönderim sağlayıcısı
 yapılandırılmadıysa istek `503 mail_unavailable` döner ve kayıt oluşturulmaz.
