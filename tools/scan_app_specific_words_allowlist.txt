@@ -22,7 +22,7 @@
 # by this file.
 packages/motion_core/lib/src/engine/phase_config.dart:890:'yazılamaz (Gravita metrik sözlüğü kuralı)');
 packages/motion_core/lib/src/engine/phase_config.dart:944:'iki uçta birden sayılır (değişmez #9, Gravita V11)');
-packages/motion_account/lib/src/motion_account_client.dart:13:enum MotionApp { ostinato, gravita, choreia, jablab, lissom }
+packages/motion_account/lib/src/motion_account_client.dart:14:enum MotionApp { ostinato, gravita, choreia, jablab, lissom }
 packages/motion_entitlements/lib/src/entitlement_status.dart:7:'ostinato',
 packages/motion_entitlements/lib/src/entitlement_status.dart:8:'gravita',
 packages/motion_entitlements/lib/src/entitlement_status.dart:9:'choreia',
