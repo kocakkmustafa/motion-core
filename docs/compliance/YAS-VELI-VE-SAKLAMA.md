@@ -68,7 +68,7 @@ yapılandırılmadıysa istek `503 mail_unavailable` döner ve kayıt oluşturul
 | Restore sonrası | Restore'dan hemen sonra | `motion_reapply_deleted_accounts(digests)` — veritabanı dışı silme günlüğündeki özetler yeniden uygulanır: makbuz yeniden yazılır, dirilen Auth kullanıcıları silinir |
 | Onaylanmamış genç hesabı | 30 gün | `motion_purge_unconsented_accounts()` |
 | Kapanan destek kaydı | 90 gün | Destek kutusu (`support@yulalab.com`) operasyonu; Core dışında |
-| Fatura/abonelik | Yalnız yasal süre | Apple/Google mağaza kayıtları; Core satış kapalı |
+| Fatura/abonelik | Yalnız yasal süre | Apple/Google mağaza kayıtları (abonelik satışı açık: kurucu kararı 23 Eki 2026, `motionSubscriptionSalesAvailable = true`); Core yalnız `motion_entitlements` hak kaydını tutar, hesap silmede cascade ile gider. Mağaza aboneliği silmeyle iptal olmaz |
 | Motion+ deneme defteri (`motion_trial_ledger`) | Hesapla birlikte (silmede cascade) | Hesap başına tek Motion+ ücretsiz denemesi; yalnız uygulama/mağaza/işlem referansı ve başlangıç zamanı, istemci yalnız kendi satırının app/zaman alanlarını okur |
 
 **Silme günlüğü veritabanı dışında tutulmalıdır**: aksi halde restore, restore
