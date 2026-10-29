@@ -35,6 +35,38 @@ void main() {
     }
   });
 
+  // Founder decision 29 Oct 2026: the Motion+ benefit names what is unlocked
+  // today and says camera coaching is not included (camera stays closed).
+  test('Motion+ benefit wording is the approved TR/EN text', () {
+    expect(
+      MotionAccountLocalizations.templateFor(
+        const Locale('en'),
+        MotionAccountString.motionPlusBenefit,
+      ),
+      'Unlocks the paid lessons and practice available today in all five '
+      'Motion apps. Camera coaching and lessons not yet released are not '
+      'included.',
+    );
+    expect(
+      MotionAccountLocalizations.templateFor(
+        const Locale('tr'),
+        MotionAccountString.motionPlusBenefit,
+      ),
+      'Beş Motion uygulamasında bugün yayında olan ücretli dersleri ve '
+      'alıştırmaları açar. Kamerayla koçluk ve henüz yayımlanmamış dersler '
+      'dahil değildir.',
+    );
+    for (final locale in MotionAccountLocalizations.supportedLocales) {
+      final text = MotionAccountLocalizations.templateFor(
+        locale,
+        MotionAccountString.motionPlusBenefit,
+      ).toLowerCase();
+      for (final stale in const ['live', 'canlı', 'en vivo', 'ao vivo']) {
+        expect(text.contains(stale), isFalse, reason: '$locale: $stale');
+      }
+    }
+  });
+
   test('resolver keeps supported variants and English fallback', () {
     expect(
       MotionAccountLocalizations.localeFor(const Locale('es', 'MX')),
