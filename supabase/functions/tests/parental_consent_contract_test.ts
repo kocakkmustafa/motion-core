@@ -398,6 +398,37 @@ Deno.test("fourteen locales fill both placeholders once", () => {
   );
 });
 
+// Legal pre-review Annex D (lawyer-approved TR/EN): after the decline
+// paragraph, every locale says deleting the account does not cancel a store
+// subscription and links the privacy page.
+Deno.test("every locale says account deletion does not cancel a store subscription", () => {
+  const approved: Record<string, string> = {
+    en:
+      "The teen may have bought a subscription through the store's family controls (e.g. Ask to Buy, Google Play parental approval). Deleting the account does not cancel it; you can manage it in the Apple or Google account. Details: https://yulalab.com/privacy/motion",
+    tr:
+      "Genç, mağazanın aile denetimleriyle (ör. Satın Almak İçin Sor, Google Play ebeveyn onayı) abonelik almış olabilir. Hesabın silinmesi bu aboneliği iptal etmez; aboneliği Apple veya Google hesabından yönetebilirsiniz. Ayrıntılar: https://yulalab.com/privacy/motion",
+  };
+  for (const locale of consentLocales) {
+    const paragraphs = consentEmail(locale, { link: "L", expiresAt: "D" })
+      .text.split("\n\n");
+    const note = paragraphs.at(-2)!;
+    assert(
+      paragraphs.length === 7 &&
+        paragraphs.at(-1) === "YULAlab · support@yulalab.com",
+      `${locale} paragraph count and footer`,
+    );
+    assert(
+      note.endsWith("https://yulalab.com/privacy/motion") &&
+        note.includes("Apple") && note.includes("Google Play"),
+      `${locale} store subscription note`,
+    );
+    assert(paragraphs.at(-3)!.includes("30"), `${locale} note follows decline`);
+    if (locale in approved) {
+      assert(note === approved[locale], `${locale} approved wording`);
+    }
+  }
+});
+
 // CORE-04: the YULAlab consent page calls view/decide from the browser.
 function fromOrigin(method: string, origin: string | null, body?: unknown) {
   const headers: Record<string, string> = {};
