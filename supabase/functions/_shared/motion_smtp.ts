@@ -2,6 +2,8 @@
 // on smtp.gmail.com:465, implicit TLS). Supabase Edge blocks outbound 25 and
 // 587, so STARTTLS submission is not used. No dependency, no logging: the
 // password, addresses and body never reach a log line or an error message.
+// Callers get a secret-free outcome (failure class, protocol stage, reply
+// code) from submitSmtpMail and decide what to log.
 
 export type SmtpTls = "implicit" | "none";
 
@@ -16,6 +18,40 @@ export type SmtpConfig = {
 };
 
 export type SmtpMessage = { to: string; subject: string; text: string };
+
+/** Secret-free failure class: safe to log. */
+export type SmtpFailure =
+  | "config"
+  | "network"
+  | "auth"
+  | "sender"
+  | "recipient"
+  | "message";
+
+/** Where the submission stopped. */
+export type SmtpStage =
+  | "config"
+  | "connect"
+  | "greeting"
+  | "ehlo"
+  | "auth"
+  | "mail_from"
+  | "rcpt"
+  | "data"
+  | "message";
+
+/** `code` is the server's three-digit reply when it answered; never text. */
+export type SmtpOutcome =
+  | { ok: true }
+  | { ok: false; failure: SmtpFailure; stage: SmtpStage; code?: number };
+
+/**
+ * Why the configuration is unusable, by variable name only (never a value):
+ * `missing:MOTION_SMTP_PASSWORD`, `invalid:MOTION_MAIL_FROM`, …
+ */
+export type SmtpConfigRead =
+  | { config: SmtpConfig; issue?: undefined }
+  | { config?: undefined; issue: string };
 
 /** Opens the transport. Injected in tests; production uses Deno sockets. */
 export type SmtpConnector = (config: SmtpConfig) => Promise<Deno.Conn>;
@@ -45,27 +81,59 @@ export function smtpAddress(from: string): string | null {
 }
 
 /**
- * Reads MOTION_SMTP_* and MOTION_MAIL_FROM. Returns null (mail unavailable,
- * fail closed) when anything is missing or unsafe: TLS other than
- * `implicit`, except `none` towards a loopback/Docker host.
+ * Google shows an app password as four groups of four letters, and it is
+ * often stored with those spaces or a trailing newline; AUTH then fails
+ * (CORE-07 6.11, 29 Oct 2026). Surrounding whitespace is always dropped.
+ * Inner whitespace is dropped only when what remains has that 16-letter
+ * shape, so another provider's password with a space stays as typed.
  */
-export function smtpConfigFromEnv(
+export function normalizeSmtpPassword(
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  const compact = trimmed.replace(/\s+/g, "");
+  return /^[A-Za-z]{16}$/.test(compact) ? compact : trimmed;
+}
+
+/**
+ * Reads MOTION_SMTP_* and MOTION_MAIL_FROM. Fails closed with an issue
+ * (variable name, no value) when anything is missing or unsafe: TLS other
+ * than `implicit`, except `none` towards a loopback/Docker host.
+ */
+export function readSmtpConfig(
   get: (name: string) => string | undefined = (name) => Deno.env.get(name),
-): SmtpConfig | null {
+): SmtpConfigRead {
   const host = get("MOTION_SMTP_HOST")?.trim();
   const user = get("MOTION_SMTP_USER");
-  const password = get("MOTION_SMTP_PASSWORD");
+  const password = normalizeSmtpPassword(get("MOTION_SMTP_PASSWORD"));
   const from = get("MOTION_MAIL_FROM")?.trim();
   const tls = (get("MOTION_SMTP_TLS") ?? "implicit").trim();
   const portText = (get("MOTION_SMTP_PORT") ?? "465").trim();
-  if (!host || !user || !password || !from || !smtpAddress(from)) return null;
-  if (!/^\d{1,5}$/.test(portText)) return null;
+  if (!host) return { issue: "missing:MOTION_SMTP_HOST" };
+  if (!user) return { issue: "missing:MOTION_SMTP_USER" };
+  if (!password) return { issue: "missing:MOTION_SMTP_PASSWORD" };
+  if (!from) return { issue: "missing:MOTION_MAIL_FROM" };
+  if (!smtpAddress(from) || /[\r\n]/.test(from)) {
+    return { issue: "invalid:MOTION_MAIL_FROM" };
+  }
+  if (!/^\d{1,5}$/.test(portText)) return { issue: "invalid:MOTION_SMTP_PORT" };
   const port = Number(portText);
-  if (port < 1 || port > 65535) return null;
-  if (tls !== "implicit" && tls !== "none") return null;
-  if (tls === "none" && !PLAINTEXT_HOSTS.has(host)) return null;
-  if (/[\r\n]/.test(from)) return null;
-  return { host, port, user, password, tls, from };
+  if (port < 1 || port > 65535) return { issue: "invalid:MOTION_SMTP_PORT" };
+  if (tls !== "implicit" && tls !== "none") {
+    return { issue: "invalid:MOTION_SMTP_TLS" };
+  }
+  if (tls === "none" && !PLAINTEXT_HOSTS.has(host)) {
+    return { issue: "invalid:MOTION_SMTP_TLS" };
+  }
+  return { config: { host, port, user, password, tls, from } };
+}
+
+/** As [readSmtpConfig]; null when the configuration is unusable. */
+export function smtpConfigFromEnv(
+  get: (name: string) => string | undefined = (name) => Deno.env.get(name),
+): SmtpConfig | null {
+  return readSmtpConfig(get).config ?? null;
 }
 
 const defaultConnector: SmtpConnector = (config) =>
@@ -144,6 +212,25 @@ export function buildMessage(
 
 class SmtpReplyError extends Error {}
 
+/** The server answered with a code the step does not accept. */
+class SmtpRefused extends Error {
+  constructor(readonly code: number) {
+    super("refused");
+  }
+}
+
+const REFUSAL: Record<SmtpStage, SmtpFailure> = {
+  config: "config",
+  connect: "network",
+  greeting: "network",
+  ehlo: "network",
+  auth: "auth",
+  mail_from: "sender",
+  rcpt: "recipient",
+  data: "message",
+  message: "message",
+};
+
 /** Line reader over one connection; replies may span "250-…" lines. */
 class Replies {
   #buffer = "";
@@ -193,10 +280,25 @@ export async function sendSmtpMail(
   message: SmtpMessage,
   options: SmtpOptions = {},
 ): Promise<boolean> {
+  return (await submitSmtpMail(config, message, options)).ok;
+}
+
+/**
+ * As [sendSmtpMail], with a secret-free outcome: a refusal carries the class
+ * of the refusing step and its reply code; a timeout, transport error or
+ * malformed reply is `network` at the stage it happened. Never throws and
+ * never logs.
+ */
+export async function submitSmtpMail(
+  config: SmtpConfig,
+  message: SmtpMessage,
+  options: SmtpOptions = {},
+): Promise<SmtpOutcome> {
   const from = smtpAddress(config.from);
   if (
     !from || !ADDRESS.test(message.to) || /[\r\n]/.test(message.subject)
-  ) return false;
+  ) return { ok: false, failure: "message", stage: "message" };
+  let stage: SmtpStage = "connect";
   const stepMs = options.stepTimeoutMs ?? 10_000;
   const totalMs = options.totalTimeoutMs ?? 30_000;
   let conn: Deno.Conn | undefined;
@@ -223,20 +325,25 @@ export async function sendSmtpMail(
   try {
     conn = await step((options.connect ?? defaultConnector)(config));
     const replies = new Replies(conn);
-    const expect = async (command: string | null, ...codes: number[]) => {
+    const expect = async (
+      at: SmtpStage,
+      command: string | null,
+      ...codes: number[]
+    ) => {
+      stage = at;
       if (command !== null) await step(writeAll(conn!, command + "\r\n"));
       const code = await step(replies.next());
-      if (!codes.includes(code)) throw new SmtpReplyError("refused");
+      if (!codes.includes(code)) throw new SmtpRefused(code);
     };
-    await expect(null, 220);
-    await expect("EHLO motion.yulalab.com", 250);
+    await expect("greeting", null, 220);
+    await expect("ehlo", "EHLO motion.yulalab.com", 250);
     const credentials = base64(
       encoder.encode(`\0${config.user}\0${config.password}`),
     );
-    await expect(`AUTH PLAIN ${credentials}`, 235);
-    await expect(`MAIL FROM:<${from}>`, 250);
-    await expect(`RCPT TO:<${message.to}>`, 250, 251);
-    await expect("DATA", 354);
+    await expect("auth", `AUTH PLAIN ${credentials}`, 235);
+    await expect("mail_from", `MAIL FROM:<${from}>`, 250);
+    await expect("rcpt", `RCPT TO:<${message.to}>`, 250, 251);
+    await expect("data", "DATA", 354);
     const payload = buildMessage(
       config,
       message,
@@ -245,7 +352,7 @@ export async function sendSmtpMail(
       .split("\r\n")
       .map((line) => (line.startsWith(".") ? "." + line : line))
       .join("\r\n");
-    await expect(payload + "\r\n.", 250);
+    await expect("data", payload + "\r\n.", 250);
     // The message is accepted; a failed QUIT does not undo delivery.
     try {
       await step(writeAll(conn, "QUIT\r\n"));
@@ -253,9 +360,11 @@ export async function sendSmtpMail(
     } catch {
       // ignore
     }
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (error) {
+    return error instanceof SmtpRefused
+      ? { ok: false, failure: REFUSAL[stage], stage, code: error.code }
+      : { ok: false, failure: "network", stage };
   } finally {
     clearTimeout(stepTimer);
     clearTimeout(totalTimer);

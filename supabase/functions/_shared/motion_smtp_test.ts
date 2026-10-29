@@ -4,9 +4,12 @@
 import { FakeSmtp } from "../tests/fake_smtp.ts";
 import {
   encodeHeaderWords,
+  normalizeSmtpPassword,
+  readSmtpConfig,
   sendSmtpMail,
   type SmtpConfig,
   smtpConfigFromEnv,
+  submitSmtpMail,
 } from "./motion_smtp.ts";
 
 function assert(condition: unknown, message: string) {
@@ -225,4 +228,112 @@ Deno.test("encoded words stay within 75 characters and keep characters whole", (
   }).join("");
   assert(decoded === subject, "round trip");
   assert(encodeHeaderWords("Plain ASCII") === "Plain ASCII", "ASCII as is");
+});
+
+Deno.test("a Google app password loses its display spaces, others are only trimmed", () => {
+  const cases: [string | undefined, string | undefined][] = [
+    ["abcd efgh ijkl mnop", "abcdefghijklmnop"],
+    [" abcd efgh ijkl mnop\n", "abcdefghijklmnop"],
+    ["abcd\u00a0efgh\u00a0ijkl\u00a0mnop", "abcdefghijklmnop"],
+    ["abcdefghijklmnop\r\n", "abcdefghijklmnop"],
+    ["correct horse battery", "correct horse battery"],
+    ["  pass word 1 \n", "pass word 1"],
+    ["abcd efgh ijkl mno1", "abcd efgh ijkl mno1"],
+    ["   ", ""],
+    [undefined, undefined],
+  ];
+  for (const [raw, expected] of cases) {
+    assert(
+      normalizeSmtpPassword(raw) === expected,
+      `${JSON.stringify(raw)} -> ${JSON.stringify(normalizeSmtpPassword(raw))}`,
+    );
+  }
+  const env = (values: Record<string, string>) => (name: string) =>
+    values[name];
+  const base = {
+    MOTION_SMTP_HOST: "smtp.gmail.com",
+    MOTION_SMTP_USER: "consent@example.invalid",
+    MOTION_MAIL_FROM: "Motion <consent@example.invalid>",
+  };
+  assert(
+    smtpConfigFromEnv(
+      env({ ...base, MOTION_SMTP_PASSWORD: "abcd efgh ijkl mnop" }),
+    )
+      ?.password === "abcdefghijklmnop",
+    "config carries the compact password",
+  );
+  assert(
+    readSmtpConfig(env({ ...base, MOTION_SMTP_PASSWORD: " \n" })).issue ===
+      "missing:MOTION_SMTP_PASSWORD",
+    "whitespace-only password is missing",
+  );
+});
+
+Deno.test("configuration issues name the variable, never its value", () => {
+  const env = (values: Record<string, string>) => (name: string) =>
+    values[name];
+  const base: Record<string, string> = {
+    MOTION_SMTP_HOST: "smtp.gmail.com",
+    MOTION_SMTP_USER: "consent@example.invalid",
+    MOTION_SMTP_PASSWORD: "fixture-secret",
+    MOTION_MAIL_FROM: "Motion <consent@example.invalid>",
+  };
+  const cases: [Record<string, string>, string][] = [
+    [{ ...base, MOTION_SMTP_HOST: "" }, "missing:MOTION_SMTP_HOST"],
+    [{ ...base, MOTION_SMTP_USER: "" }, "missing:MOTION_SMTP_USER"],
+    [{ ...base, MOTION_MAIL_FROM: "" }, "missing:MOTION_MAIL_FROM"],
+    [
+      { ...base, MOTION_MAIL_FROM: "fixture-secret" },
+      "invalid:MOTION_MAIL_FROM",
+    ],
+    [{ ...base, MOTION_SMTP_PORT: "x" }, "invalid:MOTION_SMTP_PORT"],
+    [{ ...base, MOTION_SMTP_PORT: "0" }, "invalid:MOTION_SMTP_PORT"],
+    [{ ...base, MOTION_SMTP_TLS: "starttls" }, "invalid:MOTION_SMTP_TLS"],
+    [{ ...base, MOTION_SMTP_TLS: "none" }, "invalid:MOTION_SMTP_TLS"],
+  ];
+  for (const [values, issue] of cases) {
+    const read = readSmtpConfig(env(values));
+    assert(
+      read.config === undefined && read.issue === issue,
+      `${issue}: ${read.issue}`,
+    );
+  }
+  assert(readSmtpConfig(env(base)).config !== undefined, "complete config");
+});
+
+Deno.test("the outcome names the refusing step and its reply code only", async () => {
+  const message = { to: "parent@example.invalid", subject: "s", text: "t" };
+  const auth = new FakeSmtp({ authReply: "535 5.7.8 bad credentials" });
+  const rcpt = new FakeSmtp({ rcptReply: "550 5.1.1 no such user" });
+  const silent = new FakeSmtp({ silent: true });
+  const ok = new FakeSmtp();
+  try {
+    const outcomes = [
+      await submitSmtpMail(config, message, { connect: loopback(auth) }),
+      await submitSmtpMail(config, message, { connect: loopback(rcpt) }),
+      await submitSmtpMail(config, message, {
+        connect: loopback(silent),
+        stepTimeoutMs: 100,
+        totalTimeoutMs: 1000,
+      }),
+      await submitSmtpMail(config, message, {
+        connect: () => Promise.reject(new Error("private host detail")),
+      }),
+      await submitSmtpMail(config, { ...message, subject: "a\r\nBcc: x" }),
+      await submitSmtpMail(config, message, { connect: loopback(ok) }),
+    ];
+    assert(
+      JSON.stringify(outcomes) === JSON.stringify([
+        { ok: false, failure: "auth", stage: "auth", code: 535 },
+        { ok: false, failure: "recipient", stage: "rcpt", code: 550 },
+        { ok: false, failure: "network", stage: "greeting" },
+        { ok: false, failure: "network", stage: "connect" },
+        { ok: false, failure: "message", stage: "message" },
+        { ok: true },
+      ]),
+      JSON.stringify(outcomes),
+    );
+  } finally {
+    await Promise.all([auth.close(), rcpt.close(), silent.close(), ok.close()]);
+  }
 });

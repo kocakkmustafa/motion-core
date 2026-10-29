@@ -15,6 +15,8 @@ export type FakeMail = {
 export type FakeSmtpOptions = {
   /** Reply for AUTH; default 235 (accepted). */
   authReply?: string;
+  /** Reply for RCPT; default 250 (accepted). */
+  rcptReply?: string;
   /** When true the server accepts the socket but never greets. */
   silent?: boolean;
 };
@@ -144,7 +146,7 @@ export class FakeSmtp {
           await send("250 2.1.0 ok");
         } else if (line.startsWith("RCPT TO:")) {
           to = line.slice("RCPT TO:".length);
-          await send("250 2.1.5 ok");
+          await send(this.options.rcptReply ?? "250 2.1.5 ok");
         } else if (line === "DATA") {
           inData = true;
           await send("354 go ahead");

@@ -192,12 +192,114 @@ Deno.test("request rejects own address, bad address and unavailable mail", async
   );
   assert(response.status === 400, "invalid address");
   smtp.options = { authReply: "535 5.7.8 bad credentials" };
-  response = await post(
-    { action: "request", parentEmail: "p@example.invalid" },
-    "teen-token",
+  const { result, logged } = await capturingErrors(() =>
+    post(
+      { action: "request", parentEmail: "p@example.invalid" },
+      "teen-token",
+    )
   );
-  assert(response.status === 503, "mail unavailable");
+  assert(result.status === 503, "mail unavailable");
+  assert(
+    (await result.json()).error === "mail_unavailable",
+    "same public error",
+  );
   assert(upserts.length === 0, "no pending row without a delivered mail");
+  assert(
+    JSON.stringify(logged) === JSON.stringify([
+      '{"event":"motion_consent_mail_failed","failure":"auth","stage":"auth","code":535}',
+    ]),
+    `auth failure line ${logged}`,
+  );
+});
+
+// Every console.error line during [work]; nothing else is captured.
+async function capturingErrors<T>(work: () => Promise<T>) {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => logged.push(args.join(" "));
+  try {
+    return { result: await work(), logged };
+  } finally {
+    console.error = original;
+  }
+}
+
+Deno.test("mail failure lines name the class and never a secret", async () => {
+  reset();
+  const secrets = [
+    "p@example.invalid",
+    "teen@example.invalid",
+    "consent@example.invalid",
+    "fixture-app-password",
+    "bad credentials",
+    "#token=",
+  ];
+  const cases: [string, () => void, string][] = [
+    [
+      "config",
+      () => Deno.env.delete("MOTION_SMTP_PASSWORD"),
+      '{"event":"motion_consent_mail_failed","failure":"config","stage":"config","issue":"missing:MOTION_SMTP_PASSWORD"}',
+    ],
+    [
+      "network",
+      () => Deno.env.set("MOTION_SMTP_PORT", "1"),
+      '{"event":"motion_consent_mail_failed","failure":"network","stage":"connect"}',
+    ],
+    [
+      "recipient",
+      () => smtp.options = { rcptReply: "550 5.1.1 no such user" },
+      '{"event":"motion_consent_mail_failed","failure":"recipient","stage":"rcpt","code":550}',
+    ],
+  ];
+  for (const [name, breakIt, line] of cases) {
+    reset();
+    breakIt();
+    try {
+      const { result, logged } = await capturingErrors(() =>
+        post(
+          { action: "request", parentEmail: "p@example.invalid" },
+          "teen-token",
+        )
+      );
+      assert(result.status === 503, `${name}: 503`);
+      assert(
+        (await result.json()).error === "mail_unavailable",
+        `${name}: public error`,
+      );
+      assert(upserts.length === 0, `${name}: no row`);
+      assert(
+        JSON.stringify(logged) === JSON.stringify([line]),
+        `${name}: ${logged}`,
+      );
+      for (const secret of secrets) {
+        assert(!logged.join("\n").includes(secret), `${name}: ${secret}`);
+      }
+    } finally {
+      Deno.env.set("MOTION_SMTP_PASSWORD", "fixture-app-password");
+      Deno.env.set("MOTION_SMTP_PORT", String(smtp.port));
+    }
+  }
+});
+
+Deno.test("an app password stored with Google's spaces still logs in", async () => {
+  reset();
+  Deno.env.set("MOTION_SMTP_PASSWORD", " abcd efgh ijkl mnop\n");
+  try {
+    const { result, logged } = await capturingErrors(() =>
+      post(
+        { action: "request", parentEmail: "p@example.invalid" },
+        "teen-token",
+      )
+    );
+    assert(result.status === 200, "mail accepted");
+    assert(logged.length === 0, "success logs nothing");
+    assert(
+      mails.at(-1)!.auth === "\0consent@example.invalid\0abcdefghijklmnop",
+      "spaces removed before AUTH PLAIN",
+    );
+  } finally {
+    Deno.env.set("MOTION_SMTP_PASSWORD", "fixture-app-password");
+  }
 });
 
 Deno.test("a fresh pending request is rate limited", async () => {

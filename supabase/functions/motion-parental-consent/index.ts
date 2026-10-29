@@ -2,9 +2,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.1";
 import { consentEmail } from "../_shared/motion_consent_copy.ts";
 import { allowedOrigins, preflight, withCors } from "../_shared/motion_cors.ts";
 import {
-  sendSmtpMail,
-  type SmtpConfig,
-  smtpConfigFromEnv,
+  readSmtpConfig,
+  type SmtpConfigRead,
+  type SmtpOutcome,
+  submitSmtpMail,
 } from "../_shared/motion_smtp.ts";
 
 // Parental/guardian consent for a Motion teen account below its country's
@@ -15,7 +16,9 @@ import {
 // The parent address is never stored in clear; the link token only as digest.
 // Mail goes out through Google Workspace SMTP (465, implicit TLS; see
 // _shared/motion_smtp.ts). Without a complete MOTION_SMTP_* configuration the
-// request fails closed with mail_unavailable.
+// request fails closed with mail_unavailable. A failed mail logs one
+// secret-free line (failure class, stage, reply code or the missing variable's
+// name); the response stays 503 mail_unavailable.
 // The consent page calls view/decide from the browser: origins listed in
 // MOTION_CONSENT_ALLOWED_ORIGINS (default https://yulalab.com and
 // https://www.yulalab.com) get CORS.
@@ -51,7 +54,7 @@ type Env = {
   url: string;
   publishable: string;
   serviceKey: string;
-  smtp: SmtpConfig | null;
+  smtp: SmtpConfigRead;
   pageUrl: string;
 };
 
@@ -64,20 +67,44 @@ function readEnv(): Env | null {
     url,
     publishable,
     serviceKey,
-    smtp: smtpConfigFromEnv(),
+    smtp: readSmtpConfig(),
     pageUrl: Deno.env.get("MOTION_CONSENT_PAGE_URL") ??
       "https://yulalab.com/motion/consent",
   };
 }
 
-function sendMail(
+// Never the address, subject, link or SMTP reply text: only the outcome.
+export function mailFailureLog(
+  outcome: Exclude<SmtpOutcome, { ok: true }>,
+  issue?: string,
+): string {
+  return JSON.stringify({
+    event: "motion_consent_mail_failed",
+    failure: outcome.failure,
+    stage: outcome.stage,
+    ...(outcome.code === undefined ? {} : { code: outcome.code }),
+    ...(issue === undefined ? {} : { issue }),
+  });
+}
+
+async function sendMail(
   env: Env,
   to: string,
   subject: string,
   text: string,
 ): Promise<boolean> {
-  if (!env.smtp) return Promise.resolve(false);
-  return sendSmtpMail(env.smtp, { to, subject, text });
+  if (!env.smtp.config) {
+    console.error(
+      mailFailureLog(
+        { ok: false, failure: "config", stage: "config" },
+        env.smtp.issue,
+      ),
+    );
+    return false;
+  }
+  const outcome = await submitSmtpMail(env.smtp.config, { to, subject, text });
+  if (!outcome.ok) console.error(mailFailureLog(outcome));
+  return outcome.ok;
 }
 
 async function handleRequest(
