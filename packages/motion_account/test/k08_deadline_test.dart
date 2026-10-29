@@ -216,6 +216,32 @@ void main() {
       });
     }
 
+    test('an empty or malformed address never reaches Auth', () async {
+      final router = _Router({});
+      final client = _client(router);
+      addTearDown(client.dispose);
+      final account = _account(client);
+      for (final email in [
+        '',
+        '   ',
+        'name',
+        'name@',
+        '@example.invalid',
+        'a b@example.invalid',
+        'a@example',
+      ]) {
+        await expectLater(
+          account.sendPasswordReset(email),
+          throwsA(isA<AuthException>()),
+        );
+        await expectLater(
+          account.resendConfirmation(email),
+          throwsA(isA<AuthException>()),
+        );
+      }
+      expect(router.requests, isEmpty);
+    });
+
     test('held password update is unknown; no re-login or retry', () async {
       final router = _Router({
         '/user': (r) => r.method == 'PUT'

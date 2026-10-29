@@ -11,6 +11,7 @@ import 'motion_account_client.dart';
 import 'motion_account_deadline.dart';
 import 'motion_account_localizations.dart';
 import 'motion_age_policy.dart';
+import 'motion_email.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
 
@@ -848,26 +849,33 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
               : _text(MotionAccountString.newAccount),
         ),
       ),
-      if (_register)
-        TextButton(
-          onPressed: _isBusy
-              ? null
-              : () => _run(
-                  () => widget.account.resendConfirmation(_email.text),
-                  success: MotionAccountString.verificationEmail,
-                ),
-          child: Text(_text(MotionAccountString.resendVerification)),
-        ),
-      if (!_register)
-        TextButton(
-          onPressed: _isBusy
-              ? null
-              : () => _run(
-                  () => widget.account.sendPasswordReset(_email.text),
-                  success: MotionAccountString.passwordResetEmail,
-                ),
-          child: Text(_text(MotionAccountString.forgotPassword)),
-        ),
+      // Mail requests stay closed until the field holds an address, so an
+      // empty field never reaches Auth.
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _email,
+        builder: (context, value, _) {
+          final closed = _isBusy || !motionEmailLooksDeliverable(value.text);
+          return _register
+              ? TextButton(
+                  onPressed: closed
+                      ? null
+                      : () => _run(
+                          () => widget.account.resendConfirmation(_email.text),
+                          success: MotionAccountString.verificationEmail,
+                        ),
+                  child: Text(_text(MotionAccountString.resendVerification)),
+                )
+              : TextButton(
+                  onPressed: closed
+                      ? null
+                      : () => _run(
+                          () => widget.account.sendPasswordReset(_email.text),
+                          success: MotionAccountString.passwordResetEmail,
+                        ),
+                  child: Text(_text(MotionAccountString.forgotPassword)),
+                );
+        },
+      ),
     ],
   );
 

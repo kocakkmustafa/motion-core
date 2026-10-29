@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'motion_account_deadline.dart';
 import 'motion_age_policy.dart';
+import 'motion_email.dart';
 
 export 'motion_account_deadline.dart'
     show MotionAccountOperation, MotionOperationUnknown;
@@ -187,22 +188,36 @@ class MotionAccountClient {
     ),
   );
 
-  Future<void> sendPasswordReset(String email) => _mutation(
-    MotionAccountOperation.passwordReset,
-    (_) => _supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      redirectTo: emailRedirectTo,
-    ),
-  );
+  /// An empty or malformed address fails locally with [AuthException]; no
+  /// request reaches Auth.
+  Future<void> sendPasswordReset(String email) async {
+    _requireDeliverable(email);
+    return _mutation(
+      MotionAccountOperation.passwordReset,
+      (_) => _supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: emailRedirectTo,
+      ),
+    );
+  }
 
-  Future<void> resendConfirmation(String email) =>
-      _mutation(MotionAccountOperation.resendConfirmation, (_) async {
-        await _supabase.auth.resend(
-          type: OtpType.signup,
-          email: email.trim(),
-          emailRedirectTo: emailRedirectTo,
-        );
-      });
+  /// As [sendPasswordReset]: a malformed address never reaches Auth.
+  Future<void> resendConfirmation(String email) async {
+    _requireDeliverable(email);
+    return _mutation(MotionAccountOperation.resendConfirmation, (_) async {
+      await _supabase.auth.resend(
+        type: OtpType.signup,
+        email: email.trim(),
+        emailRedirectTo: emailRedirectTo,
+      );
+    });
+  }
+
+  static void _requireDeliverable(String email) {
+    if (!motionEmailLooksDeliverable(email)) {
+      throw const AuthException('Email address required');
+    }
+  }
 
   Future<UserResponse> updatePassword(String password) => _mutation(
     MotionAccountOperation.updatePassword,

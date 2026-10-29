@@ -105,6 +105,7 @@ void main() {
       find.widgetWithText(TextField, 'Email'),
       'n@example.invalid',
     );
+    await tester.pump(); // the typed address enables the mail request
     await tester.tap(find.text('Forgot password'));
     await tester.pump();
     account.pending.single.completeError(
@@ -114,6 +115,45 @@ void main() {
     expect(find.text(_emailUnknown), findsOneWidget);
     expect(_textButton(tester, 'Forgot password').onPressed, isNull);
     expect(account.resets, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mail requests stay closed until the field holds an address', (
+    tester,
+  ) async {
+    final account = _FakeAccount(userId: null);
+    await _pump(tester, account);
+    final email = find.widgetWithText(TextField, 'Email');
+    expect(_textButton(tester, 'Forgot password').onPressed, isNull);
+    await tester.tap(find.text('Forgot password'));
+    await tester.pump();
+    expect(account.resets, 0);
+    for (final partial in ['n', 'n@', 'n@example', ' n @example.invalid']) {
+      await tester.enterText(email, partial);
+      await tester.pump();
+      expect(
+        _textButton(tester, 'Forgot password').onPressed,
+        isNull,
+        reason: partial,
+      );
+    }
+    await tester.enterText(email, ' n@example.invalid ');
+    await tester.pump();
+    expect(_textButton(tester, 'Forgot password').onPressed, isNotNull);
+
+    await tester.tap(find.text('Create a new account'));
+    await tester.pump();
+    await tester.enterText(email, '');
+    await tester.pump();
+    final resend = find.widgetWithText(TextButton, 'Resend verification email');
+    await tester.ensureVisible(resend);
+    expect(tester.widget<TextButton>(resend).onPressed, isNull);
+    await tester.enterText(email, 'n@example.invalid');
+    await tester.pump();
+    expect(tester.widget<TextButton>(resend).onPressed, isNotNull);
+    await tester.tap(resend);
+    await tester.pump();
+    expect(account.resends, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -296,6 +336,7 @@ class _FakeAccount implements MotionAccountClient {
   final cleared = <String>[];
   var signIns = 0;
   var resets = 0;
+  var resends = 0;
   var deletions = 0;
   String? _userId;
 
@@ -341,6 +382,12 @@ class _FakeAccount implements MotionAccountClient {
   @override
   Future<void> sendPasswordReset(String email) {
     resets++;
+    return _hold(null);
+  }
+
+  @override
+  Future<void> resendConfirmation(String email) {
+    resends++;
     return _hold(null);
   }
 
