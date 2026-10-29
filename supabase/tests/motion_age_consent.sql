@@ -143,6 +143,37 @@ begin
   end if;
   reset role;
 
+  -- A signed-in caller reads only its own restriction (R4.2); the service
+  -- role and callers without claims (SQL editor, pg_cron) read any account.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', adult, 'role', 'authenticated')::text, true);
+  if public.motion_account_restricted(adult) then
+    raise exception 'adult reads itself as restricted';
+  end if;
+  begin
+    perform public.motion_account_restricted(teen);
+    raise exception 'another account''s restriction was readable';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.motion_account_restricted(null);
+    raise exception 'a null account was readable';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims',
+    json_build_object('role', 'service_role')::text, true);
+  if public.motion_account_restricted(teen) then
+    raise exception 'service role reads an approved teen as restricted';
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+  if public.motion_account_restricted(teen) then
+    raise exception 'owner session reads an approved teen as restricted';
+  end if;
+
   -- Purge removes only unapproved consent-required accounts past 30 days.
   update public.motion_parental_consents set status = 'pending'
     where user_id = teen;
