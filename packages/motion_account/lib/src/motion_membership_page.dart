@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'motion_account_client.dart';
 import 'motion_account_localizations.dart';
+import 'motion_app_brand.dart';
 import 'motion_release_policy.dart';
 
 /// One small store-owned membership surface shared by the five host apps.
@@ -356,7 +357,7 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
 
   @override
   Widget build(BuildContext context) {
-    final appName = _appId[0].toUpperCase() + _appId.substring(1);
+    final appName = motionAppBrandName(_appId);
     return Scaffold(
       appBar: AppBar(title: Text(_text(MotionAccountString.membershipTitle))),
       body: SafeArea(

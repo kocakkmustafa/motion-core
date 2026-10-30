@@ -28,3 +28,7 @@ packages/motion_entitlements/lib/src/entitlement_status.dart:8:'gravita',
 packages/motion_entitlements/lib/src/entitlement_status.dart:9:'choreia',
 packages/motion_entitlements/lib/src/entitlement_status.dart:10:'jablab',
 packages/motion_entitlements/lib/src/entitlement_status.dart:11:'lissom',
+# Reviewed 2026-10-30 (Core, Yönetim request): user-facing store brand
+# spelling of the five fixed app ids for the membership title; display only,
+# no logic branches on it.
+packages/motion_account/lib/src/motion_app_brand.dart:3:const _brandNames = {'jablab': 'JabLab', 'gravita': 'Gravita', 'ostinato': 'Ostinato', 'choreia': 'Choreia', 'lissom': 'Lissom'};
