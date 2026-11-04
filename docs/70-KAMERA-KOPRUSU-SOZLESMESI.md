@@ -32,7 +32,9 @@ kalır" ilkesi. Native katman aptal, pinli bir borudur.
 ## 3. Kanal sözleşmesi
 
 Kontrol: `MethodChannel('motion_camera/control')` — `start` / `stop` /
-`setPassPlan`. Veri: `EventChannel('motion_camera/frames')`.
+`setPassPlan` (+ owned eşleri). İsteğe bağlı `preview: true` başlatma
+argümanı → oturum bilgisinde `previewTextureId`, `previewQuarterTurns` (§8).
+Veri: `EventChannel('motion_camera/frames')`.
 
 Zarf (StandardMessageCodec map — kanonik tanım
 `lib/src/frame_envelope.dart` doc-comment'inde):
@@ -101,10 +103,13 @@ koordinatör iskeleti verir, app oturumu cihazda söker-takar, sayılar DEFTER'e
 
 ## 8. Açık kalemler (isimli)
 
-- **Ön-izleme dokusu:** kullanıcı kendini görmeli — `Texture`-tabanlı preview
-  (registrar.textures) bilinçli ERTELENDİ; zarf hattı canlanmadan preview
-  optimizasyonu prematüre. Kullanıcıya görünen yüzey olmadan hiçbir app
-  "kamera çalışıyor" DEMEZ.
+- **Ön-izleme dokusu (0.4.0'da eklendi):** `start*(preview: true)` aynı
+  oturumu bir Flutter `Texture`'ına da çizer; oturum bilgisi
+  `previewTextureId` + `previewQuarterTurns` döner, `preview` istenmezse kanal
+  mesajı ve davranış eskisiyle aynıdır. Texture görüntüyü yalnız ekrana taşır;
+  Dart katmanı yine piksel görmez. Görüntü landmark'larla aynı uzaydadır
+  (portre, aynasız); `MotionCameraPreview` ikisini birlikte aynalar. Açık:
+  Android'de döndürme/ayna yönü cihazda doğrulanmadı.
 - **hysteresisMs köprü etkisi:** M-F-72 tasarımı (133ms + ≥2 kare tabanı)
   motor tarafında; köprünün ölçtüğü gerçek fps hysteresis'in kare→ms
   çevriminin girdisi olacak.

@@ -23,6 +23,8 @@ final class CameraSessionInfo {
     required this.libraryTag,
     this.ownerId,
     this.generation,
+    this.previewTextureId,
+    this.previewQuarterTurns = 0,
   });
 
   /// Capture size after sensor-rotation normalization — the same `w×h`
@@ -41,6 +43,17 @@ final class CameraSessionInfo {
   final String? ownerId;
   final int? generation;
 
+  /// Flutter texture showing this same capture session, when the start asked
+  /// for a preview (`preview: true`); `null` otherwise. The texture carries
+  /// the image only to the screen — app code still never receives pixels.
+  /// Its image is in the same un-mirrored, portrait-normalized space as the
+  /// landmarks, so an overlay drawn from landmarks lines up with it.
+  final int? previewTextureId;
+
+  /// Clockwise quarter turns that bring the texture image upright in that
+  /// portrait space (0 when the native layer already normalized it).
+  final int previewQuarterTurns;
+
   static CameraSessionInfo _decode(Object? raw) {
     final Map<Object?, Object?> map = raw as Map<Object?, Object?>;
     final String clock = map['clock'] as String;
@@ -55,6 +68,8 @@ final class CameraSessionInfo {
       libraryTag: map['library'] as String,
       ownerId: map['ownerId'] as String?,
       generation: map['generation'] as int?,
+      previewTextureId: map['previewTextureId'] as int?,
+      previewQuarterTurns: ((map['previewQuarterTurns'] as int?) ?? 0) % 4,
     );
   }
 
@@ -192,6 +207,7 @@ class MotionCameraController {
     required String modelId,
     CameraLens lens = CameraLens.front,
     PassPlan initialPlan = PassPlan.uprightOnly,
+    bool preview = false,
   }) async {
     if (_ownedQuarantined) {
       throw const CameraException(
@@ -206,8 +222,18 @@ class MotionCameraController {
       'modelId': modelId,
       'lens': lens.name,
       'plan': initialPlan.wireName,
+      // Sent only when asked: a start without preview is byte-identical to
+      // the pre-preview protocol.
+      if (preview) 'preview': true,
     });
-    return CameraSessionInfo._decodeOwned(raw, ownerId);
+    final CameraSessionInfo info = CameraSessionInfo._decodeOwned(raw, ownerId);
+    if (preview && info.previewTextureId == null) {
+      throw const CameraException(
+        CameraFailure.ownedProtocolUnavailable,
+        'native start returned no preview texture',
+      );
+    }
+    return info;
   }
 
   /// Stops only this owner. ACK must be followed by a new [readback] request.

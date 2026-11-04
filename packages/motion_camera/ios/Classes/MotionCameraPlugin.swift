@@ -20,6 +20,27 @@ import UIKit
 ///    (in-plane rotation, no L/R index swap)
 ///  - stamp envelopes with the capture PTS (host clock — monotonic on iOS)
 ///  - refuse with named error codes; never request permission itself
+/// Live image of the capture session for an on-screen preview (opt-in per
+/// start). Holds only the latest pixel buffer; Flutter copies it when it
+/// draws. The image goes to the screen, never to app code.
+final class PreviewTexture: NSObject, FlutterTexture {
+  private let lock = NSLock()
+  private var latest: CVPixelBuffer?
+
+  func update(_ buffer: CVPixelBuffer) {
+    lock.lock()
+    latest = buffer
+    lock.unlock()
+  }
+
+  func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard let buffer = latest else { return nil }
+    return Unmanaged.passRetained(buffer)
+  }
+}
+
 public class MotionCameraPlugin: NSObject, FlutterPlugin {
   static let libraryTag = "mp-ios-0.10.21"
 
@@ -29,6 +50,9 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
   private var frameSinkOwner: String?
   private var frameSinkGeneration: UInt64?
   private var applicationStateObserver: NSObjectProtocol?
+  private var textures: FlutterTextureRegistry?
+  /// Guarded by `slotLock` (the capture callback reads it).
+  private var preview: (texture: PreviewTexture, id: Int64)?
 
   private let sessionQueue = DispatchQueue(label: "motion_camera.session")
   private let inferenceQueue = DispatchQueue(label: "motion_camera.inference")
@@ -76,6 +100,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     )
     instance.control = control
     instance.frames = frames
+    instance.textures = registrar.textures()
     registrar.addMethodCallDelegate(instance, channel: control)
     frames.setStreamHandler(instance)
     registrar.publish(instance)
@@ -275,11 +300,25 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       }
     }
 
+    // Opt-in preview: one texture fed by this same session, so a screen can
+    // show the image and the landmarks without a second camera.
+    var candidatePreview: (texture: PreviewTexture, id: Int64)?
+    if (args["preview"] as? Bool) == true {
+      guard let registry = textures else {
+        output.setSampleBufferDelegate(nil, queue: nil)
+        result(FlutterError(code: "no-such-camera", message: "texture registry unavailable", details: nil))
+        return
+      }
+      let texture = PreviewTexture()
+      candidatePreview = (texture, registry.register(texture))
+    }
+
     let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
     let currentGeneration: UInt64
     do { currentGeneration = try lifecycle.begin(ownerId: ownerId) }
     catch {
       output.setSampleBufferDelegate(nil, queue: nil)
+      if let p = candidatePreview { textures?.unregisterTexture(p.id) }
       result(closeError())
       return
     }
@@ -291,6 +330,12 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
       "clock": "monotonic",
       "library": Self.libraryTag,
     ]
+    if let p = candidatePreview {
+      // The connection is already portrait-normalized and un-mirrored: the
+      // texture shares the landmarks' space, no extra rotation.
+      sessionInfo["previewTextureId"] = p.id
+      sessionInfo["previewQuarterTurns"] = 0
+    }
     if let ownerId {
       sessionInfo["protocol"] = 1
       sessionInfo["ownerId"] = ownerId
@@ -303,6 +348,7 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     captureSession = session
     videoOutput = output
     poseTasks = candidateTasks
+    preview = candidatePreview
     modelString = "\(Self.libraryTag)+\(modelId)"
     plan = initialPlan
     pendingBuffer = nil
@@ -396,6 +442,8 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     captureSession = nil
     videoOutput = nil
     poseTasks = nil
+    let retiredPreview = preview
+    preview = nil
     pendingStart = nil
     pendingBuffer = nil
     pendingGeneration = generation
@@ -404,6 +452,11 @@ public class MotionCameraPlugin: NSObject, FlutterPlugin {
     slotLock.unlock()
 
     output?.setSampleBufferDelegate(nil, queue: nil)
+    if let p = retiredPreview {
+      let registry = textures
+      if Thread.isMainThread { registry?.unregisterTexture(p.id) }
+      else { DispatchQueue.main.async { registry?.unregisterTexture(p.id) } }
+    }
     // Teardown itself owns the resource lifetime, including engine detach.
     // Retain the plugin until the physical stop, model drain, and completion
     // finish; a weak capture could skip stopRunning after registrar release.
@@ -595,7 +648,12 @@ extension MotionCameraPlugin: AVCaptureVideoDataOutputSampleBufferDelegate {
     pendingBuffer = buffer
     pendingTimestampUs = tUs
     pendingGeneration = currentGeneration
+    let livePreview = preview
     slotLock.unlock()
+    if let p = livePreview {
+      p.texture.update(buffer)
+      textures?.textureFrameAvailable(p.id)
+    }
     drainSlot()
   }
 }
