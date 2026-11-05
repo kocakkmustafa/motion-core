@@ -14,6 +14,7 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -31,6 +32,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.view.TextureRegistry
 import java.util.concurrent.Executors
 
 /**
@@ -73,6 +75,11 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var activityLifecycleOwner: LifecycleOwner? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalysis: ImageAnalysis? = null
+    private var textureRegistry: TextureRegistry? = null
+    // Opt-in preview (per start): one CameraX Preview use case on the same
+    // camera as the analysis, drawn into a Flutter texture.
+    private var previewUseCase: Preview? = null
+    private var previewProducer: TextureRegistry.SurfaceProducer? = null
     private var camera: Camera? = null
     private var bindingAttempted = false
     private var poseTasks: OrientedCaptureTasks<PoseLandmarker>? = null
@@ -84,6 +91,8 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         val provider: ProcessCameraProvider?,
         val analysis: ImageAnalysis?,
         val markers: List<PoseLandmarker>,
+        val preview: Preview? = null,
+        val producer: TextureRegistry.SurfaceProducer? = null,
     )
     private var closingResources: RetiredCapture? = null
     private var closeFailure: Exception? = null
@@ -109,6 +118,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             inferenceExecutor = Executors.newSingleThreadExecutor()
         }
         context = binding.applicationContext
+        textureRegistry = binding.textureRegistry
         control = MethodChannel(binding.binaryMessenger, "motion_camera/control")
         control.setMethodCallHandler(this)
         frames = EventChannel(binding.binaryMessenger, "motion_camera/frames")
@@ -231,6 +241,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         val modelId = call.argument<String>("modelId")
         val lens = call.argument<String>("lens")
         val initialPlan = call.argument<String>("plan")
+        val wantPreview = call.argument<Boolean>("preview") == true
         if (modelPath == null || modelId == null || lens == null ||
             initialPlan !in listOf("upright", "inverted", "dual")) {
             result.error("bad-arguments", "start arguments incomplete", null); return
@@ -316,10 +327,31 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     analyze(proxy, generation)
                 }
 
+                var previewCase: Preview? = null
+                if (wantPreview) {
+                    val registry = textureRegistry
+                        ?: throw IllegalStateException("texture registry unavailable")
+                    val producer = registry.createSurfaceProducer()
+                    previewProducer = producer
+                    val main = ContextCompat.getMainExecutor(context)
+                    previewCase = Preview.Builder().build().also { p ->
+                        p.setSurfaceProvider(main) { request ->
+                            val r = request.resolution
+                            producer.setSize(r.width, r.height)
+                            request.provideSurface(producer.surface, main) { }
+                        }
+                    }
+                    previewUseCase = previewCase
+                }
+
                 cameraProvider = provider
                 imageAnalysis = analysis
                 bindingAttempted = true
-                val camera = provider.bindToLifecycle(owner, selector, analysis)
+                val camera = if (previewCase != null) {
+                    provider.bindToLifecycle(owner, selector, previewCase, analysis)
+                } else {
+                    provider.bindToLifecycle(owner, selector, analysis)
+                }
                 this.camera = camera
                 poseTasks = candidateTasks
                 if (pendingPoseTasks === candidateTasks) {
@@ -338,6 +370,7 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 if (!isCurrentGeneration(generation)) {
                     analysis.clearAnalyzer()
                     provider.unbind(analysis)
+                    previewCase?.let { provider.unbind(it) }
                     return@addListener
                 }
 
@@ -350,6 +383,14 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         put("h", res?.let { maxOf(it.width, it.height) } ?: 0)
                         put("clock", clockDomain)
                         put("library", LIBRARY_TAG)
+                        previewProducer?.let { producer ->
+                            put("previewTextureId", producer.id())
+                            // Preview buffers arrive in sensor orientation;
+                            // the analysis path rotates by the same amount
+                            // (portrait app, display rotation 0).
+                            put("previewQuarterTurns",
+                                (camera.cameraInfo.sensorRotationDegrees / 90) % 4)
+                        }
                         if (ownerId != null) {
                             put("protocol", 1)
                             put("ownerId", ownerId)
@@ -417,7 +458,10 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         val retired = RetiredCapture(
             camera, cameraProvider, imageAnalysis,
             (poseTasks?.all().orEmpty() + pendingPoseTasks?.all().orEmpty() + loadingTasks).distinct(),
+            previewUseCase, previewProducer,
         )
+        previewUseCase = null
+        previewProducer = null
         closingResources = retired
         val wasBinding = bindingAttempted
         camera = null
@@ -453,6 +497,14 @@ class MotionCameraPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         try {
             retired.analysis?.clearAnalyzer()
             retired.analysis?.let { retired.provider?.unbind(it) }
+            retired.preview?.let { p ->
+                p.setSurfaceProvider(null)
+                retired.provider?.unbind(p)
+            }
+            retired.producer?.let { producer ->
+                if (Looper.myLooper() == Looper.getMainLooper()) producer.release()
+                else mainHandler.post { producer.release() }
+            }
             if (retired.analysis != null && retired.provider?.isBound(retired.analysis) == true) {
                 throw IllegalStateException("analysis remained bound after unbind")
             }

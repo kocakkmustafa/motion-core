@@ -1,3 +1,24 @@
+## 0.4.0 — 2026-11-05 — isteğe bağlı önizleme texture'ı
+
+`start/startOwned/CameraCaptureLease.start` yeni `preview` bayrağını alır
+(varsayılan `false`). `false` iken kanal mesajı ve native davranış bire bir
+eskisidir; mevcut tüketiciler (Ostinato dahil) değişmeden çalışır. `true` iken
+aynı kamera oturumu bir Flutter texture'ına da çizer; `CameraSessionInfo`
+`previewTextureId` ve `previewQuarterTurns` taşır. Yeni `MotionCameraPreview`
+widget'ı texture'ı ve üstüne çizilen landmark katmanını birlikte aynalar —
+ayna ve iskelet tek kamerayla, tek-kamera kuralı korunarak.
+
+- iOS: `FlutterTexture` en son `CVPixelBuffer`'ı tutar; bağlantı zaten portre
+  ve aynasız olduğu için ek döndürme yok. Kapanışta texture kaydı silinir.
+- Android: CameraX `Preview` kullanım durumu analizle aynı kameraya bağlanır,
+  `TextureRegistry.SurfaceProducer`'a çizer; döndürme sensör açısından
+  (`previewQuarterTurns`). Kapanışta unbind + producer release.
+- Uygulama kodu yine piksel görmez: görüntü yalnız ekrana gider.
+
+Kanıt sınıfı: Dart sözleşme testleri (5). Native kod Lissom'un iOS/Android
+release derlemelerinde derlenir; iOS cihaz smoke'u Lissom raporunda. Android
+cihazda henüz denenmedi (döndürme/ayna yönü cihazda doğrulanmalı).
+
 ## 0.3.0 — 2026-10-27 — Flutter Built-in Kotlin
 
 Android eklentisi Kotlin Gradle Plugin'i (`kotlin-android`) artık uygulamıyor;

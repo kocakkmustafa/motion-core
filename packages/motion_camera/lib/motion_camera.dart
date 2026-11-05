@@ -8,6 +8,7 @@
 /// tasks-vision 0.10.29 — M-L-02).
 library;
 
+export 'src/camera_preview.dart';
 export 'src/controller.dart';
 export 'src/envelope_driver.dart';
 export 'src/frame_envelope.dart';

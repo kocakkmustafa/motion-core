@@ -103,6 +103,7 @@ final class CameraCaptureLease {
     required String modelId,
     CameraLens lens = CameraLens.front,
     PassPlan initialPlan = PassPlan.uprightOnly,
+    bool preview = false,
   }) {
     if (_retired) {
       return Future.error(
@@ -129,7 +130,7 @@ final class CameraCaptureLease {
       );
     }
     _nativeAttempted = true;
-    final pending = _start(modelPath, modelId, lens, initialPlan);
+    final pending = _start(modelPath, modelId, lens, initialPlan, preview);
     _startFuture = pending;
     // Observe a failed start immediately; retirement can begin before a caller
     // attaches its await. Closure then waits for this same settlement.
@@ -145,6 +146,7 @@ final class CameraCaptureLease {
     String modelId,
     CameraLens lens,
     PassPlan plan,
+    bool preview,
   ) async {
     try {
       final info = await _controller.startOwned(
@@ -153,6 +155,7 @@ final class CameraCaptureLease {
         modelId: modelId,
         lens: lens,
         initialPlan: plan,
+        preview: preview,
       );
       _session = info;
       if (_retired) {
