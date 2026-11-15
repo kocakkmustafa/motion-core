@@ -74,6 +74,9 @@ jobs:
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
+          # Sabit sürüm: 5 Kas 2026 yeşil koşunun sürümü. `stable` 3.50.0'a kaydı ve
+          # `flutter analyze` deprecated-import bilgilerinde düşüyor (ZA-01, motion-core#18).
+          flutter-version: 3.47.9
           channel: stable
 
       - run: dart pub get
@@ -105,6 +108,8 @@ jobs:
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
+          # Bkz. yukarıdaki not: 5 Kas 2026 yeşil koşunun sürümü.
+          flutter-version: 3.47.9
           channel: stable
 
       - run: flutter pub get
