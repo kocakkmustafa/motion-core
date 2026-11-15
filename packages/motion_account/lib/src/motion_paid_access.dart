@@ -5,6 +5,11 @@ import 'motion_account_localizations.dart';
 import 'motion_membership_page.dart';
 import 'motion_release_policy.dart';
 
+/// Default budget for one membership read inside the paid-access gate. It
+/// sits above [MotionAccountClient.readTimeout] (10 s) so the client's own
+/// deadline answers first; this one only backstops a wrapper that never does.
+const Duration motionMembershipCheckTimeout = Duration(seconds: 15);
+
 /// Checks a paid lesson or practice session at the moment it starts, before
 /// the host creates a camera or audio session. Catalogues, previews and
 /// recorded progress remain visible.
@@ -13,6 +18,11 @@ import 'motion_release_policy.dart';
 /// follows [motionSubscriptionSalesAvailable] (true): a host that relied on
 /// the old default to keep a camera path closed must gate that path with
 /// [requireMotionCameraAccess] or [motionCameraCoachingAvailable] first.
+///
+/// Each membership read is bounded by [membershipTimeout]. A read that has not
+/// answered by then, or that fails, fails closed: the gate returns false, shows
+/// the verification-failed notice and never opens the membership page or
+/// grants access. A late answer is discarded.
 Future<bool> requireMotionPaidAccess(
   BuildContext context, {
   required MotionAccountClient account,
@@ -22,6 +32,7 @@ Future<bool> requireMotionPaidAccess(
   @Deprecated('Use salesAvailable') bool? paidFeaturesAvailable,
   MotionTeenPurchasePolicy teenPurchasePolicy =
       MotionTeenPurchasePolicy.parentalConsentRequired,
+  Duration membershipTimeout = motionMembershipCheckTimeout,
 }) async {
   if (!(paidFeaturesAvailable ?? salesAvailable)) {
     _showFutureSession(context);
@@ -38,7 +49,9 @@ Future<bool> requireMotionPaidAccess(
     final userId = account.currentUser?.id;
     if (userId == null) return false;
     try {
-      final active = await account.hasActiveMembership();
+      final active = await account.hasActiveMembership().timeout(
+        membershipTimeout,
+      );
       if (!context.mounted || account.currentUser?.id != userId) return false;
       return active;
     } catch (_) {
@@ -91,6 +104,7 @@ Future<bool> requireMotionCameraAccess(
   bool cameraCoachingAvailable = motionCameraCoachingAvailable,
   MotionTeenPurchasePolicy teenPurchasePolicy =
       MotionTeenPurchasePolicy.parentalConsentRequired,
+  Duration membershipTimeout = motionMembershipCheckTimeout,
 }) async {
   if (!cameraCoachingAvailable) {
     _showFutureSession(context);
@@ -102,6 +116,7 @@ Future<bool> requireMotionCameraAccess(
     accountPageBuilder: accountPageBuilder,
     membershipPageBuilder: membershipPageBuilder,
     teenPurchasePolicy: teenPurchasePolicy,
+    membershipTimeout: membershipTimeout,
   );
 }
 
