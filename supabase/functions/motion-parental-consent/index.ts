@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.1";
 import { consentEmail } from "../_shared/motion_consent_copy.ts";
+import { deviceConsentEmail } from "../_shared/motion_device_consent_copy.ts";
 import { allowedOrigins, preflight, withCors } from "../_shared/motion_cors.ts";
 import {
   readSmtpConfig,
@@ -13,6 +14,13 @@ import {
 //   request (teen bearer token): mail one approval link to the parent.
 //   view (token): masked request summary for the consent page.
 //   decide (token): approve opens account features; deny deletes the account.
+// Under-13 device path (no account, no session; VELI-01 / ADR-008):
+//   request_device {deviceToken, parentEmail, locale}: mail one link.
+//   status {deviceToken}: the device reads none/pending/approved/denied/expired.
+//   withdraw {token}: the parent withdraws an approved account consent.
+// view/decide also accept a device link. Only digests are stored; the parent
+// digest goes when the parent decides. A denial leaves the token digest until
+// the device reads it (or 30 days) and one anonymous decision row.
 // The parent address is never stored in clear; the link token only as digest.
 // Mail goes out through Google Workspace SMTP (465, implicit TLS; see
 // _shared/motion_smtp.ts). Without a complete MOTION_SMTP_* configuration the
@@ -26,6 +34,8 @@ import {
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEND_AFTER_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_DAY = 5;
+const DEVICE_TOKEN = /^[A-Za-z0-9_-]{43,128}$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,63}$/;
 
 async function digest(value: string): Promise<string> {
@@ -191,6 +201,7 @@ async function handleRequest(
       status: "pending",
       parent_email_digest: await digest(parentEmail),
       token_digest: await digest(linkToken),
+      manage_digest: await digest(linkToken),
       locale,
       requested_at: new Date(now).toISOString(),
       expires_at: expiresAt,
@@ -204,17 +215,28 @@ async function handleRequest(
   return Response.json({ status: "pending", expiresAt });
 }
 
-async function findByToken(env: Env, linkToken: unknown) {
-  if (typeof linkToken !== "string" || linkToken.length < 32) return null;
-  const admin = createClient(env.url, env.serviceKey, {
+function adminClient(env: Env) {
+  return createClient(env.url, env.serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+async function findByToken(env: Env, linkToken: unknown) {
+  if (typeof linkToken !== "string" || linkToken.length < 32) return null;
+  const admin = adminClient(env);
+  const hashed = await digest(linkToken);
   const { data } = await admin
     .from("motion_parental_consents")
     .select("user_id,status,expires_at,locale")
-    .eq("token_digest", await digest(linkToken))
+    .eq("token_digest", hashed)
     .maybeSingle();
-  return data ? { admin, row: data } : null;
+  if (data) return { admin, row: data, device: null };
+  const { data: device } = await admin
+    .from("motion_device_consents")
+    .select("device_token_digest,status,expires_at,locale")
+    .eq("link_digest", hashed)
+    .maybeSingle();
+  return device ? { admin, row: null, device } : null;
 }
 
 async function handleView(
@@ -223,7 +245,20 @@ async function handleView(
 ): Promise<Response> {
   const found = await findByToken(env, body.token);
   if (!found) return Response.json({ error: "invalid_link" }, { status: 404 });
-  const { admin, row } = found;
+  const { admin, row, device } = found;
+  if (device) {
+    if (
+      device.status !== "pending" || Date.parse(device.expires_at) < Date.now()
+    ) {
+      return Response.json({ status: "expired" }, { status: 410 });
+    }
+    return Response.json({
+      status: "pending",
+      subject: "device",
+      expiresAt: device.expires_at,
+      locale: device.locale,
+    });
+  }
   if (row.status !== "pending" || Date.parse(row.expires_at) < Date.now()) {
     return Response.json({ status: "expired" }, { status: 410 });
   }
@@ -236,6 +271,40 @@ async function handleView(
   });
 }
 
+type Admin = ReturnType<typeof adminClient>;
+
+async function decideDevice(
+  admin: Admin,
+  device: { device_token_digest: string },
+  decision: "approve" | "deny",
+): Promise<Response> {
+  const approved = decision === "approve";
+  const { error: traceError } = await admin
+    .from("motion_consent_decisions")
+    .insert({ status: approved ? "approved" : "denied", method: "email_link" });
+  if (traceError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  const { data, error } = await admin
+    .from("motion_device_consents")
+    .update({
+      status: approved ? "approved" : "denied",
+      parent_email_digest: null,
+      ...(approved ? {} : { link_digest: null }),
+      decided_at: new Date().toISOString(),
+    })
+    .eq("device_token_digest", device.device_token_digest)
+    .eq("status", "pending")
+    .select("device_token_digest");
+  if (error) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (!data || data.length === 0) {
+    return Response.json({ status: "expired" }, { status: 410 });
+  }
+  return Response.json({ status: approved ? "approved" : "denied" });
+}
+
 async function handleDecide(
   env: Env,
   body: Record<string, unknown>,
@@ -246,7 +315,15 @@ async function handleDecide(
   }
   const found = await findByToken(env, body.token);
   if (!found) return Response.json({ error: "invalid_link" }, { status: 404 });
-  const { admin, row } = found;
+  const { admin, row, device } = found;
+  if (device) {
+    if (
+      device.status !== "pending" || Date.parse(device.expires_at) < Date.now()
+    ) {
+      return Response.json({ status: "expired" }, { status: 410 });
+    }
+    return decideDevice(admin, device, decision);
+  }
   if (row.status !== "pending" || Date.parse(row.expires_at) < Date.now()) {
     return Response.json({ status: "expired" }, { status: 410 });
   }
@@ -272,6 +349,193 @@ async function handleDecide(
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   return Response.json({ status: "denied" });
+}
+
+async function handleRequestDevice(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const parentEmail = typeof body.parentEmail === "string"
+    ? body.parentEmail.trim().toLowerCase()
+    : "";
+  const locale = typeof body.locale === "string" &&
+      /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})?$/.test(body.locale)
+    ? body.locale
+    : "en";
+  if (!EMAIL.test(parentEmail)) {
+    return Response.json({ error: "invalid_parent_email" }, { status: 400 });
+  }
+  if (
+    typeof body.deviceToken !== "string" || !DEVICE_TOKEN.test(body.deviceToken)
+  ) {
+    return Response.json({ error: "invalid_device_token" }, { status: 400 });
+  }
+  const admin = adminClient(env);
+  const deviceDigest = await digest(body.deviceToken);
+  const parentDigest = await digest(parentEmail);
+  const { data: existing, error: readError } = await admin
+    .from("motion_device_consents")
+    .select("status,requested_at,expires_at,requests_today,requests_day")
+    .eq("device_token_digest", deviceDigest)
+    .maybeSingle();
+  if (readError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const requestsToday = existing?.requests_day === today
+    ? Number(existing.requests_today ?? 0)
+    : 0;
+  if (existing?.status === "approved") {
+    return Response.json({ error: "already_approved" }, { status: 409 });
+  }
+  if (existing?.status === "denied") {
+    return Response.json({ error: "already_decided" }, { status: 409 });
+  }
+  if (
+    existing?.status === "pending" &&
+    now - Date.parse(existing.requested_at) < RESEND_AFTER_MS
+  ) {
+    return Response.json({ error: "too_soon" }, { status: 429 });
+  }
+  if (requestsToday >= MAX_REQUESTS_PER_DAY) {
+    return Response.json({ error: "daily_limit" }, { status: 429 });
+  }
+  // Rotating device tokens must not turn one parent into a mail bomb: at most
+  // five mails per parent address in 24 hours (E6). No global limit.
+  const { data: sent, error: sentError } = await admin
+    .from("motion_device_consents")
+    .select("requests_today")
+    .eq("parent_email_digest", parentDigest)
+    .gte("requested_at", new Date(now - DAY_MS).toISOString());
+  if (sentError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  const parentCount = (sent ?? []).reduce(
+    (sum: number, r: { requests_today: number | null }) =>
+      sum + Number(r.requests_today ?? 1),
+    0,
+  );
+  if (parentCount >= MAX_REQUESTS_PER_DAY) {
+    return Response.json({ error: "daily_limit" }, { status: 429 });
+  }
+
+  const linkToken = randomToken();
+  const expiresAt = new Date(now + TOKEN_TTL_MS).toISOString();
+  const link = `${env.pageUrl}#token=${linkToken}`;
+  const copy = deviceConsentEmail(locale, {
+    link,
+    expiresAt: expiresAt.slice(0, 10),
+  });
+  if (!(await sendMail(env, parentEmail, copy.subject, copy.text))) {
+    return Response.json({ error: "mail_unavailable" }, { status: 503 });
+  }
+  const restart = !existing || existing.status === "expired";
+  const { error: writeError } = await admin
+    .from("motion_device_consents")
+    .upsert({
+      device_token_digest: deviceDigest,
+      status: "pending",
+      method: "email_link",
+      parent_email_digest: parentDigest,
+      link_digest: await digest(linkToken),
+      locale,
+      ...(restart ? { created_at: new Date(now).toISOString() } : {}),
+      requested_at: new Date(now).toISOString(),
+      expires_at: expiresAt,
+      decided_at: null,
+      requests_today: requestsToday + 1,
+      requests_day: today,
+    });
+  if (writeError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  return Response.json({ status: "pending", expiresAt });
+}
+
+async function handleStatus(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  if (
+    typeof body.deviceToken !== "string" || !DEVICE_TOKEN.test(body.deviceToken)
+  ) {
+    return Response.json({ error: "invalid_device_token" }, { status: 400 });
+  }
+  const admin = adminClient(env);
+  const deviceDigest = await digest(body.deviceToken);
+  const { data, error } = await admin
+    .from("motion_device_consents")
+    .select("status,expires_at,decided_at")
+    .eq("device_token_digest", deviceDigest)
+    .maybeSingle();
+  if (error) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (!data) return Response.json({ status: "none" });
+  if (data.status === "denied") {
+    // Read once: the device has its answer, drop the token digest now.
+    await admin
+      .from("motion_device_consents")
+      .delete()
+      .eq("device_token_digest", deviceDigest)
+      .eq("status", "denied");
+    return Response.json({
+      status: "denied",
+      ...(data.decided_at ? { decidedAt: data.decided_at } : {}),
+    });
+  }
+  if (data.status === "approved") {
+    return Response.json({
+      status: "approved",
+      ...(data.decided_at ? { decidedAt: data.decided_at } : {}),
+    });
+  }
+  const lapsed = data.status === "expired" ||
+    Date.parse(data.expires_at) < Date.now();
+  if (lapsed) return Response.json({ status: "expired" });
+  return Response.json({ status: "pending", expiresAt: data.expires_at });
+}
+
+async function handleWithdraw(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  if (typeof body.token !== "string" || body.token.length < 32) {
+    return Response.json({ error: "invalid_link" }, { status: 404 });
+  }
+  const admin = adminClient(env);
+  const manage = await digest(body.token);
+  const { data, error } = await admin
+    .from("motion_parental_consents")
+    .select("user_id,status")
+    .eq("manage_digest", manage)
+    .maybeSingle();
+  if (error) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (!data) return Response.json({ error: "invalid_link" }, { status: 404 });
+  if (data.status === "withdrawn") {
+    return Response.json({ status: "withdrawn" });
+  }
+  if (data.status !== "approved") {
+    return Response.json({ error: "not_approved" }, { status: 409 });
+  }
+  const { error: traceError } = await admin
+    .from("motion_consent_decisions")
+    .insert({ status: "withdrawn", method: "email_link" });
+  if (traceError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  const { error: updateError } = await admin
+    .from("motion_parental_consents")
+    .update({ status: "withdrawn", decided_at: new Date().toISOString() })
+    .eq("user_id", data.user_id)
+    .eq("status", "approved");
+  if (updateError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  return Response.json({ status: "withdrawn" });
 }
 
 Deno.serve(async (request: Request) => {
@@ -307,6 +571,12 @@ async function handle(request: Request): Promise<Response> {
       return handleView(env, payload);
     case "decide":
       return handleDecide(env, payload);
+    case "request_device":
+      return handleRequestDevice(env, payload);
+    case "status":
+      return handleStatus(env, payload);
+    case "withdraw":
+      return handleWithdraw(env, payload);
     default:
       return Response.json({ error: "invalid_action" }, { status: 400 });
   }

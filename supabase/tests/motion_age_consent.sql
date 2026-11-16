@@ -229,4 +229,249 @@ begin
 end;
 $test$;
 
+-- VELI-01 (ADR-008): under-13 device consent. Same harness, same transaction.
+do $test$
+declare
+  child uuid := '66666666-6666-6666-6666-666666666666';
+  child2 uuid := '77777777-7777-7777-7777-777777777777';
+  ym_child text := to_char(current_date - interval '10 years', 'YYYY-MM');
+  raw_ok text := repeat('a', 43);
+  raw_pending text := repeat('b', 43);
+  raw_old text := repeat('c', 43);
+  raw_denied text := repeat('d', 43);
+  meta jsonb;
+  consent record;
+  n integer;
+  signup jsonb;
+begin
+  -- Server-only tables carry digests only: no raw token or address column.
+  select count(*) into n from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('motion_device_consents', 'motion_consent_decisions')
+      and column_name in ('device_token', 'raw_token', 'token', 'parent_email',
+                          'email', 'user_id', 'child_name', 'birth_year_month');
+  if n <> 0 then
+    raise exception 'a raw token, address or child key column exists: %', n;
+  end if;
+  select count(*) into n from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    where c.relname = 'motion_device_consents' and a.attnum > 0
+      and a.attname = 'device_token_digest' and a.atttypid = 'text'::regtype;
+  if n <> 1 then raise exception 'device table is not keyed by a digest'; end if;
+  -- No foreign key: the device row precedes any account.
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.motion_device_consents'::regclass and contype = 'f'
+  ) then
+    raise exception 'device consents carry a foreign key';
+  end if;
+
+  insert into public.motion_device_consents
+    (device_token_digest, status, parent_email_digest, link_digest,
+     expires_at, decided_at)
+  values
+    (encode(sha256(convert_to(raw_ok, 'UTF8')), 'hex'), 'approved', null,
+     repeat('1', 64), now() + interval '7 days', now()),
+    (encode(sha256(convert_to(raw_pending, 'UTF8')), 'hex'), 'pending',
+     repeat('9', 64), repeat('2', 64), now() + interval '7 days', null),
+    (encode(sha256(convert_to(raw_old, 'UTF8')), 'hex'), 'approved', null,
+     repeat('3', 64), now() + interval '7 days', now()),
+    (encode(sha256(convert_to(raw_denied, 'UTF8')), 'hex'), 'denied', null,
+     null, now() + interval '7 days', now());
+  update public.motion_device_consents
+    set created_at = now() - interval '31 days'
+    where device_token_digest
+          = encode(sha256(convert_to(raw_old, 'UTF8')), 'hex');
+
+  -- Direct under-13 sign-up (no token, pending, expired, denied, wrong token)
+  -- is refused and leaves nothing behind (P0013).
+  foreach signup in array array[
+    null::jsonb,
+    jsonb_build_object('device_consent_token', raw_pending),
+    jsonb_build_object('device_consent_token', raw_old),
+    jsonb_build_object('device_consent_token', raw_denied),
+    jsonb_build_object('device_consent_token', repeat('z', 43))
+  ] loop
+    begin
+      insert into auth.users
+        (id, instance_id, aud, role, email, encrypted_password,
+         raw_user_meta_data, created_at, updated_at)
+      values
+        (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+         'authenticated', 'child@motion.test', 'x',
+         jsonb_build_object('motion_age', jsonb_build_object(
+           'birth_year_month', ym_child, 'country', 'US',
+           'policy_version', '2026-11-17.1') || coalesce(signup, '{}')),
+         now(), now());
+      raise exception 'under-13 sign-up without an approved token: %', signup;
+    exception when sqlstate 'P0013' then
+      null;
+    end;
+  end loop;
+  if exists (select 1 from auth.users where id = child)
+     or exists (select 1 from public.motion_age_declarations
+                where user_id = child)
+     or exists (select 1 from public.motion_parental_consents
+                where user_id = child) then
+    raise exception 'a refused sign-up left rows behind';
+  end if;
+  -- A refused attempt did not consume the pending approval either.
+  select count(*) into n from public.motion_device_consents;
+  if n <> 4 then raise exception 'refusals consumed device rows: %', n; end if;
+
+  -- Approved token: the account is created, consent is written, the device
+  -- row is gone, the metadata (token included) is stripped.
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password,
+     raw_user_meta_data, created_at, updated_at)
+  values
+    (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+     'authenticated', 'child@motion.test', 'x',
+     jsonb_build_object('motion_age', jsonb_build_object(
+       'birth_year_month', ym_child, 'country', 'US',
+       'policy_version', '2026-11-17.1', 'device_consent_token', raw_ok)),
+     now(), now());
+  select raw_user_meta_data into meta from auth.users where id = child;
+  if meta ? 'motion_age' or meta::text like '%' || raw_ok || '%' then
+    raise exception 'age metadata or device token was not stripped: %', meta;
+  end if;
+  select * into consent from public.motion_parental_consents
+    where user_id = child;
+  if consent.status is distinct from 'approved'
+     or consent.method is distinct from 'device_token_email'
+     or consent.parent_email_digest is not null
+     or consent.manage_digest is distinct from repeat('1', 64) then
+    raise exception 'device consent was not carried over: %', consent;
+  end if;
+  if exists (
+    select 1 from public.motion_device_consents
+    where device_token_digest = encode(sha256(convert_to(raw_ok, 'UTF8')), 'hex')
+  ) then
+    raise exception 'token digest survived binding to the account';
+  end if;
+  if public.motion_account_restricted(child) then
+    raise exception 'consented child is restricted';
+  end if;
+  if public.motion_age_band(ym_child, 'US', current_date) <> 'blocked' then
+    raise exception 'band computation drifted';
+  end if;
+
+  -- A consumed token cannot create a second account.
+  begin
+    insert into auth.users
+      (id, instance_id, aud, role, email, encrypted_password,
+       raw_user_meta_data, created_at, updated_at)
+    values
+      (child2, '00000000-0000-0000-0000-000000000000', 'authenticated',
+       'authenticated', 'child2@motion.test', 'x',
+       jsonb_build_object('motion_age', jsonb_build_object(
+         'birth_year_month', ym_child, 'country', 'US',
+         'policy_version', '2026-11-17.1', 'device_consent_token', raw_ok)),
+       now(), now());
+    raise exception 'a consumed token was accepted twice';
+  exception when sqlstate 'P0013' then
+    null;
+  end;
+
+  -- Withdrawal closes account features again.
+  update public.motion_parental_consents
+    set status = 'withdrawn', decided_at = now() where user_id = child;
+  if not public.motion_account_restricted(child) then
+    raise exception 'withdrawn consent does not restrict the account';
+  end if;
+  -- Purge: not before 30 days, then the account goes with its receipt.
+  if public.motion_purge_unconsented_accounts() <> 0
+     or not exists (select 1 from auth.users where id = child) then
+    raise exception 'a fresh withdrawal was purged early';
+  end if;
+  update public.motion_parental_consents
+    set decided_at = now() - interval '31 days' where user_id = child;
+  if public.motion_purge_unconsented_accounts() <> 1 then
+    raise exception 'withdrawn purge count';
+  end if;
+  if exists (select 1 from auth.users where id = child)
+     or exists (select 1 from public.motion_parental_consents
+                where user_id = child)
+     or not public.motion_was_account_deleted(child) then
+    raise exception 'withdrawn account purge did not cascade with a receipt';
+  end if;
+
+  -- The 30 day clock removed the unclaimed old approval; the rest (still
+  -- inside the window) stays: pending, denied.
+  select count(*) into n from public.motion_device_consents;
+  if n <> 2 then raise exception 'device retention purge: %', n; end if;
+  if exists (
+    select 1 from public.motion_device_consents
+    where device_token_digest = encode(sha256(convert_to(raw_old, 'UTF8')), 'hex')
+  ) then
+    raise exception 'a 31 day old device row survived';
+  end if;
+  update public.motion_device_consents set created_at = now() - interval '31 days';
+  perform public.motion_purge_unconsented_accounts();
+  select count(*) into n from public.motion_device_consents;
+  if n <> 0 then raise exception 'pending/denied rows survived 30 days: %', n; end if;
+
+  -- Clients cannot read or call the device machinery.
+  set local role authenticated;
+  begin
+    perform 1 from public.motion_device_consents;
+    raise exception 'device consents readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform 1 from public.motion_consent_decisions;
+    raise exception 'decisions readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.motion_consume_device_consent(child, raw_ok);
+    raise exception 'client called consume';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
+-- Deleting the Auth user removes the consent row and writes the receipt
+-- (motion-delete-account only calls admin.deleteUser).
+do $test$
+declare
+  child uuid := '88888888-8888-8888-8888-888888888888';
+  ym_child text := to_char(current_date - interval '9 years', 'YYYY-MM');
+  raw text := repeat('e', 43);
+begin
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at)
+  values (encode(sha256(convert_to(raw, 'UTF8')), 'hex'), 'approved',
+          repeat('4', 64), now() + interval '7 days');
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password,
+     raw_user_meta_data, created_at, updated_at)
+  values
+    (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+     'authenticated', 'child3@motion.test', 'x',
+     jsonb_build_object('motion_age', jsonb_build_object(
+       'birth_year_month', ym_child, 'country', 'US',
+       'policy_version', '2026-11-17.1', 'device_consent_token', raw)),
+     now(), now());
+  if not exists (select 1 from public.motion_parental_consents
+                 where user_id = child) then
+    raise exception 'consent row missing before delete';
+  end if;
+  delete from auth.users where id = child;
+  if exists (select 1 from public.motion_parental_consents
+             where user_id = child)
+     or exists (select 1 from public.motion_age_declarations
+                where user_id = child) then
+    raise exception 'delete did not cascade consent and declaration';
+  end if;
+  if not public.motion_was_account_deleted(child) then
+    raise exception 'delete wrote no receipt';
+  end if;
+end;
+$test$;
+
 rollback;
