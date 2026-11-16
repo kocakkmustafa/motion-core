@@ -26,6 +26,7 @@ let counters = new Map<string, number>();
 let onSlot: (() => void) | undefined;
 let authCalls = 0;
 let onDevicePatch: (() => void) | undefined;
+let releaseDays: unknown[] = [];
 
 // PostgREST filters of the fixture: eq.<v> and gte.<v> on any column.
 function matches(row: Record<string, unknown>, url: string): boolean {
@@ -86,7 +87,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (url.endsWith("/rest/v1/rpc/motion_consent_mail_slot")) {
     // Mirrors the SQL: all keys or none, day keyed, never decremented.
-    const day = new Date().toISOString().slice(0, 10);
+    const day = body.p_day ?? new Date().toISOString().slice(0, 10);
     const keys: string[] = body.p_keys;
     if (keys.some((k) => (counters.get(`${k}|${day}`) ?? 0) >= body.p_limit)) {
       return Response.json(false);
@@ -98,10 +99,26 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return Response.json(true);
   }
   if (url.includes("/rest/v1/rpc/motion_consent_mail_slot_release")) {
-    const day = new Date().toISOString().slice(0, 10);
+    releaseDays.push(body.p_day);
+    const day = body.p_day ?? new Date().toISOString().slice(0, 10);
     for (const k of body.p_keys as string[]) {
       const at = `${k}|${day}`;
       counters.set(at, Math.max((counters.get(at) ?? 0) - 1, 0));
+    }
+    return new Response(null, { status: 204 });
+  }
+  if (url.includes("/rest/v1/rpc/motion_device_consent_unclaim")) {
+    for (const r of deviceRows) {
+      if (
+        r.device_token_digest === body.p_device_digest &&
+        r.link_digest === body.p_link_digest && r.status === "pending"
+      ) {
+        Object.assign(r, {
+          status: "expired",
+          link_digest: null,
+          parent_email_digest: null,
+        });
+      }
     }
     return new Response(null, { status: 204 });
   }
@@ -214,6 +231,7 @@ function reset() {
   counters = new Map();
   onSlot = undefined;
   onDevicePatch = undefined;
+  releaseDays = [];
   authCalls = 0;
 }
 
@@ -770,7 +788,10 @@ Deno.test("request_device fails closed: no row without a delivered mail", async 
   const { result } = await capturingErrors(() => device());
   assert(result.status === 503, "mail unavailable");
   assert((await result.json()).error === "mail_unavailable", "public error");
-  assert(deviceRows.length === 0, "no pending row");
+  assert(
+    deviceRows.every((r) => r.status !== "pending" && r.link_digest === null),
+    "claim dropped, no pending row or link left",
+  );
 });
 
 Deno.test("request_device: a fresh pending request is too_soon and counts nothing", async () => {
@@ -1006,6 +1027,11 @@ Deno.test("request_device never revives a row decided after the read", async () 
       `${decided} error`,
     );
     assert(deviceRows[0].status === decided, `${decided} row kept`);
+    assert(mails.length === 1, `${decided}: the loser sent no mail`);
+    assert(
+      (counters.get(`d:${await sha256(DEVICE)}|${today()}`) ?? 0) === 1,
+      `${decided}: the slot went back`,
+    );
   }
 });
 
@@ -1162,8 +1188,9 @@ Deno.test("a too_soon race gives its slot back", async () => {
   };
   const response = await device();
   onSlot = undefined;
-  assert(response.status === 429, "too_soon from the guarded write");
+  assert(response.status === 429, "too_soon from the guarded claim");
   assert((await response.json()).error === "too_soon", "code");
+  assert(mails.length === 1, "the loser of the race sent no mail");
   const day = new Date().toISOString().slice(0, 10);
   assert(
     counters.get(`d:${await sha256(DEVICE)}|${day}`) === 1,
@@ -1242,6 +1269,50 @@ Deno.test("withdraw never claims a withdrawal that did not happen", async () => 
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// Third round: claim first, mail second; keep a slot only when a mail went out.
+Deno.test("a mail failure drops the claim and releases the reserved day", async () => {
+  reset();
+  smtp.options = { authReply: "535 5.7.8 bad credentials" };
+  const { result } = await capturingErrors(() => device());
+  assert(result.status === 503, "mail unavailable");
+  assert(
+    JSON.stringify(releaseDays) === JSON.stringify([today()]),
+    "release names the reserved day",
+  );
+  assert(
+    (counters.get(`d:${await sha256(DEVICE)}|${today()}`) ?? 0) === 0,
+    "slot back",
+  );
+  smtp.options = {};
+  assert((await device()).status === 200, "the device can start over at once");
+  assert(mails.length === 1, "one mail once SMTP is back");
+});
+
+Deno.test("a delivered mail keeps its slot and a lost claim sends nothing", async () => {
+  reset();
+  assert((await device()).status === 200, "first");
+  assert(releaseDays.length === 0, "no release after a delivered mail");
+  assert(
+    (counters.get(`d:${await sha256(DEVICE)}|${today()}`) ?? 0) === 1,
+    "slot kept",
+  );
+  // Racing request: the claim is refused, no mail, slot returned.
+  deviceRows[0].requested_at = ago(11);
+  onSlot = () => {
+    deviceRows[0].requested_at = new Date().toISOString();
+  };
+  const lost = await device();
+  onSlot = undefined;
+  assert(
+    lost.status === 429 && mails.length === 1,
+    "lost claim, no second mail",
+  );
+  assert(
+    (counters.get(`d:${await sha256(DEVICE)}|${today()}`) ?? 0) === 1,
+    "only the delivered mail counts",
+  );
 });
 
 Deno.test({

@@ -713,4 +713,79 @@ begin
 end;
 $test$;
 
+-- VELI-01 third round: claim before mail, day-aware release, unclaim.
+do $test$
+declare
+  n integer;
+  dig text := repeat('f', 64);
+  ydy date := (now() at time zone 'utc')::date - 1;
+begin
+  -- The release hits the day that was reserved, not today.
+  if not public.motion_consent_mail_slot(array['day:a'], 5, ydy) then
+    raise exception 'slot on yesterday refused';
+  end if;
+  if not public.motion_consent_mail_slot(array['day:a'], 5) then
+    raise exception 'slot today refused';
+  end if;
+  perform public.motion_consent_mail_slot_release(array['day:a'], ydy);
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'day:a' and day = ydy;
+  if n <> 0 then raise exception 'release missed the reserved day: %', n; end if;
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'day:a' and day = (now() at time zone 'utc')::date;
+  if n <> 1 then raise exception 'release touched today: %', n; end if;
+  -- A far away day is refused.
+  begin
+    perform public.motion_consent_mail_slot(array['day:b'], 5, ydy - 5);
+    raise exception 'a far day was accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+
+  -- Claim, then unclaim when the mail cannot go out.
+  if public.motion_device_consent_request(
+       repeat('9', 64), dig, repeat('a9', 32), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'claim failed';
+  end if;
+  -- Another request's link must not be dropped by a stale unclaim.
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('b9', 32));
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'pending' then
+    raise exception 'unclaim of a foreign link changed the row';
+  end if;
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('a9', 32));
+  if (select status || coalesce(link_digest, '-') ||
+             coalesce(parent_email_digest, '-')
+      from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'expired--' then
+    raise exception 'unclaim did not drop the claim';
+  end if;
+  -- The device can start over at once.
+  if public.motion_device_consent_request(
+       repeat('9', 64), dig, repeat('c9', 32), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'restart after unclaim failed';
+  end if;
+  -- A decided row is never touched by an unclaim.
+  update public.motion_device_consents
+    set status = 'approved', link_digest = repeat('d9', 32)
+    where device_token_digest = repeat('9', 64);
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('d9', 32));
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'approved' then
+    raise exception 'unclaim changed a decided row';
+  end if;
+
+  set local role authenticated;
+  begin
+    perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('d9', 32));
+    raise exception 'client called unclaim';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
 rollback;

@@ -299,7 +299,8 @@ grant select, insert, update, delete
 -- mail is sent. False (and nothing counted) when any key is at the limit.
 create function public.motion_consent_mail_slot(
   p_keys text[],
-  p_limit integer default 5
+  p_limit integer default 5,
+  p_day date default null
 )
 returns boolean
 language plpgsql
@@ -309,8 +310,13 @@ as $$
 declare
   v_key text;
   v_count integer;
-  v_day date := (now() at time zone 'utc')::date;
+  v_day date := coalesce(p_day, (now() at time zone 'utc')::date);
 begin
+  -- The caller names the day it reserves on so a release hits the same row
+  -- across midnight; only today or the neighbouring UTC days are accepted.
+  if abs(v_day - (now() at time zone 'utc')::date) > 1 then
+    raise exception 'invalid_mail_day' using errcode = '22023';
+  end if;
   if p_keys is null or coalesce(array_length(p_keys, 1), 0) = 0 then
     raise exception 'invalid_mail_keys' using errcode = '22023';
   end if;
@@ -337,14 +343,19 @@ begin
 end;
 $$;
 
-revoke all on function public.motion_consent_mail_slot(text[], integer)
-  from public, anon, authenticated;
-grant execute on function public.motion_consent_mail_slot(text[], integer)
-  to service_role;
+revoke all on function public.motion_consent_mail_slot(
+  text[], integer, date
+) from public, anon, authenticated;
+grant execute on function public.motion_consent_mail_slot(
+  text[], integer, date
+) to service_role;
 
--- Give a reserved slot back (mail not sent, or the request lost a race):
--- atomic, never below zero, today's (UTC) row only.
-create function public.motion_consent_mail_slot_release(p_keys text[])
+-- Give a reserved slot back, only when no mail went out: atomic, never below
+-- zero, on the day it was reserved (default: today, UTC).
+create function public.motion_consent_mail_slot_release(
+  p_keys text[],
+  p_day date default null
+)
 returns void
 language sql
 security definer
@@ -353,17 +364,18 @@ as $$
   update public.motion_consent_mail_counters
     set count = greatest(count - 1, 0)
     where counter_key = any (p_keys)
-      and day = (now() at time zone 'utc')::date;
+      and day = coalesce(p_day, (now() at time zone 'utc')::date);
 $$;
 
-revoke all on function public.motion_consent_mail_slot_release(text[])
+revoke all on function public.motion_consent_mail_slot_release(text[], date)
   from public, anon, authenticated;
-grant execute on function public.motion_consent_mail_slot_release(text[])
+grant execute on function public.motion_consent_mail_slot_release(text[], date)
   to service_role;
 
--- State-guarded (re)start of a device request, after the mail went out. A
--- row a parent decided in the meantime is never put back to pending: the
--- existing status comes back instead. 'ok' on success, 'too_soon' while a
+-- State-guarded claim of a device request, BEFORE the mail goes out: the
+-- mail is sent only when the claim succeeded. A row a parent decided in the
+-- meantime is never put back to pending: the existing status comes back
+-- instead. 'ok' on success, 'too_soon' while a
 -- pending request is younger than 10 minutes.
 create function public.motion_device_consent_request(
   p_device_digest text,
@@ -426,3 +438,28 @@ revoke all on function public.motion_device_consent_request(
 grant execute on function public.motion_device_consent_request(
   text, text, text, text, timestamptz
 ) to service_role;
+
+-- The mail could not be sent: drop the claim of that (never delivered) link.
+-- Only a still pending row with that very link digest changes; it becomes
+-- expired (no valid link exists), so the device can start over at once.
+create function public.motion_device_consent_unclaim(
+  p_device_digest text,
+  p_link_digest text
+)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  update public.motion_device_consents
+    set status = 'expired', link_digest = null, parent_email_digest = null,
+        expires_at = now()
+    where device_token_digest = p_device_digest
+      and link_digest = p_link_digest
+      and status = 'pending';
+$$;
+
+revoke all on function public.motion_device_consent_unclaim(text, text)
+  from public, anon, authenticated;
+grant execute on function public.motion_device_consent_unclaim(text, text)
+  to service_role;

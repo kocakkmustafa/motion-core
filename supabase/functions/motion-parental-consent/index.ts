@@ -415,17 +415,21 @@ async function handleRequestDevice(
   ) {
     return Response.json({ error: "too_soon" }, { status: 429 });
   }
-  // Reserve a mail before sending, atomically in the database: at most five
-  // per parent address and five per device token per UTC day, counted in
-  // append-only day counters that no decision or purge of a consent row
-  // touches. A token redirected to other addresses is counted on the token
+  // Order on the device path: reserve a slot, CLAIM the row (state guarded),
+  // and only then send the mail. A request that loses a race (a parent decided,
+  // another request was faster) therefore never sends a mail and gets its slot
+  // back; a mail that cannot be sent drops the claim and gives the slot back.
+  // A slot is kept exactly when a mail went out. (The 13+ account path keeps
+  // its older mail-then-write order.)
+  // Slots: at most five per parent address and five per device token per UTC
+  // day, in append-only day counters that no decision or purge of a consent
+  // row touches; a token redirected to other addresses is counted on the token
   // key. Day-keyed, so up to twice that across midnight; no global limit.
+  const slotKeys = [`p:${parentDigest}`, `d:${deviceDigest}`];
+  const slotDay = new Date(now).toISOString().slice(0, 10);
   const { data: slot, error: slotError } = await admin.rpc(
     "motion_consent_mail_slot",
-    {
-      p_keys: [`p:${parentDigest}`, `d:${deviceDigest}`],
-      p_limit: MAX_REQUESTS_PER_DAY,
-    },
+    { p_keys: slotKeys, p_limit: MAX_REQUESTS_PER_DAY, p_day: slotDay },
   );
   if (slotError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
@@ -433,50 +437,58 @@ async function handleRequestDevice(
   if (slot !== true) {
     return Response.json({ error: "daily_limit" }, { status: 429 });
   }
-  const slotKeys = [`p:${parentDigest}`, `d:${deviceDigest}`];
-  // Best effort, atomic in the database: give the slot back when no mail
-  // went out or the request lost a race it did not cause.
+  // Best effort, atomic in the database, on the day it was reserved.
   const releaseSlot = async () => {
-    await admin.rpc("motion_consent_mail_slot_release", { p_keys: slotKeys });
+    await admin.rpc("motion_consent_mail_slot_release", {
+      p_keys: slotKeys,
+      p_day: slotDay,
+    });
   };
 
   const linkToken = randomToken();
+  const linkDigest = await digest(linkToken);
   const expiresAt = new Date(now + TOKEN_TTL_MS).toISOString();
+  const { data: outcome, error: claimError } = await admin.rpc(
+    "motion_device_consent_request",
+    {
+      p_device_digest: deviceDigest,
+      p_parent_digest: parentDigest,
+      p_link_digest: linkDigest,
+      p_locale: locale,
+      p_expires_at: expiresAt,
+    },
+  );
+  if (claimError) {
+    await releaseSlot();
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (outcome !== "ok") {
+    // No mail has gone out: the slot goes back.
+    await releaseSlot();
+    if (outcome === "approved") {
+      return Response.json({ error: "already_approved" }, { status: 409 });
+    }
+    if (outcome === "denied" || outcome === "withdrawn") {
+      return Response.json({ error: "already_decided" }, { status: 409 });
+    }
+    if (outcome === "too_soon") {
+      return Response.json({ error: "too_soon" }, { status: 429 });
+    }
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
   const link = `${env.pageUrl}#token=${linkToken}`;
   const copy = deviceConsentEmail(locale, {
     link,
     expiresAt: expiresAt.slice(0, 10),
   });
   if (!(await sendMail(env, parentEmail, copy.subject, copy.text))) {
+    // Never delivered: drop the claim of this link and return the slot.
+    await admin.rpc("motion_device_consent_unclaim", {
+      p_device_digest: deviceDigest,
+      p_link_digest: linkDigest,
+    });
     await releaseSlot();
     return Response.json({ error: "mail_unavailable" }, { status: 503 });
-  }
-  // State-guarded write: a row decided since the read above stays decided.
-  const { data: outcome, error: writeError } = await admin.rpc(
-    "motion_device_consent_request",
-    {
-      p_device_digest: deviceDigest,
-      p_parent_digest: parentDigest,
-      p_link_digest: await digest(linkToken),
-      p_locale: locale,
-      p_expires_at: expiresAt,
-    },
-  );
-  if (writeError) {
-    return Response.json({ error: "server_unavailable" }, { status: 503 });
-  }
-  if (outcome === "approved") {
-    return Response.json({ error: "already_approved" }, { status: 409 });
-  }
-  if (outcome === "denied" || outcome === "withdrawn") {
-    return Response.json({ error: "already_decided" }, { status: 409 });
-  }
-  if (outcome === "too_soon") {
-    await releaseSlot();
-    return Response.json({ error: "too_soon" }, { status: 429 });
-  }
-  if (outcome !== "ok") {
-    return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   return Response.json({ status: "pending", expiresAt });
 }
