@@ -474,4 +474,151 @@ begin
 end;
 $test$;
 
+-- VELI-01 review fixes: atomic mail counters, final withdrawal, state-guarded
+-- request, anonymous trace week rounding.
+do $test$
+declare
+  u uuid := '99999999-9999-9999-9999-999999999999';
+  dig text := repeat('5', 64);
+  n integer;
+  r text;
+  ok boolean;
+  created timestamptz;
+begin
+  -- Counters: five slots, the sixth is refused; nothing is counted on refusal.
+  for n in 1..5 loop
+    if not public.motion_consent_mail_slot(array['p:x'], 5) then
+      raise exception 'slot % refused', n;
+    end if;
+  end loop;
+  if public.motion_consent_mail_slot(array['p:x'], 5) then
+    raise exception 'sixth slot granted';
+  end if;
+  -- All or nothing across keys: 'p:x' is full, 'd:y' must stay untouched.
+  if public.motion_consent_mail_slot(array['d:y', 'p:x'], 5) then
+    raise exception 'a full key did not refuse the pair';
+  end if;
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'd:y') then
+    raise exception 'a refused pair counted the free key';
+  end if;
+  if not public.motion_consent_mail_slot(array['d:y'], 5) then
+    raise exception 'free key refused';
+  end if;
+  -- Old days are cleaned by the purge; today stays.
+  insert into public.motion_consent_mail_counters (counter_key, day, count)
+    values ('p:old', current_date - 2, 5), ('p:yesterday', current_date - 1, 5);
+  perform public.motion_purge_unconsented_accounts();
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'p:old')
+     or not exists (select 1 from public.motion_consent_mail_counters
+                    where counter_key = 'p:yesterday')
+     or not exists (select 1 from public.motion_consent_mail_counters
+                    where counter_key = 'p:x' and count = 5) then
+    raise exception 'counter cleanup is wrong';
+  end if;
+
+  -- State-guarded request: never puts a decided row back to pending.
+  r := public.motion_device_consent_request(
+    repeat('6', 64), dig, repeat('7', 64), 'en', now() + interval '7 days');
+  if r <> 'ok' then raise exception 'new request: %', r; end if;
+  r := public.motion_device_consent_request(
+    repeat('6', 64), dig, repeat('8', 64), 'en', now() + interval '7 days');
+  if r <> 'too_soon' then raise exception 'immediate resend: %', r; end if;
+  foreach r in array array['approved', 'denied', 'withdrawn'] loop
+    update public.motion_device_consents
+      set status = r, parent_email_digest = null,
+          requested_at = now() - interval '1 hour'
+      where device_token_digest = repeat('6', 64);
+    if public.motion_device_consent_request(
+         repeat('6', 64), dig, repeat('8', 64), 'en',
+         now() + interval '7 days') <> r
+       or (select status from public.motion_device_consents
+           where device_token_digest = repeat('6', 64)) <> r then
+      raise exception 'a % row was revived', r;
+    end if;
+  end loop;
+  update public.motion_device_consents
+    set status = 'expired', created_at = now() - interval '20 days'
+    where device_token_digest = repeat('6', 64);
+  if public.motion_device_consent_request(
+       repeat('6', 64), dig, repeat('8', 64), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'expired row did not restart';
+  end if;
+  select created_at into created from public.motion_device_consents
+    where device_token_digest = repeat('6', 64);
+  if created < now() - interval '1 minute' then
+    raise exception 'retention clock did not restart';
+  end if;
+
+  -- A withdrawn device row can never be consumed.
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at)
+  values (encode(sha256(convert_to(repeat('w', 43), 'UTF8')), 'hex'),
+          'withdrawn', repeat('a', 64), now() + interval '7 days');
+  if public.motion_consume_device_consent(u, repeat('w', 43)) then
+    raise exception 'a withdrawn device row was consumed';
+  end if;
+
+  -- Withdrawn account consent is final.
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+  values (u, '00000000-0000-0000-0000-000000000000', 'authenticated',
+          'authenticated', 'final@motion.test', 'x', now(), now());
+  insert into public.motion_parental_consents
+    (user_id, status, expires_at, decided_at)
+  values (u, 'withdrawn', now(), now());
+  update public.motion_parental_consents
+    set decided_at = now() where user_id = u;
+  foreach r in array array['pending', 'approved', 'expired', 'denied'] loop
+    begin
+      update public.motion_parental_consents set status = r where user_id = u;
+      raise exception 'withdrawn went back to %', r;
+    exception when check_violation then
+      null;
+    end;
+  end loop;
+  begin
+    insert into public.motion_parental_consents
+      (user_id, status, parent_email_digest, expires_at)
+    values (u, 'pending', dig, now())
+    on conflict (user_id) do update set status = 'pending';
+    raise exception 'upsert revived a withdrawn consent';
+  exception when check_violation then
+    null;
+  end;
+
+  -- The anonymous trace is week rounded and carries no key.
+  insert into public.motion_consent_decisions (status) values ('approved');
+  if (select extract(isodow from decided_on) from public.motion_consent_decisions
+      order by id limit 1) <> 1 then
+    raise exception 'decided_on is not a week start';
+  end if;
+
+  -- Server only.
+  set local role authenticated;
+  begin
+    perform public.motion_consent_mail_slot(array['x'], 5);
+    raise exception 'client called the slot function';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.motion_device_consent_request(
+      repeat('1', 64), dig, dig, 'en', now());
+    raise exception 'client called the request function';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform 1 from public.motion_consent_mail_counters;
+    raise exception 'counters readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
 rollback;

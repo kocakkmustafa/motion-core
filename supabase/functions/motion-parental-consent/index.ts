@@ -35,7 +35,7 @@ const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEND_AFTER_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_DAY = 5;
 const DEVICE_TOKEN = /^[A-Za-z0-9_-]{43,128}$/;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,63}$/;
 
 async function digest(value: string): Promise<string> {
@@ -173,6 +173,10 @@ async function handleRequest(
   if (existing?.status === "approved") {
     return Response.json({ error: "already_approved" }, { status: 409 });
   }
+  // A withdrawn consent is final (database trigger too): no new pending.
+  if (existing?.status === "withdrawn") {
+    return Response.json({ error: "already_decided" }, { status: 409 });
+  }
   if (
     existing?.status === "pending" &&
     now - Date.parse(existing.requested_at) < RESEND_AFTER_MS
@@ -273,18 +277,27 @@ async function handleView(
 
 type Admin = ReturnType<typeof adminClient>;
 
+// Anonymous trace (status + week + method, no key). Written only after the
+// state change took effect, so a double decision leaves one row. A failed
+// trace is logged without any secret; the decision itself stands.
+async function recordDecision(
+  admin: Admin,
+  status: "approved" | "denied" | "withdrawn",
+) {
+  const { error } = await admin
+    .from("motion_consent_decisions")
+    .insert({ status, method: "email_link" });
+  if (error) {
+    console.error(JSON.stringify({ event: "motion_consent_trace_failed" }));
+  }
+}
+
 async function decideDevice(
   admin: Admin,
   device: { device_token_digest: string },
   decision: "approve" | "deny",
 ): Promise<Response> {
   const approved = decision === "approve";
-  const { error: traceError } = await admin
-    .from("motion_consent_decisions")
-    .insert({ status: approved ? "approved" : "denied", method: "email_link" });
-  if (traceError) {
-    return Response.json({ error: "server_unavailable" }, { status: 503 });
-  }
   const { data, error } = await admin
     .from("motion_device_consents")
     .update({
@@ -302,6 +315,7 @@ async function decideDevice(
   if (!data || data.length === 0) {
     return Response.json({ status: "expired" }, { status: 410 });
   }
+  await recordDecision(admin, approved ? "approved" : "denied");
   return Response.json({ status: approved ? "approved" : "denied" });
 }
 
@@ -351,6 +365,9 @@ async function handleDecide(
   return Response.json({ status: "denied" });
 }
 
+// request_device, status and withdraw ignore the Authorization header: the
+// child has no session, nothing here is logged, and no request is tied to an
+// identity (a stray bearer neither helps nor hurts).
 async function handleRequestDevice(
   env: Env,
   body: Record<string, unknown>,
@@ -375,21 +392,17 @@ async function handleRequestDevice(
   const parentDigest = await digest(parentEmail);
   const { data: existing, error: readError } = await admin
     .from("motion_device_consents")
-    .select("status,requested_at,expires_at,requests_today,requests_day")
+    .select("status,requested_at,expires_at")
     .eq("device_token_digest", deviceDigest)
     .maybeSingle();
   if (readError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
-  const requestsToday = existing?.requests_day === today
-    ? Number(existing.requests_today ?? 0)
-    : 0;
   if (existing?.status === "approved") {
     return Response.json({ error: "already_approved" }, { status: 409 });
   }
-  if (existing?.status === "denied") {
+  if (existing?.status === "denied" || existing?.status === "withdrawn") {
     return Response.json({ error: "already_decided" }, { status: 409 });
   }
   if (
@@ -398,25 +411,22 @@ async function handleRequestDevice(
   ) {
     return Response.json({ error: "too_soon" }, { status: 429 });
   }
-  if (requestsToday >= MAX_REQUESTS_PER_DAY) {
-    return Response.json({ error: "daily_limit" }, { status: 429 });
-  }
-  // Rotating device tokens must not turn one parent into a mail bomb: at most
-  // five mails per parent address in 24 hours (E6). No global limit.
-  const { data: sent, error: sentError } = await admin
-    .from("motion_device_consents")
-    .select("requests_today")
-    .eq("parent_email_digest", parentDigest)
-    .gte("requested_at", new Date(now - DAY_MS).toISOString());
-  if (sentError) {
+  // Reserve a mail before sending, atomically in the database: at most five
+  // per parent address and five per device token per UTC day, counted in
+  // append-only day counters that no decision or purge of a consent row
+  // touches. A token redirected to other addresses is counted on the token
+  // key. Day-keyed, so up to twice that across midnight; no global limit.
+  const { data: slot, error: slotError } = await admin.rpc(
+    "motion_consent_mail_slot",
+    {
+      p_keys: [`p:${parentDigest}`, `d:${deviceDigest}`],
+      p_limit: MAX_REQUESTS_PER_DAY,
+    },
+  );
+  if (slotError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
-  const parentCount = (sent ?? []).reduce(
-    (sum: number, r: { requests_today: number | null }) =>
-      sum + Number(r.requests_today ?? 1),
-    0,
-  );
-  if (parentCount >= MAX_REQUESTS_PER_DAY) {
+  if (slot !== true) {
     return Response.json({ error: "daily_limit" }, { status: 429 });
   }
 
@@ -430,24 +440,30 @@ async function handleRequestDevice(
   if (!(await sendMail(env, parentEmail, copy.subject, copy.text))) {
     return Response.json({ error: "mail_unavailable" }, { status: 503 });
   }
-  const restart = !existing || existing.status === "expired";
-  const { error: writeError } = await admin
-    .from("motion_device_consents")
-    .upsert({
-      device_token_digest: deviceDigest,
-      status: "pending",
-      method: "email_link",
-      parent_email_digest: parentDigest,
-      link_digest: await digest(linkToken),
-      locale,
-      ...(restart ? { created_at: new Date(now).toISOString() } : {}),
-      requested_at: new Date(now).toISOString(),
-      expires_at: expiresAt,
-      decided_at: null,
-      requests_today: requestsToday + 1,
-      requests_day: today,
-    });
+  // State-guarded write: a row decided since the read above stays decided.
+  const { data: outcome, error: writeError } = await admin.rpc(
+    "motion_device_consent_request",
+    {
+      p_device_digest: deviceDigest,
+      p_parent_digest: parentDigest,
+      p_link_digest: await digest(linkToken),
+      p_locale: locale,
+      p_expires_at: expiresAt,
+    },
+  );
   if (writeError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (outcome === "approved") {
+    return Response.json({ error: "already_approved" }, { status: 409 });
+  }
+  if (outcome === "denied" || outcome === "withdrawn") {
+    return Response.json({ error: "already_decided" }, { status: 409 });
+  }
+  if (outcome === "too_soon") {
+    return Response.json({ error: "too_soon" }, { status: 429 });
+  }
+  if (outcome !== "ok") {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   return Response.json({ status: "pending", expiresAt });
@@ -466,13 +482,14 @@ async function handleStatus(
   const deviceDigest = await digest(body.deviceToken);
   const { data, error } = await admin
     .from("motion_device_consents")
-    .select("status,expires_at,decided_at")
+    .select("status,expires_at,decided_at,created_at")
     .eq("device_token_digest", deviceDigest)
     .maybeSingle();
   if (error) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   if (!data) return Response.json({ status: "none" });
+  const decidedAt = data.decided_at ? { decidedAt: data.decided_at } : {};
   if (data.status === "denied") {
     // Read once: the device has its answer, drop the token digest now.
     await admin
@@ -480,16 +497,17 @@ async function handleStatus(
       .delete()
       .eq("device_token_digest", deviceDigest)
       .eq("status", "denied");
-    return Response.json({
-      status: "denied",
-      ...(data.decided_at ? { decidedAt: data.decided_at } : {}),
-    });
+    return Response.json({ status: "denied", ...decidedAt });
+  }
+  if (data.status === "withdrawn") {
+    return Response.json({ status: "withdrawn", ...decidedAt });
   }
   if (data.status === "approved") {
-    return Response.json({
-      status: "approved",
-      ...(data.decided_at ? { decidedAt: data.decided_at } : {}),
-    });
+    // Same 30 day window as motion_consume_device_consent.
+    if (Date.parse(data.created_at) < Date.now() - RETENTION_MS) {
+      return Response.json({ status: "expired" });
+    }
+    return Response.json({ status: "approved", ...decidedAt });
   }
   const lapsed = data.status === "expired" ||
     Date.parse(data.expires_at) < Date.now();
@@ -514,6 +532,38 @@ async function handleWithdraw(
   if (error) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
+  if (!data) return withdrawDevice(admin, manage);
+  if (data.status === "withdrawn") {
+    return Response.json({ status: "withdrawn" });
+  }
+  if (data.status !== "approved") {
+    return Response.json({ error: "not_approved" }, { status: 409 });
+  }
+  const { data: changed, error: updateError } = await admin
+    .from("motion_parental_consents")
+    .update({ status: "withdrawn", decided_at: new Date().toISOString() })
+    .eq("user_id", data.user_id)
+    .eq("status", "approved")
+    .select("user_id");
+  if (updateError) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
+  if (changed && changed.length > 0) await recordDecision(admin, "withdrawn");
+  return Response.json({ status: "withdrawn" });
+}
+
+// The parent withdraws before the child finished sign-up: the approved device
+// row becomes withdrawn and can no longer be consumed (consume takes approved
+// only); it is removed with the 30 day clock.
+async function withdrawDevice(admin: Admin, linkDigest: string) {
+  const { data, error } = await admin
+    .from("motion_device_consents")
+    .select("device_token_digest,status,created_at")
+    .eq("link_digest", linkDigest)
+    .maybeSingle();
+  if (error) {
+    return Response.json({ error: "server_unavailable" }, { status: 503 });
+  }
   if (!data) return Response.json({ error: "invalid_link" }, { status: 404 });
   if (data.status === "withdrawn") {
     return Response.json({ status: "withdrawn" });
@@ -521,20 +571,16 @@ async function handleWithdraw(
   if (data.status !== "approved") {
     return Response.json({ error: "not_approved" }, { status: 409 });
   }
-  const { error: traceError } = await admin
-    .from("motion_consent_decisions")
-    .insert({ status: "withdrawn", method: "email_link" });
-  if (traceError) {
-    return Response.json({ error: "server_unavailable" }, { status: 503 });
-  }
-  const { error: updateError } = await admin
-    .from("motion_parental_consents")
+  const { data: changed, error: updateError } = await admin
+    .from("motion_device_consents")
     .update({ status: "withdrawn", decided_at: new Date().toISOString() })
-    .eq("user_id", data.user_id)
-    .eq("status", "approved");
+    .eq("device_token_digest", data.device_token_digest)
+    .eq("status", "approved")
+    .select("device_token_digest");
   if (updateError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
+  if (changed && changed.length > 0) await recordDecision(admin, "withdrawn");
   return Response.json({ status: "withdrawn" });
 }
 

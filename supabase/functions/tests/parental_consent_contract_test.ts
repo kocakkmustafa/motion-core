@@ -22,6 +22,9 @@ let deleted: string[] = [];
 let stored: Record<string, unknown> | null = null;
 let deviceRows: Record<string, unknown>[] = [];
 let decisions: Record<string, unknown>[] = [];
+let counters = new Map<string, number>();
+let onSlot: (() => void) | undefined;
+let authCalls = 0;
 
 // PostgREST filters of the fixture: eq.<v> and gte.<v> on any column.
 function matches(row: Record<string, unknown>, url: string): boolean {
@@ -56,6 +59,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     (input instanceof Request ? input.method : "GET");
   const body = init?.body ? JSON.parse(String(init.body)) : undefined;
   if (url.endsWith("/auth/v1/user")) {
+    authCalls++;
     return Response.json({
       id: teen,
       aud: "authenticated",
@@ -78,6 +82,58 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       app_metadata: {},
       user_metadata: {},
     });
+  }
+  if (url.includes("/rest/v1/rpc/motion_consent_mail_slot")) {
+    // Mirrors the SQL: all keys or none, day keyed, never decremented.
+    const day = new Date().toISOString().slice(0, 10);
+    const keys: string[] = body.p_keys;
+    if (keys.some((k) => (counters.get(`${k}|${day}`) ?? 0) >= body.p_limit)) {
+      return Response.json(false);
+    }
+    for (const k of keys) {
+      counters.set(`${k}|${day}`, (counters.get(`${k}|${day}`) ?? 0) + 1);
+    }
+    onSlot?.();
+    return Response.json(true);
+  }
+  if (url.includes("/rest/v1/rpc/motion_device_consent_request")) {
+    // Mirrors the state-guarded upsert of the SQL function.
+    const row = deviceRows.find((r) =>
+      r.device_token_digest === body.p_device_digest
+    );
+    const fresh = {
+      status: "pending",
+      method: "email_link",
+      parent_email_digest: body.p_parent_digest,
+      link_digest: body.p_link_digest,
+      locale: body.p_locale,
+      expires_at: body.p_expires_at,
+      requested_at: new Date().toISOString(),
+      decided_at: null,
+    };
+    if (!row) {
+      deviceRows.push({
+        device_token_digest: body.p_device_digest,
+        created_at: new Date().toISOString(),
+        requests_today: 1,
+        ...fresh,
+      });
+      return Response.json("ok");
+    }
+    const lapsed = row.status === "expired" ||
+      (row.status === "pending" &&
+        (String(row.expires_at) < new Date().toISOString() ||
+          Date.parse(String(row.requested_at)) <= Date.now() - 10 * 60_000));
+    if (!lapsed) {
+      return Response.json(row.status === "pending" ? "too_soon" : row.status);
+    }
+    const restart = row.status === "expired" ||
+      String(row.expires_at) < new Date().toISOString();
+    Object.assign(row, fresh, {
+      requests_today: Number(row.requests_today) + 1,
+      ...(restart ? { created_at: new Date().toISOString() } : {}),
+    });
+    return Response.json("ok");
   }
   if (url.includes("/rest/v1/rpc/motion_account_restricted")) {
     return Response.json(restricted);
@@ -121,8 +177,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     if (method === "PATCH") {
       updates.push(body);
-      stored = { ...stored, ...body };
-      return new Response(null, { status: 204 });
+      const hit = stored !== null && matches(stored, url);
+      if (hit) stored = { ...stored, ...body };
+      return Response.json(hit ? [stored] : []);
     }
   }
   return Response.json({ message: "unexpected " + method + " " + url }, {
@@ -142,6 +199,9 @@ function reset() {
   stored = null;
   deviceRows = [];
   decisions = [];
+  counters = new Map();
+  onSlot = undefined;
+  authCalls = 0;
 }
 
 function post(body: unknown, token?: string) {
@@ -700,33 +760,17 @@ Deno.test("request_device fails closed: no row without a delivered mail", async 
   assert(deviceRows.length === 0, "no pending row");
 });
 
-Deno.test("request_device: 10 minute gap, five a day and a per-parent brake", async () => {
+Deno.test("request_device: a fresh pending request is too_soon and counts nothing", async () => {
   reset();
   await device();
   const soon = await device();
   assert(soon.status === 429, "too soon");
   assert((await soon.json()).error === "too_soon", "too_soon code");
   assert(mails.length === 1, "no second mail");
-  for (let i = 2; i <= 5; i++) {
-    deviceRows[0].requested_at = ago(11);
-    const again = await device();
-    assert(again.status === 200, `request ${i}`);
-  }
-  deviceRows[0].requested_at = ago(11);
-  const sixth = await device();
-  assert(sixth.status === 429, "sixth refused");
-  assert((await sixth.json()).error === "daily_limit", "daily_limit code");
-  assert(mails.length === 5, "five mails");
-  // Rotating the device token does not escape the per-parent limit.
-  const other = await device({ deviceToken: "e".repeat(43) });
-  assert(other.status === 429, "parent brake");
-  assert((await other.json()).error === "daily_limit", "parent brake code");
-  assert(mails.length === 5, "no sixth mail");
-  const fresh = await device(
-    { deviceToken: "f".repeat(43) },
-    "q@example.invalid",
+  assert(
+    counters.get(`d:${await sha256(DEVICE)}|${today()}`) === 1,
+    "refusal reserved no slot",
   );
-  assert(fresh.status === 200, "other parent allowed");
 });
 
 Deno.test("device approve keeps the token digest, drops the parent digest, leaves an anonymous trace", async () => {
@@ -889,6 +933,173 @@ Deno.test("the device mail is neutral and falls back to English", () => {
     deviceConsentEmail("de", { link: "l", expiresAt: "d" }).subject ===
       deviceConsentEmail("en", { link: "l", expiresAt: "d" }).subject,
     "fallback",
+  );
+});
+
+// VELI-01 review fixes: atomic counters, final withdrawal, device withdraw.
+Deno.test("mail counters are per parent and per device token, and outlive decisions", async () => {
+  reset();
+  await device();
+  for (let i = 2; i <= 5; i++) {
+    deviceRows[0].requested_at = ago(11);
+    assert((await device()).status === 200, `request ${i}`);
+  }
+  deviceRows[0].requested_at = ago(11);
+  const sixth = await device();
+  assert(sixth.status === 429, "sixth refused");
+  assert((await sixth.json()).error === "daily_limit", "daily_limit");
+  // Same token redirected to another address is counted on the token key.
+  const redirect = await device({}, "other@example.invalid");
+  assert(redirect.status === 429, "token redirect counted");
+  assert(mails.length === 5, "no sixth mail");
+  // A decision or a purge of the consent row does not reset the counters.
+  deviceRows = [];
+  const rotated = await device({ deviceToken: "g".repeat(43) });
+  assert(rotated.status === 429, "parent counter survives row deletion");
+  assert(mails.length === 5, "still five mails");
+  // A refused reservation counts nothing on the other key (all or nothing).
+  const free = await device(
+    { deviceToken: "h".repeat(43) },
+    "z@example.invalid",
+  );
+  assert(free.status === 200, "fresh parent and token");
+  assert(
+    counters.get(`p:${await sha256("p@example.invalid")}|${today()}`) === 5,
+    "parent counter stays at five",
+  );
+});
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+Deno.test("request_device never revives a row decided after the read", async () => {
+  for (const decided of ["approved", "denied", "withdrawn"]) {
+    reset();
+    await device();
+    deviceRows[0].requested_at = ago(11);
+    onSlot = () => {
+      Object.assign(deviceRows[0], {
+        status: decided,
+        parent_email_digest: null,
+      });
+    };
+    const response = await device();
+    onSlot = undefined;
+    assert(response.status === 409, `${decided} status ${response.status}`);
+    assert(
+      (await response.json()).error ===
+        (decided === "approved" ? "already_approved" : "already_decided"),
+      `${decided} error`,
+    );
+    assert(deviceRows[0].status === decided, `${decided} row kept`);
+  }
+});
+
+Deno.test("a withdrawn device row cannot restart", async () => {
+  reset();
+  await device();
+  await post({ action: "decide", token: linkToken(), decision: "approve" });
+  await post({ action: "withdraw", token: linkToken() });
+  const again = await device();
+  assert(again.status === 409, "withdrawn cannot restart");
+  assert((await again.json()).error === "already_decided", "already_decided");
+});
+
+Deno.test("account request on a withdrawn consent is already_decided", async () => {
+  reset();
+  stored = {
+    user_id: teen,
+    status: "withdrawn",
+    requested_at: ago(60 * 24),
+    requests_today: 1,
+    requests_day: "2000-01-01",
+  };
+  const response = await post(
+    { action: "request", parentEmail: "p@example.invalid" },
+    "teen-token",
+  );
+  assert(response.status === 409, `status ${response.status}`);
+  assert((await response.json()).error === "already_decided", "error");
+  assert(mails.length === 0 && upserts.length === 0, "no mail, no pending row");
+});
+
+Deno.test("device withdraw: approved and unconsumed becomes withdrawn, once", async () => {
+  reset();
+  await device();
+  const token = linkToken();
+  const early = await post({ action: "withdraw", token });
+  assert(early.status === 409, "pending cannot be withdrawn");
+  await post({ action: "decide", token, decision: "approve" });
+  const response = await post({ action: "withdraw", token });
+  assert(response.status === 200, "withdrawn");
+  assert((await response.json()).status === "withdrawn", "body");
+  assert(deviceRows[0].status === "withdrawn", "row withdrawn");
+  const status = await (await post({ action: "status", deviceToken: DEVICE }))
+    .json();
+  assert(status.status === "withdrawn", "device reads withdrawn");
+  const again = await post({ action: "withdraw", token });
+  assert((await again.json()).status === "withdrawn", "idempotent");
+  assert(
+    JSON.stringify(decisions.map((d) => d.status)) ===
+      JSON.stringify(["approved", "withdrawn"]),
+    "one trace per decision",
+  );
+});
+
+Deno.test("status: an approval older than 30 days reads expired", async () => {
+  reset();
+  await device();
+  await post({ action: "decide", token: linkToken(), decision: "approve" });
+  let answer = await (await post({ action: "status", deviceToken: DEVICE }))
+    .json();
+  assert(answer.status === "approved", "fresh approval");
+  deviceRows[0].created_at = ago(60 * 24 * 31);
+  answer = await (await post({ action: "status", deviceToken: DEVICE })).json();
+  assert(answer.status === "expired", "31 day approval expired");
+});
+
+Deno.test("a double decision leaves one anonymous trace", async () => {
+  reset();
+  await device();
+  const token = linkToken();
+  const both = await Promise.all([
+    post({ action: "decide", token, decision: "approve" }),
+    post({ action: "decide", token, decision: "approve" }),
+  ]);
+  const codes = both.map((r) => r.status).sort();
+  assert(JSON.stringify(codes) === "[200,410]", `codes ${codes}`);
+  assert(decisions.length === 1, `traces ${decisions.length}`);
+  const late = await post({ action: "decide", token, decision: "deny" });
+  assert(late.status === 410, "late decision refused");
+  assert(decisions.length === 1, "still one trace");
+});
+
+Deno.test("request_device and status ignore the Authorization header", async () => {
+  reset();
+  const plain = await device();
+  const plainBody = await plain.json();
+  reset();
+  const withHeader = await post({
+    action: "request_device",
+    deviceToken: DEVICE,
+    parentEmail: "p@example.invalid",
+    locale: "en",
+  }, "some-bearer");
+  const headerBody = await withHeader.json();
+  assert(withHeader.status === plain.status, "same status");
+  assert(
+    Object.keys(headerBody).join() === Object.keys(plainBody).join(),
+    "same shape",
+  );
+  const status = await post(
+    { action: "status", deviceToken: DEVICE },
+    "some-bearer",
+  );
+  assert((await status.json()).status === "pending", "same status answer");
+  assert(
+    authCalls === 0,
+    "the bearer is never verified or tied to an identity",
   );
 });
 

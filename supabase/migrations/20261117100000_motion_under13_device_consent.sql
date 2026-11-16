@@ -14,7 +14,7 @@ create table public.motion_device_consents (
   device_token_digest text primary key
     check (device_token_digest ~ '^[0-9a-f]{64}$'),
   status text not null
-    check (status in ('pending', 'approved', 'denied', 'expired')),
+    check (status in ('pending', 'approved', 'denied', 'expired', 'withdrawn')),
   method text not null default 'email_link'
     check (method in ('email_link')),
   -- Cleared when the parent decides (approve or deny).
@@ -34,11 +34,14 @@ create table public.motion_device_consents (
   requests_day date not null default current_date
 );
 
--- Anonymous permanent trace of a decision. No key of any kind.
+-- Anonymous permanent trace of a decision. No key of any kind. The day is
+-- rounded to the start of its (UTC) week so a row cannot be matched to a
+-- request, a mail or an account by timing.
 create table public.motion_consent_decisions (
   id uuid primary key default gen_random_uuid(),
   status text not null check (status in ('approved', 'denied', 'withdrawn')),
-  decided_on date not null default current_date,
+  decided_on date not null
+    default ((date_trunc('week', now() at time zone 'utc'))::date),
   method text not null default 'email_link'
 );
 
@@ -146,10 +149,13 @@ begin
   v_band := public.motion_age_band(
     p_birth_year_month, upper(p_country), current_date
   );
-  if v_band = 'blocked'
-     and not public.motion_consume_device_consent(p_user_id, p_device_token)
-  then
-    raise exception 'motion_minimum_age' using errcode = 'P0013';
+  if v_band = 'blocked' then
+    -- Nested on purpose: the consume call has a side effect and must run
+    -- only for an under-13 declaration.
+    if not public.motion_consume_device_consent(p_user_id, p_device_token)
+    then
+      raise exception 'motion_minimum_age' using errcode = 'P0013';
+    end if;
   end if;
   insert into public.motion_age_declarations
     (user_id, birth_year_month, country, policy_version)
@@ -223,6 +229,9 @@ begin
     where status = 'pending' and expires_at < now();
   delete from public.motion_device_consents
     where created_at < now() - p_older_than;
+  -- Mail counters are day keyed and append-only; only old days go.
+  delete from public.motion_consent_mail_counters
+    where day < current_date - 1;
   with doomed as (
     select d.user_id
     from public.motion_age_declarations d
@@ -248,3 +257,139 @@ revoke all on function public.motion_purge_unconsented_accounts(interval)
   from public, anon, authenticated;
 grant execute on function public.motion_purge_unconsented_accounts(interval)
   to service_role;
+
+-- A withdrawn consent never comes back to pending or approved: a new consent
+-- needs a new account flow (the withdrawn account is purged after 30 days).
+create function public.motion_consent_no_revive()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'motion_consent_withdrawn' using errcode = '23514';
+end;
+$$;
+
+create trigger motion_consent_no_revive
+before update on public.motion_parental_consents
+for each row
+when (old.status = 'withdrawn' and new.status <> 'withdrawn')
+execute function public.motion_consent_no_revive();
+
+-- Consent mail counters: one row per key and UTC day, never decremented and
+-- untouched by decisions. Keys: 'p:<parent address digest>' and
+-- 'd:<device token digest>' (so one token redirected to other addresses is
+-- counted too). Server-only. The limit is per UTC calendar day, so across
+-- midnight a key can see up to twice the limit within 24 hours; it is a
+-- brake on mail bombing, not a hard 24 hour cap, and there is no global limit.
+create table public.motion_consent_mail_counters (
+  counter_key text not null check (char_length(counter_key) <= 80),
+  day date not null default current_date,
+  count integer not null default 1,
+  primary key (counter_key, day)
+);
+
+alter table public.motion_consent_mail_counters enable row level security;
+revoke all on public.motion_consent_mail_counters
+  from public, anon, authenticated;
+grant select, insert, update, delete
+  on public.motion_consent_mail_counters to service_role;
+
+-- Reserve one mail on every key, atomically and all-or-nothing, before the
+-- mail is sent. False (and nothing counted) when any key is at the limit.
+create function public.motion_consent_mail_slot(
+  p_keys text[],
+  p_limit integer default 5
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_key text;
+  v_count integer;
+begin
+  begin
+    foreach v_key in array p_keys loop
+      insert into public.motion_consent_mail_counters as c
+        (counter_key, day, count)
+      values (v_key, current_date, 1)
+      on conflict (counter_key, day) do update set count = c.count + 1
+        where c.count < p_limit
+      returning c.count into v_count;
+      if not found then
+        raise exception 'motion_mail_limit' using errcode = 'P0014';
+      end if;
+    end loop;
+  exception when sqlstate 'P0014' then
+    return false;
+  end;
+  return true;
+end;
+$$;
+
+revoke all on function public.motion_consent_mail_slot(text[], integer)
+  from public, anon, authenticated;
+grant execute on function public.motion_consent_mail_slot(text[], integer)
+  to service_role;
+
+-- State-guarded (re)start of a device request, after the mail went out. A
+-- row a parent decided in the meantime is never put back to pending: the
+-- existing status comes back instead. 'ok' on success, 'too_soon' while a
+-- pending request is younger than 10 minutes.
+create function public.motion_device_consent_request(
+  p_device_digest text,
+  p_parent_digest text,
+  p_link_digest text,
+  p_locale text,
+  p_expires_at timestamptz
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_status text;
+begin
+  insert into public.motion_device_consents as d
+    (device_token_digest, status, method, parent_email_digest, link_digest,
+     locale, expires_at, requests_today, requests_day)
+  values
+    (p_device_digest, 'pending', 'email_link', p_parent_digest, p_link_digest,
+     p_locale, p_expires_at, 1, current_date)
+  on conflict (device_token_digest) do update
+    set status = 'pending',
+        parent_email_digest = excluded.parent_email_digest,
+        link_digest = excluded.link_digest,
+        locale = excluded.locale,
+        expires_at = excluded.expires_at,
+        decided_at = null,
+        created_at = case
+          when d.status = 'expired' or d.expires_at < now() then now()
+          else d.created_at end,
+        requested_at = now(),
+        requests_today = case
+          when d.requests_day = current_date then d.requests_today + 1
+          else 1 end,
+        requests_day = current_date
+    where d.status = 'expired'
+       or (d.status = 'pending'
+           and (d.expires_at < now()
+                or d.requested_at <= now() - interval '10 minutes'));
+  if found then
+    return 'ok';
+  end if;
+  select status into v_status from public.motion_device_consents
+    where device_token_digest = p_device_digest;
+  return case when v_status = 'pending' then 'too_soon' else v_status end;
+end;
+$$;
+
+revoke all on function public.motion_device_consent_request(
+  text, text, text, text, timestamptz
+) from public, anon, authenticated;
+grant execute on function public.motion_device_consent_request(
+  text, text, text, text, timestamptz
+) to service_role;
