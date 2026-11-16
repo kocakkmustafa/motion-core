@@ -13,6 +13,9 @@ abstract final class MotionDeviceConsentToken {
   static const int byteLength = 32;
   static const int length = 43;
 
+  /// Production callers pass nothing: the default is `Random.secure()`.
+  /// [random] exists only so tests can be deterministic; never pass a seeded
+  /// generator in a shipped build.
   static String generate({Random? random}) {
     final source = random ?? Random.secure();
     final bytes = List<int>.generate(byteLength, (_) => source.nextInt(256));

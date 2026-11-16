@@ -329,10 +329,12 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
   /// Under 13: the permanent block (flag off, today's behavior) or, with
   /// [MotionAccountPage.underThirteenConsentEnabled], a hand-off to the host.
   void _blockAge() {
-    if (widget.underThirteenConsentEnabled) {
-      widget.onUnderThirteen?.call();
+    final handOff = widget.onUnderThirteen;
+    if (widget.underThirteenConsentEnabled && handOff != null) {
+      handOff();
       return;
     }
+    // Flag off, or no host hand-off: stay closed (safe; no account is made).
     _ageBlocked = true;
     _message = MotionAccountString.ageBlocked;
     widget.onAgeBlocked?.call();
@@ -538,6 +540,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         builder: (_) => MotionMembershipPage(
           account: widget.account,
           teenPurchasePolicy: widget.teenPurchasePolicy,
+          underThirteenConsentEnabled: widget.underThirteenConsentEnabled,
         ),
       ),
     );

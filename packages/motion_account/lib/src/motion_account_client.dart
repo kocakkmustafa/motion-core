@@ -80,11 +80,13 @@ enum MotionConsentRequestError {
   parentEmailIsTeen,
   notRequired,
   alreadyApproved,
-  invalidDeviceToken,
-  alreadyDecided,
   tooSoon,
   dailyLimit,
   mailUnavailable,
+
+  // Appended in 0.9.0: existing indexes stay stable.
+  invalidDeviceToken,
+  alreadyDecided,
 }
 
 class MotionConsentRequestRefused implements Exception {
@@ -500,11 +502,8 @@ class MotionAccountClient {
     required String deviceConsentToken,
   }) {
     if (!MotionDeviceConsentToken.isWellFormed(deviceConsentToken)) {
-      throw ArgumentError.value(
-        deviceConsentToken,
-        'deviceConsentToken',
-        'Not a device consent token',
-      );
+      // Never echo the value: it is a bearer-like secret.
+      throw ArgumentError('deviceConsentToken is not well formed');
     }
     return _mutation(
       MotionAccountOperation.signUp,
@@ -528,6 +527,11 @@ class MotionAccountClient {
   /// is [MotionConsentRequestRefused] (including 429 `tooSoon`/`dailyLimit`);
   /// a lost reply is [MotionOperationUnknown]. A malformed token is refused
   /// locally. A reply that is not a well-formed `pending` never grants.
+  ///
+  /// The SDK may attach the signed-in user's JWT (or the public key). The
+  /// server ignores `Authorization` for this action, never logs it and never
+  /// links it to an identity; that guarantee lives in the server edge
+  /// function, not in this client.
   Future<MotionDeviceConsentStatus> requestDeviceConsent({
     required String deviceToken,
     required String parentEmail,
@@ -575,7 +579,9 @@ class MotionAccountClient {
   /// Reads the parent decision for [deviceToken] (no session needed). Any
   /// failure, timeout, malformed or unknown answer is
   /// [MotionDeviceConsentStatus.unavailable]; this never throws and never
-  /// allows an account by itself.
+  /// allows an account by itself. As for [requestDeviceConsent], the server
+  /// ignores any `Authorization` the SDK attaches; that guarantee is the
+  /// edge function's.
   Future<MotionDeviceConsentStatus> deviceConsentStatus(
     String deviceToken,
   ) async {

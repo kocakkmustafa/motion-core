@@ -462,6 +462,24 @@ void main() {
         ),
         throwsArgumentError,
       );
+      // A 44-char token with whitespace/newline: refused, value never echoed.
+      final padded = ' $_token\n';
+      Object? caught;
+      try {
+        await client.signUpUnderThirteen(
+          email: 'child@example.invalid',
+          password: 'long-enough',
+          age: _born(2015, 1, 'US'),
+          deviceConsentToken: padded,
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(padded.length, 45);
+      expect(caught, isA<ArgumentError>());
+      expect('$caught', isNot(contains(_token)));
+      expect('$caught', isNot(contains('abcdefgh')));
+      expect((caught as ArgumentError).invalidValue, isNull);
     });
 
     test('ageStatus parses withdrawn; unknown is no consent', () async {
@@ -505,6 +523,20 @@ void main() {
         );
       }
     });
+  });
+
+  test('MotionConsentRequestError keeps old indexes; new values are last', () {
+    expect(MotionConsentRequestError.values.map((e) => e.name).toList(), [
+      'invalidParentEmail',
+      'parentEmailIsTeen',
+      'notRequired',
+      'alreadyApproved',
+      'tooSoon',
+      'dailyLimit',
+      'mailUnavailable',
+      'invalidDeviceToken',
+      'alreadyDecided',
+    ]);
   });
 
   group('page hand-off', () {
@@ -555,6 +587,26 @@ void main() {
       expect(account.signUps, 0);
       expect(find.text(_blockedText), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('flag true without onUnderThirteen keeps the block', (
+      tester,
+    ) async {
+      final account = _PageAccount();
+      var blocked = 0;
+      await _pump(
+        tester,
+        account,
+        enabled: true,
+        onAgeBlocked: () => blocked++,
+      );
+      await _openRegister(tester);
+      await _chooseAge(tester, 2015, 1);
+      await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+      await tester.pump();
+      expect(blocked, 1);
+      expect(account.signUps, 0);
+      expect(find.text(_blockedText), findsOneWidget);
     });
 
     testWidgets('flag true: a 13+ sign-up is unchanged', (tester) async {
