@@ -229,4 +229,563 @@ begin
 end;
 $test$;
 
+-- VELI-01 (ADR-008): under-13 device consent. Same harness, same transaction.
+do $test$
+declare
+  child uuid := '66666666-6666-6666-6666-666666666666';
+  child2 uuid := '77777777-7777-7777-7777-777777777777';
+  ym_child text := to_char(current_date - interval '10 years', 'YYYY-MM');
+  raw_ok text := repeat('a', 43);
+  raw_pending text := repeat('b', 43);
+  raw_old text := repeat('c', 43);
+  raw_denied text := repeat('d', 43);
+  meta jsonb;
+  consent record;
+  n integer;
+  signup jsonb;
+begin
+  -- Server-only tables carry digests only: no raw token or address column.
+  select count(*) into n from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('motion_device_consents', 'motion_consent_decisions')
+      and column_name in ('device_token', 'raw_token', 'token', 'parent_email',
+                          'email', 'user_id', 'child_name', 'birth_year_month');
+  if n <> 0 then
+    raise exception 'a raw token, address or child key column exists: %', n;
+  end if;
+  select count(*) into n from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    where c.relname = 'motion_device_consents' and a.attnum > 0
+      and a.attname = 'device_token_digest' and a.atttypid = 'text'::regtype;
+  if n <> 1 then raise exception 'device table is not keyed by a digest'; end if;
+  -- No foreign key: the device row precedes any account.
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.motion_device_consents'::regclass and contype = 'f'
+  ) then
+    raise exception 'device consents carry a foreign key';
+  end if;
+
+  insert into public.motion_device_consents
+    (device_token_digest, status, parent_email_digest, link_digest,
+     expires_at, decided_at)
+  values
+    (encode(sha256(convert_to(raw_ok, 'UTF8')), 'hex'), 'approved', null,
+     repeat('1', 64), now() + interval '7 days', now()),
+    (encode(sha256(convert_to(raw_pending, 'UTF8')), 'hex'), 'pending',
+     repeat('9', 64), repeat('2', 64), now() + interval '7 days', null),
+    (encode(sha256(convert_to(raw_old, 'UTF8')), 'hex'), 'approved', null,
+     repeat('3', 64), now() + interval '7 days', now()),
+    (encode(sha256(convert_to(raw_denied, 'UTF8')), 'hex'), 'denied', null,
+     null, now() + interval '7 days', now());
+  update public.motion_device_consents
+    set created_at = now() - interval '31 days'
+    where device_token_digest
+          = encode(sha256(convert_to(raw_old, 'UTF8')), 'hex');
+
+  -- Direct under-13 sign-up (no token, pending, expired, denied, wrong token)
+  -- is refused and leaves nothing behind (P0013).
+  foreach signup in array array[
+    null::jsonb,
+    jsonb_build_object('device_consent_token', raw_pending),
+    jsonb_build_object('device_consent_token', raw_old),
+    jsonb_build_object('device_consent_token', raw_denied),
+    jsonb_build_object('device_consent_token', repeat('z', 43))
+  ] loop
+    begin
+      insert into auth.users
+        (id, instance_id, aud, role, email, encrypted_password,
+         raw_user_meta_data, created_at, updated_at)
+      values
+        (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+         'authenticated', 'child@motion.test', 'x',
+         jsonb_build_object('motion_age', jsonb_build_object(
+           'birth_year_month', ym_child, 'country', 'US',
+           'policy_version', '2026-11-17.1') || coalesce(signup, '{}')),
+         now(), now());
+      raise exception 'under-13 sign-up without an approved token: %', signup;
+    exception when sqlstate 'P0013' then
+      null;
+    end;
+  end loop;
+  if exists (select 1 from auth.users where id = child)
+     or exists (select 1 from public.motion_age_declarations
+                where user_id = child)
+     or exists (select 1 from public.motion_parental_consents
+                where user_id = child) then
+    raise exception 'a refused sign-up left rows behind';
+  end if;
+  -- A refused attempt did not consume the pending approval either.
+  select count(*) into n from public.motion_device_consents;
+  if n <> 4 then raise exception 'refusals consumed device rows: %', n; end if;
+
+  -- Approved token: the account is created, consent is written, the device
+  -- row is gone, the metadata (token included) is stripped.
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password,
+     raw_user_meta_data, created_at, updated_at)
+  values
+    (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+     'authenticated', 'child@motion.test', 'x',
+     jsonb_build_object('motion_age', jsonb_build_object(
+       'birth_year_month', ym_child, 'country', 'US',
+       'policy_version', '2026-11-17.1', 'device_consent_token', raw_ok)),
+     now(), now());
+  select raw_user_meta_data into meta from auth.users where id = child;
+  if meta ? 'motion_age' or meta::text like '%' || raw_ok || '%' then
+    raise exception 'age metadata or device token was not stripped: %', meta;
+  end if;
+  select * into consent from public.motion_parental_consents
+    where user_id = child;
+  if consent.status is distinct from 'approved'
+     or consent.method is distinct from 'device_token_email'
+     or consent.parent_email_digest is not null
+     or consent.manage_digest is distinct from repeat('1', 64) then
+    raise exception 'device consent was not carried over: %', consent;
+  end if;
+  if exists (
+    select 1 from public.motion_device_consents
+    where device_token_digest = encode(sha256(convert_to(raw_ok, 'UTF8')), 'hex')
+  ) then
+    raise exception 'token digest survived binding to the account';
+  end if;
+  if public.motion_account_restricted(child) then
+    raise exception 'consented child is restricted';
+  end if;
+  if public.motion_age_band(ym_child, 'US', current_date) <> 'blocked' then
+    raise exception 'band computation drifted';
+  end if;
+
+  -- A consumed token cannot create a second account.
+  begin
+    insert into auth.users
+      (id, instance_id, aud, role, email, encrypted_password,
+       raw_user_meta_data, created_at, updated_at)
+    values
+      (child2, '00000000-0000-0000-0000-000000000000', 'authenticated',
+       'authenticated', 'child2@motion.test', 'x',
+       jsonb_build_object('motion_age', jsonb_build_object(
+         'birth_year_month', ym_child, 'country', 'US',
+         'policy_version', '2026-11-17.1', 'device_consent_token', raw_ok)),
+       now(), now());
+    raise exception 'a consumed token was accepted twice';
+  exception when sqlstate 'P0013' then
+    null;
+  end;
+
+  -- Withdrawal closes account features again.
+  update public.motion_parental_consents
+    set status = 'withdrawn', decided_at = now() where user_id = child;
+  if not public.motion_account_restricted(child) then
+    raise exception 'withdrawn consent does not restrict the account';
+  end if;
+  -- Purge: not before 30 days, then the account goes with its receipt.
+  if public.motion_purge_unconsented_accounts() <> 0
+     or not exists (select 1 from auth.users where id = child) then
+    raise exception 'a fresh withdrawal was purged early';
+  end if;
+  update public.motion_parental_consents
+    set decided_at = now() - interval '31 days' where user_id = child;
+  if public.motion_purge_unconsented_accounts() <> 1 then
+    raise exception 'withdrawn purge count';
+  end if;
+  if exists (select 1 from auth.users where id = child)
+     or exists (select 1 from public.motion_parental_consents
+                where user_id = child)
+     or not public.motion_was_account_deleted(child) then
+    raise exception 'withdrawn account purge did not cascade with a receipt';
+  end if;
+
+  -- The 30 day clock removed the unclaimed old approval; the rest (still
+  -- inside the window) stays: pending, denied.
+  select count(*) into n from public.motion_device_consents;
+  if n <> 2 then raise exception 'device retention purge: %', n; end if;
+  if exists (
+    select 1 from public.motion_device_consents
+    where device_token_digest = encode(sha256(convert_to(raw_old, 'UTF8')), 'hex')
+  ) then
+    raise exception 'a 31 day old device row survived';
+  end if;
+  update public.motion_device_consents set created_at = now() - interval '31 days';
+  perform public.motion_purge_unconsented_accounts();
+  select count(*) into n from public.motion_device_consents;
+  if n <> 0 then raise exception 'pending/denied rows survived 30 days: %', n; end if;
+
+  -- Clients cannot read or call the device machinery.
+  set local role authenticated;
+  begin
+    perform 1 from public.motion_device_consents;
+    raise exception 'device consents readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform 1 from public.motion_consent_decisions;
+    raise exception 'decisions readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.motion_consume_device_consent(child, raw_ok);
+    raise exception 'client called consume';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
+-- Deleting the Auth user removes the consent row and writes the receipt
+-- (motion-delete-account only calls admin.deleteUser).
+do $test$
+declare
+  child uuid := '88888888-8888-8888-8888-888888888888';
+  ym_child text := to_char(current_date - interval '9 years', 'YYYY-MM');
+  raw text := repeat('e', 43);
+begin
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at)
+  values (encode(sha256(convert_to(raw, 'UTF8')), 'hex'), 'approved',
+          repeat('4', 64), now() + interval '7 days');
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password,
+     raw_user_meta_data, created_at, updated_at)
+  values
+    (child, '00000000-0000-0000-0000-000000000000', 'authenticated',
+     'authenticated', 'child3@motion.test', 'x',
+     jsonb_build_object('motion_age', jsonb_build_object(
+       'birth_year_month', ym_child, 'country', 'US',
+       'policy_version', '2026-11-17.1', 'device_consent_token', raw)),
+     now(), now());
+  if not exists (select 1 from public.motion_parental_consents
+                 where user_id = child) then
+    raise exception 'consent row missing before delete';
+  end if;
+  delete from auth.users where id = child;
+  if exists (select 1 from public.motion_parental_consents
+             where user_id = child)
+     or exists (select 1 from public.motion_age_declarations
+                where user_id = child) then
+    raise exception 'delete did not cascade consent and declaration';
+  end if;
+  if not public.motion_was_account_deleted(child) then
+    raise exception 'delete wrote no receipt';
+  end if;
+end;
+$test$;
+
+-- VELI-01 review fixes: atomic mail counters, final withdrawal, state-guarded
+-- request, anonymous trace week rounding.
+do $test$
+declare
+  u uuid := '99999999-9999-9999-9999-999999999999';
+  dig text := repeat('5', 64);
+  n integer;
+  r text;
+  ok boolean;
+  created timestamptz;
+begin
+  -- Counters: five slots, the sixth is refused; nothing is counted on refusal.
+  for n in 1..5 loop
+    if not public.motion_consent_mail_slot(array['p:x'], 5) then
+      raise exception 'slot % refused', n;
+    end if;
+  end loop;
+  if public.motion_consent_mail_slot(array['p:x'], 5) then
+    raise exception 'sixth slot granted';
+  end if;
+  -- All or nothing across keys: 'p:x' is full, 'd:y' must stay untouched.
+  if public.motion_consent_mail_slot(array['d:y', 'p:x'], 5) then
+    raise exception 'a full key did not refuse the pair';
+  end if;
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'd:y') then
+    raise exception 'a refused pair counted the free key';
+  end if;
+  if not public.motion_consent_mail_slot(array['d:y'], 5) then
+    raise exception 'free key refused';
+  end if;
+  -- Old days are cleaned by the purge; today stays.
+  insert into public.motion_consent_mail_counters (counter_key, day, count)
+    values ('p:old', current_date - 2, 5), ('p:yesterday', current_date - 1, 5);
+  perform public.motion_purge_unconsented_accounts();
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'p:old')
+     or not exists (select 1 from public.motion_consent_mail_counters
+                    where counter_key = 'p:yesterday')
+     or not exists (select 1 from public.motion_consent_mail_counters
+                    where counter_key = 'p:x' and count = 5) then
+    raise exception 'counter cleanup is wrong';
+  end if;
+
+  -- State-guarded request: never puts a decided row back to pending.
+  r := public.motion_device_consent_request(
+    repeat('6', 64), dig, repeat('7', 64), 'en', now() + interval '7 days');
+  if r <> 'ok' then raise exception 'new request: %', r; end if;
+  r := public.motion_device_consent_request(
+    repeat('6', 64), dig, repeat('8', 64), 'en', now() + interval '7 days');
+  if r <> 'too_soon' then raise exception 'immediate resend: %', r; end if;
+  foreach r in array array['approved', 'denied', 'withdrawn'] loop
+    update public.motion_device_consents
+      set status = r, parent_email_digest = null,
+          requested_at = now() - interval '1 hour'
+      where device_token_digest = repeat('6', 64);
+    if public.motion_device_consent_request(
+         repeat('6', 64), dig, repeat('8', 64), 'en',
+         now() + interval '7 days') <> r
+       or (select status from public.motion_device_consents
+           where device_token_digest = repeat('6', 64)) <> r then
+      raise exception 'a % row was revived', r;
+    end if;
+  end loop;
+  update public.motion_device_consents
+    set status = 'expired', created_at = now() - interval '20 days'
+    where device_token_digest = repeat('6', 64);
+  if public.motion_device_consent_request(
+       repeat('6', 64), dig, repeat('8', 64), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'expired row did not restart';
+  end if;
+  select created_at into created from public.motion_device_consents
+    where device_token_digest = repeat('6', 64);
+  if created < now() - interval '1 minute' then
+    raise exception 'retention clock did not restart';
+  end if;
+
+  -- A withdrawn device row can never be consumed.
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at)
+  values (encode(sha256(convert_to(repeat('w', 43), 'UTF8')), 'hex'),
+          'withdrawn', repeat('a', 64), now() + interval '7 days');
+  if public.motion_consume_device_consent(u, repeat('w', 43)) then
+    raise exception 'a withdrawn device row was consumed';
+  end if;
+
+  -- Withdrawn account consent is final.
+  insert into auth.users
+    (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+  values (u, '00000000-0000-0000-0000-000000000000', 'authenticated',
+          'authenticated', 'final@motion.test', 'x', now(), now());
+  insert into public.motion_parental_consents
+    (user_id, status, expires_at, decided_at)
+  values (u, 'withdrawn', now(), now());
+  update public.motion_parental_consents
+    set decided_at = now() where user_id = u;
+  foreach r in array array['pending', 'approved', 'expired', 'denied'] loop
+    begin
+      update public.motion_parental_consents set status = r where user_id = u;
+      raise exception 'withdrawn went back to %', r;
+    exception when check_violation then
+      null;
+    end;
+  end loop;
+  begin
+    insert into public.motion_parental_consents
+      (user_id, status, parent_email_digest, expires_at)
+    values (u, 'pending', dig, now())
+    on conflict (user_id) do update set status = 'pending';
+    raise exception 'upsert revived a withdrawn consent';
+  exception when check_violation then
+    null;
+  end;
+
+  -- The anonymous trace is week rounded and carries no key.
+  insert into public.motion_consent_decisions (status) values ('approved');
+  if (select extract(isodow from decided_on) from public.motion_consent_decisions
+      order by id limit 1) <> 1 then
+    raise exception 'decided_on is not a week start';
+  end if;
+
+  -- Server only.
+  set local role authenticated;
+  begin
+    perform public.motion_consent_mail_slot(array['x'], 5);
+    raise exception 'client called the slot function';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.motion_device_consent_request(
+      repeat('1', 64), dig, dig, 'en', now());
+    raise exception 'client called the request function';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform 1 from public.motion_consent_mail_counters;
+    raise exception 'counters readable by a client';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
+-- VELI-01 second review round.
+do $test$
+declare
+  n integer;
+begin
+  -- No positive limit, no slot (not even the first insert); bad key lists fail.
+  if public.motion_consent_mail_slot(array['lim0'], 0)
+     or public.motion_consent_mail_slot(array['lim0'], -1)
+     or public.motion_consent_mail_slot(array['lim0'], null) then
+    raise exception 'a slot was granted without a positive limit';
+  end if;
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'lim0') then
+    raise exception 'a refused limit still counted';
+  end if;
+  begin
+    perform public.motion_consent_mail_slot(null, 5);
+    raise exception 'null keys accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  begin
+    perform public.motion_consent_mail_slot(array[]::text[], 5);
+    raise exception 'empty keys accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+
+  -- Release: atomic, today's row, never below zero.
+  perform public.motion_consent_mail_slot(array['rel:a', 'rel:b'], 5);
+  perform public.motion_consent_mail_slot_release(array['rel:a']);
+  perform public.motion_consent_mail_slot_release(array['rel:a']);
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'rel:a';
+  if n <> 0 then raise exception 'release went below zero or failed: %', n; end if;
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'rel:b';
+  if n <> 1 then raise exception 'release touched another key: %', n; end if;
+  if not exists (select 1 from public.motion_consent_mail_counters
+                 where counter_key = 'rel:b'
+                   and day = (now() at time zone 'utc')::date) then
+    raise exception 'counter day is not the UTC date';
+  end if;
+  -- A released key can be reserved up to the limit again.
+  for n in 1..5 loop
+    if not public.motion_consent_mail_slot(array['rel:a'], 5) then
+      raise exception 'slot % after release refused', n;
+    end if;
+  end loop;
+  if public.motion_consent_mail_slot(array['rel:a'], 5) then
+    raise exception 'limit exceeded after release';
+  end if;
+
+  -- An approval older than 30 days restarts like an expiry; a live one does not.
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at, decided_at)
+  values (repeat('e', 64), 'approved', repeat('b', 64),
+          now() + interval '7 days', now());
+  if public.motion_device_consent_request(
+       repeat('e', 64), repeat('c', 64), repeat('d', 64),
+       'en', now() + interval '7 days') <> 'approved' then
+    raise exception 'a live approval was restarted';
+  end if;
+  update public.motion_device_consents
+    set created_at = now() - interval '31 days'
+    where device_token_digest = repeat('e', 64);
+  if public.motion_device_consent_request(
+       repeat('e', 64), repeat('c', 64), repeat('d', 64),
+       'en', now() + interval '7 days') <> 'ok' then
+    raise exception 'a 31 day approval did not restart';
+  end if;
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('e', 64))
+       <> 'pending'
+     or (select created_at from public.motion_device_consents
+         where device_token_digest = repeat('e', 64))
+        < now() - interval '1 minute' then
+    raise exception 'stale approval restart did not reset the clock';
+  end if;
+
+  -- Release is server only.
+  set local role authenticated;
+  begin
+    perform public.motion_consent_mail_slot_release(array['rel:a']);
+    raise exception 'client called release';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
+-- VELI-01 third round: claim before mail, day-aware release, unclaim.
+do $test$
+declare
+  n integer;
+  dig text := repeat('f', 64);
+  ydy date := (now() at time zone 'utc')::date - 1;
+begin
+  -- The release hits the day that was reserved, not today.
+  if not public.motion_consent_mail_slot(array['day:a'], 5, ydy) then
+    raise exception 'slot on yesterday refused';
+  end if;
+  if not public.motion_consent_mail_slot(array['day:a'], 5) then
+    raise exception 'slot today refused';
+  end if;
+  perform public.motion_consent_mail_slot_release(array['day:a'], ydy);
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'day:a' and day = ydy;
+  if n <> 0 then raise exception 'release missed the reserved day: %', n; end if;
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'day:a' and day = (now() at time zone 'utc')::date;
+  if n <> 1 then raise exception 'release touched today: %', n; end if;
+  -- A far away day is refused.
+  begin
+    perform public.motion_consent_mail_slot(array['day:b'], 5, ydy - 5);
+    raise exception 'a far day was accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+
+  -- Claim, then unclaim when the mail cannot go out.
+  if public.motion_device_consent_request(
+       repeat('9', 64), dig, repeat('a9', 32), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'claim failed';
+  end if;
+  -- Another request's link must not be dropped by a stale unclaim.
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('b9', 32));
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'pending' then
+    raise exception 'unclaim of a foreign link changed the row';
+  end if;
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('a9', 32));
+  if (select status || coalesce(link_digest, '-') ||
+             coalesce(parent_email_digest, '-')
+      from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'expired--' then
+    raise exception 'unclaim did not drop the claim';
+  end if;
+  -- The device can start over at once.
+  if public.motion_device_consent_request(
+       repeat('9', 64), dig, repeat('c9', 32), 'en',
+       now() + interval '7 days') <> 'ok' then
+    raise exception 'restart after unclaim failed';
+  end if;
+  -- A decided row is never touched by an unclaim.
+  update public.motion_device_consents
+    set status = 'approved', link_digest = repeat('d9', 32)
+    where device_token_digest = repeat('9', 64);
+  perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('d9', 32));
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('9', 64)) <> 'approved' then
+    raise exception 'unclaim changed a decided row';
+  end if;
+
+  set local role authenticated;
+  begin
+    perform public.motion_device_consent_unclaim(repeat('9', 64), repeat('d9', 32));
+    raise exception 'client called unclaim';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
 rollback;
