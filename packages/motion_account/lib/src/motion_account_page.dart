@@ -42,6 +42,8 @@ class MotionAccountPage extends StatefulWidget {
     this.storeAgeSignal = MotionPlatformSignals.requestAgeSignal,
     this.ageBlocked = false,
     this.onAgeBlocked,
+    this.underThirteenConsentEnabled = false,
+    this.onUnderThirteen,
     this.clock = DateTime.now,
     this.teenPurchasePolicy = MotionTeenPurchasePolicy.parentalConsentRequired,
   });
@@ -78,6 +80,13 @@ class MotionAccountPage extends StatefulWidget {
   final Future<MotionStoreAgeSignal?> Function() storeAgeSignal;
   final bool ageBlocked;
   final VoidCallback? onAgeBlocked;
+
+  /// Opt-in (default false = today's permanent under-13 block). When true an
+  /// under-13 result calls [onUnderThirteen] instead of [onAgeBlocked]; the
+  /// page sends no request and creates no account, and the host runs the
+  /// parent-approval flow (device wait token) before any account exists.
+  final bool underThirteenConsentEnabled;
+  final VoidCallback? onUnderThirteen;
   final DateTime Function() clock;
 
   /// Passed to the membership page this page opens; account features stay
@@ -288,7 +297,12 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     );
   }
 
-  bool get _restricted => _ageStatus?.restrictedOn(widget.clock()) ?? false;
+  bool get _restricted =>
+      _ageStatus?.restrictedOn(
+        widget.clock(),
+        underThirteenConsent: widget.underThirteenConsentEnabled,
+      ) ??
+      false;
 
   /// Owner-scoped status read. Failure shows nothing extra: the server's RLS
   /// still closes restricted writes, and no unobserved state is invented.
@@ -312,7 +326,15 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     }
   }
 
+  /// Under 13: the permanent block (flag off, today's behavior) or, with
+  /// [MotionAccountPage.underThirteenConsentEnabled], a hand-off to the host.
   void _blockAge() {
+    final handOff = widget.onUnderThirteen;
+    if (widget.underThirteenConsentEnabled && handOff != null) {
+      handOff();
+      return;
+    }
+    // Flag off, or no host hand-off: stay closed (safe; no account is made).
     _ageBlocked = true;
     _message = MotionAccountString.ageBlocked;
     widget.onAgeBlocked?.call();
@@ -372,7 +394,9 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
           MotionConsentRequestError.invalidParentEmail ||
           MotionConsentRequestError.parentEmailIsTeen =>
             MotionAccountString.consentEmailInvalid,
-          MotionConsentRequestError.mailUnavailable =>
+          MotionConsentRequestError.mailUnavailable ||
+          MotionConsentRequestError.invalidDeviceToken ||
+          MotionConsentRequestError.alreadyDecided =>
             MotionAccountString.requestFailed,
           MotionConsentRequestError.notRequired ||
           MotionConsentRequestError.alreadyApproved => null,
@@ -516,6 +540,7 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
         builder: (_) => MotionMembershipPage(
           account: widget.account,
           teenPurchasePolicy: widget.teenPurchasePolicy,
+          underThirteenConsentEnabled: widget.underThirteenConsentEnabled,
         ),
       ),
     );
@@ -573,7 +598,8 @@ class _MotionAccountPageState extends State<MotionAccountPage> {
     MotionAccountOperation.signUp ||
     MotionAccountOperation.passwordReset ||
     MotionAccountOperation.resendConfirmation ||
-    MotionAccountOperation.parentalConsent =>
+    MotionAccountOperation.parentalConsent ||
+    MotionAccountOperation.deviceConsent =>
       MotionAccountString.emailRequestUnknown,
     MotionAccountOperation.updatePassword =>
       MotionAccountString.passwordUpdateUnknown,

@@ -20,6 +20,7 @@ class MotionMembershipPage extends StatefulWidget {
     this.purchaseAdapter,
     this.serverAdapter,
     this.teenPurchasePolicy = MotionTeenPurchasePolicy.parentalConsentRequired,
+    this.underThirteenConsentEnabled = false,
   });
 
   final MotionAccountClient account;
@@ -29,6 +30,10 @@ class MotionMembershipPage extends StatefulWidget {
   /// This host's rule for a consent-pending teen (see
   /// [MotionTeenPurchasePolicy]). Defaults to no purchase until approval.
   final MotionTeenPurchasePolicy teenPurchasePolicy;
+
+  /// Opt-in, as on `MotionAccountPage`: an under-13 account buys only once
+  /// its parent approved. Default false keeps today's rule.
+  final bool underThirteenConsentEnabled;
 
   @override
   State<MotionMembershipPage> createState() => _MotionMembershipPageState();
@@ -161,8 +166,18 @@ class _MotionMembershipPageState extends State<MotionMembershipPage> {
       final today = DateTime.now();
       final policy = widget.teenPurchasePolicy;
       _storeFamilyControls =
-          age?.storeDecidesPurchaseOn(today, policy) ?? false;
-      if (age?.purchaseRestrictedOn(today, policy) ?? false) {
+          age?.storeDecidesPurchaseOn(
+            today,
+            policy,
+            underThirteenConsent: widget.underThirteenConsentEnabled,
+          ) ??
+          false;
+      if (age?.purchaseRestrictedOn(
+            today,
+            policy,
+            underThirteenConsent: widget.underThirteenConsentEnabled,
+          ) ??
+          false) {
         setState(() {
           _consentRequired = true;
           _offers = const [];

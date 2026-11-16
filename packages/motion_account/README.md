@@ -416,6 +416,23 @@ under-13 band never buys, and the server verifies purchases the same way
 apps pick `storeFamilyControls` (founder decision K-2, 27 Oct 2026); the
 package default stays `parentalConsentRequired`.
 
+Under-13 parental consent (0.9.0, opt-in, default off): a host may pass
+`underThirteenConsentEnabled: true` and `onUnderThirteen` to `MotionAccountPage`
+(an under-13 result then calls `onUnderThirteen`, never `onAgeBlocked`; no
+request, no account) and `underThirteenConsent: true` to
+`MotionAgePolicy.bandFor`, `MotionAgeStatus.bandOn/restrictedOn` and
+`purchaseRestrictedOn/storeDecidesPurchaseOn` (new band
+`MotionAgeBand.underThirteenConsentRequired`; new
+`MotionParentalConsent.withdrawn`). The child has no account: the host makes a
+random per-device wait token with `MotionDeviceConsentToken.generate()` (43
+characters, never derived from the child; Core does not store it), calls
+`requestDeviceConsent`, polls `deviceConsentStatus` (any error or unknown
+answer is `unavailable`, which never grants) and, only when `allowsAccount`,
+`signUpUnderThirteen`. `MotionParentalConsentMachine` is the pure transition
+table. With the flags off every behavior is exactly as before. Server side:
+`motion-parental-consent` actions `request_device`/`status`/`withdraw` (separate
+change).
+
 The parent approves or declines on the YULAlab site consent page through the
 `motion-parental-consent` Edge Function. Approval lifts the restriction; denial
 deletes the account (deletion receipt included). The parent address is stored

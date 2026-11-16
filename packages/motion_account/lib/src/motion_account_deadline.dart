@@ -15,6 +15,7 @@ enum MotionAccountOperation {
   deleteAccount,
   declareAge,
   parentalConsent,
+  deviceConsent,
 }
 
 /// No definite server answer arrived before the operation's total deadline,

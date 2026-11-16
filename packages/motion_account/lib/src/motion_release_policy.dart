@@ -27,20 +27,38 @@ enum MotionTeenPurchasePolicy {
 extension MotionTeenPurchaseStatus on MotionAgeStatus {
   /// Whether the membership page withholds new purchases under [policy].
   /// Only a consent-pending teen differs between the policies.
-  bool purchaseRestrictedOn(DateTime today, MotionTeenPurchasePolicy policy) {
-    if (bandOn(today) == MotionAgeBand.blocked) return true;
+  ///
+  /// With [underThirteenConsent] (default false: today's rule, an under-13
+  /// band never buys) an under-13 account buys only once its parent
+  /// approved; every other consent state, including `withdrawn`, is closed
+  /// whatever the policy.
+  bool purchaseRestrictedOn(
+    DateTime today,
+    MotionTeenPurchasePolicy policy, {
+    bool underThirteenConsent = false,
+  }) {
+    final band = bandOn(today, underThirteenConsent: underThirteenConsent);
+    if (band == MotionAgeBand.blocked) return true;
+    if (band == MotionAgeBand.underThirteenConsentRequired) {
+      return consent != MotionParentalConsent.approved;
+    }
     return policy == MotionTeenPurchasePolicy.parentalConsentRequired &&
-        restrictedOn(today);
+        restrictedOn(today, underThirteenConsent: underThirteenConsent);
   }
 
   /// A teen whose purchases are left to the store's family controls.
   bool storeDecidesPurchaseOn(
     DateTime today,
-    MotionTeenPurchasePolicy policy,
-  ) =>
+    MotionTeenPurchasePolicy policy, {
+    bool underThirteenConsent = false,
+  }) =>
       policy == MotionTeenPurchasePolicy.storeFamilyControls &&
-      restrictedOn(today) &&
-      !purchaseRestrictedOn(today, policy);
+      restrictedOn(today, underThirteenConsent: underThirteenConsent) &&
+      !purchaseRestrictedOn(
+        today,
+        policy,
+        underThirteenConsent: underThirteenConsent,
+      );
 }
 
 /// Former single gate for "paid features". Its value stays false because

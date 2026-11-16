@@ -231,6 +231,50 @@ void main() {
     account.supabase.dispose();
   });
 
+  for (final state in MotionParentalConsent.values) {
+    for (final flag in [true, false]) {
+      testWidgets(
+        'under-13 account, consent ${state.name}, flag $flag: '
+        '${flag && state == MotionParentalConsent.approved ? 'offers' : 'no offers'}',
+        (tester) async {
+          final account = await _account(false);
+          account.age = MotionAgeStatus(
+            declaration: MotionAgeDeclaration(
+              birthYear: DateTime.now().year - 10,
+              birthMonth: 1,
+              countryCode: 'US',
+              policyVersion: MotionAgePolicy.version,
+            ),
+            consent: state,
+          );
+          final store = _Store(const [_streamOffer]);
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: ThemeData(platform: TargetPlatform.android),
+              home: MotionMembershipPage(
+                account: account,
+                purchaseAdapter: store,
+                serverAdapter: _Server(),
+                teenPurchasePolicy:
+                    MotionTeenPurchasePolicy.storeFamilyControls,
+                underThirteenConsentEnabled: flag,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final opens = flag && state == MotionParentalConsent.approved;
+          expect(store.fetchCount, opens ? 1 : 0);
+          expect(
+            find.widgetWithText(FilledButton, 'Choose'),
+            opens ? findsOneWidget : findsNothing,
+          );
+          await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+          account.supabase.dispose();
+        },
+      );
+    }
+  }
+
   testWidgets('an approved or adult account still sees the offers', (
     tester,
   ) async {
