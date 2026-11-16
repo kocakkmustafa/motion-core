@@ -41,6 +41,12 @@ enum MotionAgeBand {
 
   /// 18 or older.
   adult,
+
+  /// Under 13, only with the opt-in `underThirteenConsent` flag of
+  /// [MotionAgePolicy.bandFor]: no account exists yet; a parent approves
+  /// first (device wait token, see `MotionDeviceConsentToken`). Without the
+  /// flag an under-13 declaration stays [blocked].
+  underThirteenConsentRequired,
 }
 
 /// Digital-consent age for one country. [note] records the basis reviewed.
@@ -183,9 +189,14 @@ class MotionAgePolicy {
   static MotionAgeBand bandFor(
     MotionAgeDeclaration declaration, {
     required DateTime today,
+    bool underThirteenConsent = false,
   }) {
     final age = ageOn(declaration.birthYear, declaration.birthMonth, today);
-    if (age < minimumAge) return MotionAgeBand.blocked;
+    if (age < minimumAge) {
+      return underThirteenConsent
+          ? MotionAgeBand.underThirteenConsentRequired
+          : MotionAgeBand.blocked;
+    }
     if (age < ruleFor(declaration.countryCode).consentAge) {
       return MotionAgeBand.parentalConsentRequired;
     }
