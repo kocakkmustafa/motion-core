@@ -25,6 +25,7 @@ let decisions: Record<string, unknown>[] = [];
 let counters = new Map<string, number>();
 let onSlot: (() => void) | undefined;
 let authCalls = 0;
+let onDevicePatch: (() => void) | undefined;
 
 // PostgREST filters of the fixture: eq.<v> and gte.<v> on any column.
 function matches(row: Record<string, unknown>, url: string): boolean {
@@ -83,7 +84,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       user_metadata: {},
     });
   }
-  if (url.includes("/rest/v1/rpc/motion_consent_mail_slot")) {
+  if (url.endsWith("/rest/v1/rpc/motion_consent_mail_slot")) {
     // Mirrors the SQL: all keys or none, day keyed, never decremented.
     const day = new Date().toISOString().slice(0, 10);
     const keys: string[] = body.p_keys;
@@ -95,6 +96,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     onSlot?.();
     return Response.json(true);
+  }
+  if (url.includes("/rest/v1/rpc/motion_consent_mail_slot_release")) {
+    const day = new Date().toISOString().slice(0, 10);
+    for (const k of body.p_keys as string[]) {
+      const at = `${k}|${day}`;
+      counters.set(at, Math.max((counters.get(at) ?? 0) - 1, 0));
+    }
+    return new Response(null, { status: 204 });
   }
   if (url.includes("/rest/v1/rpc/motion_device_consent_request")) {
     // Mirrors the state-guarded upsert of the SQL function.
@@ -120,14 +129,16 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       });
       return Response.json("ok");
     }
-    const lapsed = row.status === "expired" ||
+    const staleApproval = row.status === "approved" &&
+      Date.parse(String(row.created_at)) < Date.now() - 30 * 24 * 60 * 60_000;
+    const lapsed = row.status === "expired" || staleApproval ||
       (row.status === "pending" &&
         (String(row.expires_at) < new Date().toISOString() ||
           Date.parse(String(row.requested_at)) <= Date.now() - 10 * 60_000));
     if (!lapsed) {
       return Response.json(row.status === "pending" ? "too_soon" : row.status);
     }
-    const restart = row.status === "expired" ||
+    const restart = row.status === "expired" || staleApproval ||
       String(row.expires_at) < new Date().toISOString();
     Object.assign(row, fresh, {
       requests_today: Number(row.requests_today) + 1,
@@ -151,6 +162,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       return new Response(null, { status: 201 });
     }
     if (method === "PATCH") {
+      onDevicePatch?.();
       const hit = deviceRows.filter((r) => matches(r, url));
       for (const r of hit) Object.assign(r, body);
       return Response.json(hit);
@@ -201,6 +213,7 @@ function reset() {
   decisions = [];
   counters = new Map();
   onSlot = undefined;
+  onDevicePatch = undefined;
   authCalls = 0;
 }
 
@@ -1101,6 +1114,134 @@ Deno.test("request_device and status ignore the Authorization header", async () 
     authCalls === 0,
     "the bearer is never verified or tied to an identity",
   );
+});
+
+// Second review round.
+Deno.test("an approval older than 30 days lets the device start over", async () => {
+  reset();
+  await device();
+  await post({ action: "decide", token: linkToken(), decision: "approve" });
+  const fresh = await device();
+  assert(fresh.status === 409, "a live approval still blocks");
+  deviceRows[0].created_at = ago(60 * 24 * 31);
+  const restart = await device();
+  assert(restart.status === 200, `restart ${restart.status}`);
+  assert(deviceRows[0].status === "pending", "pending again");
+  assert(
+    Date.parse(String(deviceRows[0].created_at)) > Date.now() - 60_000,
+    "retention clock reset like an expiry",
+  );
+});
+
+Deno.test("a mail that cannot be sent gives its slot back", async () => {
+  reset();
+  smtp.options = { authReply: "535 5.7.8 bad credentials" };
+  for (let i = 0; i < 8; i++) {
+    const { result } = await capturingErrors(() => device());
+    assert(result.status === 503, `attempt ${i}`);
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  assert(
+    (counters.get(`p:${await sha256("p@example.invalid")}|${day}`) ?? 0) === 0,
+    "parent slots returned",
+  );
+  assert(
+    (counters.get(`d:${await sha256(DEVICE)}|${day}`) ?? 0) === 0,
+    "token slots returned",
+  );
+  smtp.options = {};
+  assert((await device()).status === 200, "mail works once SMTP is back");
+});
+
+Deno.test("a too_soon race gives its slot back", async () => {
+  reset();
+  await device();
+  deviceRows[0].requested_at = ago(11);
+  onSlot = () => {
+    deviceRows[0].requested_at = new Date().toISOString();
+  };
+  const response = await device();
+  onSlot = undefined;
+  assert(response.status === 429, "too_soon from the guarded write");
+  assert((await response.json()).error === "too_soon", "code");
+  const day = new Date().toISOString().slice(0, 10);
+  assert(
+    counters.get(`d:${await sha256(DEVICE)}|${day}`) === 1,
+    "only the first request keeps its slot",
+  );
+});
+
+Deno.test("withdraw never claims a withdrawal that did not happen", async () => {
+  // The device approval is consumed into an account between lookup and update.
+  reset();
+  await device();
+  const token = linkToken();
+  await post({ action: "decide", token, decision: "approve" });
+  onDevicePatch = () => {
+    deviceRows = [];
+    stored = {
+      user_id: teen,
+      status: "approved",
+      method: "device_token_email",
+      manage_digest: deviceLink,
+    };
+  };
+  const deviceLink = await sha256(token);
+  const response = await post({ action: "withdraw", token });
+  onDevicePatch = undefined;
+  assert(response.status === 200, `status ${response.status}`);
+  assert((await response.json()).status === "withdrawn", "withdrawn body");
+  assert(stored!.status === "withdrawn", "the account row is withdrawn");
+  assert(
+    JSON.stringify(decisions.map((d) => d.status)) ===
+      JSON.stringify(["approved", "withdrawn"]),
+    "one trace for the withdrawal",
+  );
+
+  // The row vanished and no account has it: a clear error, never success.
+  reset();
+  await device();
+  const lost = linkToken();
+  await post({ action: "decide", token: lost, decision: "approve" });
+  onDevicePatch = () => {
+    deviceRows = [];
+  };
+  const gone = await post({ action: "withdraw", token: lost });
+  onDevicePatch = undefined;
+  assert(gone.status === 404, `gone ${gone.status}`);
+  assert(decisions.length === 1, "no withdrawal trace");
+
+  // Account row changed under the update: conflict, no success.
+  reset();
+  await post(
+    { action: "request", parentEmail: "p@example.invalid" },
+    "teen-token",
+  );
+  const t = linkToken();
+  await post({ action: "decide", token: t, decision: "approve" });
+  stored = { ...stored!, status: "approved" };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (
+      url.includes("/rest/v1/motion_parental_consents") &&
+      (init?.method ?? "GET") === "PATCH"
+    ) {
+      return Promise.resolve(Response.json([]));
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const conflict = await post({ action: "withdraw", token: t });
+    assert(conflict.status === 409, `conflict ${conflict.status}`);
+    assert((await conflict.json()).error === "already_decided", "code");
+    assert(
+      decisions.length === 0 || decisions.at(-1)!.status !== "withdrawn",
+      "no trace",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 Deno.test({

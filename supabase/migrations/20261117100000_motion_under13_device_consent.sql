@@ -231,7 +231,7 @@ begin
     where created_at < now() - p_older_than;
   -- Mail counters are day keyed and append-only; only old days go.
   delete from public.motion_consent_mail_counters
-    where day < current_date - 1;
+    where day < (now() at time zone 'utc')::date - 1;
   with doomed as (
     select d.user_id
     from public.motion_age_declarations d
@@ -284,7 +284,7 @@ execute function public.motion_consent_no_revive();
 -- brake on mail bombing, not a hard 24 hour cap, and there is no global limit.
 create table public.motion_consent_mail_counters (
   counter_key text not null check (char_length(counter_key) <= 80),
-  day date not null default current_date,
+  day date not null default (now() at time zone 'utc')::date,
   count integer not null default 1,
   primary key (counter_key, day)
 );
@@ -309,12 +309,20 @@ as $$
 declare
   v_key text;
   v_count integer;
+  v_day date := (now() at time zone 'utc')::date;
 begin
+  if p_keys is null or coalesce(array_length(p_keys, 1), 0) = 0 then
+    raise exception 'invalid_mail_keys' using errcode = '22023';
+  end if;
+  -- No positive limit, no slot (the first insert would otherwise count 1).
+  if p_limit is null or p_limit <= 0 then
+    return false;
+  end if;
   begin
     foreach v_key in array p_keys loop
       insert into public.motion_consent_mail_counters as c
         (counter_key, day, count)
-      values (v_key, current_date, 1)
+      values (v_key, v_day, 1)
       on conflict (counter_key, day) do update set count = c.count + 1
         where c.count < p_limit
       returning c.count into v_count;
@@ -332,6 +340,25 @@ $$;
 revoke all on function public.motion_consent_mail_slot(text[], integer)
   from public, anon, authenticated;
 grant execute on function public.motion_consent_mail_slot(text[], integer)
+  to service_role;
+
+-- Give a reserved slot back (mail not sent, or the request lost a race):
+-- atomic, never below zero, today's (UTC) row only.
+create function public.motion_consent_mail_slot_release(p_keys text[])
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  update public.motion_consent_mail_counters
+    set count = greatest(count - 1, 0)
+    where counter_key = any (p_keys)
+      and day = (now() at time zone 'utc')::date;
+$$;
+
+revoke all on function public.motion_consent_mail_slot_release(text[])
+  from public, anon, authenticated;
+grant execute on function public.motion_consent_mail_slot_release(text[])
   to service_role;
 
 -- State-guarded (re)start of a device request, after the mail went out. A
@@ -358,7 +385,7 @@ begin
      locale, expires_at, requests_today, requests_day)
   values
     (p_device_digest, 'pending', 'email_link', p_parent_digest, p_link_digest,
-     p_locale, p_expires_at, 1, current_date)
+     p_locale, p_expires_at, 1, (now() at time zone 'utc')::date)
   on conflict (device_token_digest) do update
     set status = 'pending',
         parent_email_digest = excluded.parent_email_digest,
@@ -367,14 +394,20 @@ begin
         expires_at = excluded.expires_at,
         decided_at = null,
         created_at = case
-          when d.status = 'expired' or d.expires_at < now() then now()
+          when d.status = 'expired' or d.expires_at < now()
+               or d.status = 'approved'
+               then now()
           else d.created_at end,
         requested_at = now(),
         requests_today = case
-          when d.requests_day = current_date then d.requests_today + 1
+          when d.requests_day = (now() at time zone 'utc')::date
+            then d.requests_today + 1
           else 1 end,
-        requests_day = current_date
+        requests_day = (now() at time zone 'utc')::date
     where d.status = 'expired'
+       -- An approval nobody consumed within 30 days is no longer usable
+       -- (consume refuses it): the device may start over.
+       or (d.status = 'approved' and d.created_at < now() - interval '30 days')
        or (d.status = 'pending'
            and (d.expires_at < now()
                 or d.requested_at <= now() - interval '10 minutes'));

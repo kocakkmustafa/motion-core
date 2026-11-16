@@ -392,14 +392,18 @@ async function handleRequestDevice(
   const parentDigest = await digest(parentEmail);
   const { data: existing, error: readError } = await admin
     .from("motion_device_consents")
-    .select("status,requested_at,expires_at")
+    .select("status,requested_at,expires_at,created_at")
     .eq("device_token_digest", deviceDigest)
     .maybeSingle();
   if (readError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
   const now = Date.now();
-  if (existing?.status === "approved") {
+  // An approval nobody used within 30 days is dead (consume refuses it): the
+  // device may start over, like after an expiry.
+  const staleApproval = existing?.status === "approved" &&
+    Date.parse(existing.created_at) < now - RETENTION_MS;
+  if (existing?.status === "approved" && !staleApproval) {
     return Response.json({ error: "already_approved" }, { status: 409 });
   }
   if (existing?.status === "denied" || existing?.status === "withdrawn") {
@@ -429,6 +433,12 @@ async function handleRequestDevice(
   if (slot !== true) {
     return Response.json({ error: "daily_limit" }, { status: 429 });
   }
+  const slotKeys = [`p:${parentDigest}`, `d:${deviceDigest}`];
+  // Best effort, atomic in the database: give the slot back when no mail
+  // went out or the request lost a race it did not cause.
+  const releaseSlot = async () => {
+    await admin.rpc("motion_consent_mail_slot_release", { p_keys: slotKeys });
+  };
 
   const linkToken = randomToken();
   const expiresAt = new Date(now + TOKEN_TTL_MS).toISOString();
@@ -438,6 +448,7 @@ async function handleRequestDevice(
     expiresAt: expiresAt.slice(0, 10),
   });
   if (!(await sendMail(env, parentEmail, copy.subject, copy.text))) {
+    await releaseSlot();
     return Response.json({ error: "mail_unavailable" }, { status: 503 });
   }
   // State-guarded write: a row decided since the read above stays decided.
@@ -461,6 +472,7 @@ async function handleRequestDevice(
     return Response.json({ error: "already_decided" }, { status: 409 });
   }
   if (outcome === "too_soon") {
+    await releaseSlot();
     return Response.json({ error: "too_soon" }, { status: 429 });
   }
   if (outcome !== "ok") {
@@ -524,6 +536,22 @@ async function handleWithdraw(
   }
   const admin = adminClient(env);
   const manage = await digest(body.token);
+  // Two passes: a device approval can be consumed into an account between
+  // the lookup and the update; the second pass then finds the account row.
+  for (let pass = 0; pass < 2; pass++) {
+    const account = await withdrawAccount(admin, manage);
+    if (account) return account;
+    const device = await withdrawDevice(admin, manage);
+    if (device !== "raced") return device;
+  }
+  return Response.json({ error: "already_decided" }, { status: 409 });
+}
+
+// null: no account row for this manage digest.
+async function withdrawAccount(
+  admin: Admin,
+  manage: string,
+): Promise<Response | null> {
   const { data, error } = await admin
     .from("motion_parental_consents")
     .select("user_id,status")
@@ -532,7 +560,7 @@ async function handleWithdraw(
   if (error) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
-  if (!data) return withdrawDevice(admin, manage);
+  if (!data) return null;
   if (data.status === "withdrawn") {
     return Response.json({ status: "withdrawn" });
   }
@@ -548,14 +576,22 @@ async function handleWithdraw(
   if (updateError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
-  if (changed && changed.length > 0) await recordDecision(admin, "withdrawn");
+  if (!changed || changed.length === 0) {
+    // Changed under us: never claim a withdrawal that did not happen.
+    return Response.json({ error: "already_decided" }, { status: 409 });
+  }
+  await recordDecision(admin, "withdrawn");
   return Response.json({ status: "withdrawn" });
 }
 
 // The parent withdraws before the child finished sign-up: the approved device
 // row becomes withdrawn and can no longer be consumed (consume takes approved
-// only); it is removed with the 30 day clock.
-async function withdrawDevice(admin: Admin, linkDigest: string) {
+// only); it is removed with the 30 day clock. "raced": the row vanished or
+// changed under the update (e.g. consumed into an account): look again.
+async function withdrawDevice(
+  admin: Admin,
+  linkDigest: string,
+): Promise<Response | "raced"> {
   const { data, error } = await admin
     .from("motion_device_consents")
     .select("device_token_digest,status,created_at")
@@ -580,7 +616,8 @@ async function withdrawDevice(admin: Admin, linkDigest: string) {
   if (updateError) {
     return Response.json({ error: "server_unavailable" }, { status: 503 });
   }
-  if (changed && changed.length > 0) await recordDecision(admin, "withdrawn");
+  if (!changed || changed.length === 0) return "raced";
+  await recordDecision(admin, "withdrawn");
   return Response.json({ status: "withdrawn" });
 }
 

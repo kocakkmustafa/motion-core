@@ -621,4 +621,96 @@ begin
 end;
 $test$;
 
+-- VELI-01 second review round.
+do $test$
+declare
+  n integer;
+begin
+  -- No positive limit, no slot (not even the first insert); bad key lists fail.
+  if public.motion_consent_mail_slot(array['lim0'], 0)
+     or public.motion_consent_mail_slot(array['lim0'], -1)
+     or public.motion_consent_mail_slot(array['lim0'], null) then
+    raise exception 'a slot was granted without a positive limit';
+  end if;
+  if exists (select 1 from public.motion_consent_mail_counters
+             where counter_key = 'lim0') then
+    raise exception 'a refused limit still counted';
+  end if;
+  begin
+    perform public.motion_consent_mail_slot(null, 5);
+    raise exception 'null keys accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  begin
+    perform public.motion_consent_mail_slot(array[]::text[], 5);
+    raise exception 'empty keys accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+
+  -- Release: atomic, today's row, never below zero.
+  perform public.motion_consent_mail_slot(array['rel:a', 'rel:b'], 5);
+  perform public.motion_consent_mail_slot_release(array['rel:a']);
+  perform public.motion_consent_mail_slot_release(array['rel:a']);
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'rel:a';
+  if n <> 0 then raise exception 'release went below zero or failed: %', n; end if;
+  select count into n from public.motion_consent_mail_counters
+    where counter_key = 'rel:b';
+  if n <> 1 then raise exception 'release touched another key: %', n; end if;
+  if not exists (select 1 from public.motion_consent_mail_counters
+                 where counter_key = 'rel:b'
+                   and day = (now() at time zone 'utc')::date) then
+    raise exception 'counter day is not the UTC date';
+  end if;
+  -- A released key can be reserved up to the limit again.
+  for n in 1..5 loop
+    if not public.motion_consent_mail_slot(array['rel:a'], 5) then
+      raise exception 'slot % after release refused', n;
+    end if;
+  end loop;
+  if public.motion_consent_mail_slot(array['rel:a'], 5) then
+    raise exception 'limit exceeded after release';
+  end if;
+
+  -- An approval older than 30 days restarts like an expiry; a live one does not.
+  insert into public.motion_device_consents
+    (device_token_digest, status, link_digest, expires_at, decided_at)
+  values (repeat('e', 64), 'approved', repeat('b', 64),
+          now() + interval '7 days', now());
+  if public.motion_device_consent_request(
+       repeat('e', 64), repeat('c', 64), repeat('d', 64),
+       'en', now() + interval '7 days') <> 'approved' then
+    raise exception 'a live approval was restarted';
+  end if;
+  update public.motion_device_consents
+    set created_at = now() - interval '31 days'
+    where device_token_digest = repeat('e', 64);
+  if public.motion_device_consent_request(
+       repeat('e', 64), repeat('c', 64), repeat('d', 64),
+       'en', now() + interval '7 days') <> 'ok' then
+    raise exception 'a 31 day approval did not restart';
+  end if;
+  if (select status from public.motion_device_consents
+      where device_token_digest = repeat('e', 64))
+       <> 'pending'
+     or (select created_at from public.motion_device_consents
+         where device_token_digest = repeat('e', 64))
+        < now() - interval '1 minute' then
+    raise exception 'stale approval restart did not reset the clock';
+  end if;
+
+  -- Release is server only.
+  set local role authenticated;
+  begin
+    perform public.motion_consent_mail_slot_release(array['rel:a']);
+    raise exception 'client called release';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+end;
+$test$;
+
 rollback;
